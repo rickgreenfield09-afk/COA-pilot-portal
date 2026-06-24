@@ -70,6 +70,20 @@
   .btn-cancel:hover{color:var(--text);}
   .info-edit-input{width:100%;background:var(--surface);border:1px solid var(--teal);border-radius:4px;padding:6px 8px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;}
   .save-status{font-size:12px;color:var(--teal);font-family:'DM Mono',monospace;margin-left:8px;}
+
+  /* ---------- Photo upload ---------- */
+  .photo-wrap{position:relative;width:64px;height:64px;flex-shrink:0;}
+  .photo-img{width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border);display:block;}
+  .photo-edit-btn{position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:var(--teal);border:2px solid var(--surface);color:var(--void);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .photo-edit-btn:hover{background:#35d4c0;}
+
+  /* ---------- Modal ---------- */
+  .modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;z-index:100;}
+  .modal-overlay.active{display:flex;}
+  .modal-box{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:28px;max-width:380px;width:90%;}
+  .modal-title{font-family:'Bebas Neue',sans-serif;font-size:20px;margin-bottom:10px;}
+  .modal-text{font-size:13px;color:var(--sub);margin-bottom:20px;line-height:1.5;}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;}
 </style>
 </head>
 <body>
@@ -102,10 +116,10 @@
       </div>
     </header>
     <nav>
-      <button class="nav-btn active" data-screen="profile" onclick="switchScreen('profile')">Profile</button>
-      <button class="nav-btn" data-screen="directory" onclick="switchScreen('directory')">Directory</button>
-      <button class="nav-btn" data-screen="resume" onclick="switchScreen('resume')">Resume</button>
-      <button class="nav-btn" data-screen="travel" onclick="switchScreen('travel')">Travel</button>
+      <button class="nav-btn active" data-screen="profile" onclick="requestSwitchScreen('profile')">Profile</button>
+      <button class="nav-btn" data-screen="directory" onclick="requestSwitchScreen('directory')">Directory</button>
+      <button class="nav-btn" data-screen="resume" onclick="requestSwitchScreen('resume')">Resume</button>
+      <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel</button>
     </nav>
     <main>
       <div class="screen active" id="screen-profile">
@@ -135,6 +149,20 @@
       </div>
     </main>
   </div>
+
+  <!-- UNSAVED CHANGES MODAL -->
+  <div class="modal-overlay" id="unsaved-modal">
+    <div class="modal-box">
+      <div class="modal-title">Discard changes?</div>
+      <div class="modal-text">You have unsaved changes to your profile. Leaving now will discard them.</div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeUnsavedModal()">Keep Editing</button>
+        <button class="btn-save" onclick="confirmDiscard()">Discard</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="photo-file-input" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="handlePhotoSelected(event)">
 
 <script>
   var SUPABASE_URL = 'https://llkatqqkzjzqfaosmrjl.supabase.co';
@@ -230,7 +258,17 @@
   }
 
   var currentProfile = null;
-  var editableFields = ['phone', 'bio'];
+  var currentSupervisorName = '—';
+  var employeeEditableFields = ['phone', 'bio'];
+  var adminEditableFields = ['full_name', 'job_title', 'department', 'phone', 'bio', 'employment_status', 'clearance_level', 'clearance_investigation_type', 'clearance_granted_date', 'clearance_expiration_date'];
+  var isEditingProfile = false;
+  var pendingNavTarget = null;
+  var PHOTO_BUCKET_URL = 'https://llkatqqkzjzqfaosmrjl.supabase.co/storage/v1/object/public/Bio%20photos/';
+  var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+
+  function isAdmin(){
+    return currentProfile && currentProfile.role === 'admin';
+  }
 
   async function loadProfile(){
     var container = document.getElementById('profile-content');
@@ -254,6 +292,7 @@
         }catch(e){ console.error(e); }
       }
       currentSupervisorName = supervisorName;
+      isEditingProfile = false;
 
       renderProfile(p, supervisorName, false);
     }catch(e){
@@ -264,64 +303,99 @@
 
   function renderProfile(p, supervisorName, editMode){
     var container = document.getElementById('profile-content');
+    var admin = isAdmin();
+    var editableList = admin ? adminEditableFields : employeeEditableFields;
 
-    function fieldVal(key, label, value, editable){
-      if(editMode && editable){
-        return '<div class="info-box"><div class="info-label">' + label + '</div><input class="info-edit-input" id="edit-' + key + '" value="' + (value || '').replace(/"/g, '&quot;') + '"></div>';
+    function isEditable(key){
+      return editMode && editableList.indexOf(key) !== -1;
+    }
+
+    function textField(key, label, value){
+      if(isEditable(key)){
+        return '<div class="info-box"><div class="info-label">' + label + '</div><input class="info-edit-input" id="edit-' + key + '" value="' + (value || '').toString().replace(/"/g, '&quot;') + '"></div>';
       }
       return '<div class="info-box"><div class="info-label">' + label + '</div><div class="info-val">' + (value || '—') + '</div></div>';
     }
 
-    var bioBlock = editMode
+    function dateField(key, label, value){
+      if(isEditable(key)){
+        return '<div class="info-box"><div class="info-label">' + label + '</div><input type="date" class="info-edit-input" id="edit-' + key + '" value="' + (value || '') + '"></div>';
+      }
+      return '<div class="info-box"><div class="info-label">' + label + '</div><div class="info-val">' + formatDate(value) + '</div></div>';
+    }
+
+    var nameBlock = isEditable('full_name')
+      ? '<input class="info-edit-input" id="edit-full_name" value="' + (p.full_name || '').replace(/"/g, '&quot;') + '" style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;margin-bottom:4px;">'
+      : '<div class="profile-name">' + (p.full_name || '—') + '</div>';
+
+    var titleBlock = isEditable('job_title')
+      ? '<input class="info-edit-input" id="edit-job_title" value="' + (p.job_title || '').replace(/"/g, '&quot;') + '">'
+      : '<div class="profile-role">' + (p.job_title || '—') + ' · Employee #' + p.employee_number + '</div>';
+
+    var bioBlock = isEditable('bio')
       ? '<div class="bio-box"><div class="info-label">Bio</div><textarea class="info-edit-input" id="edit-bio" rows="3">' + (p.bio || '') + '</textarea></div>'
       : '<div class="bio-box"><div class="info-label">Bio</div><div class="info-val">' + (p.bio || 'No bio added yet.') + '</div></div>';
+
+    var photoBlock = p.photo_url
+      ? '<img class="photo-img" src="' + p.photo_url + '" alt="Profile photo">'
+      : '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>';
+
+    var photoEditBtn = editMode
+      ? '<div class="photo-edit-btn" onclick="document.getElementById(\'photo-file-input\').click()">+</div>'
+      : '';
 
     container.innerHTML =
       '<div class="profile-card">'
       + '<div class="profile-top">'
-      + '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>'
-      + '<div>'
-      + '<div class="profile-name">' + (p.full_name || '—') + '</div>'
-      + '<div class="profile-role">' + (p.job_title || '—') + ' · Employee #' + p.employee_number + '</div>'
-      + '</div></div>'
+      + '<div class="photo-wrap">' + photoBlock + photoEditBtn + '</div>'
+      + '<div>' + nameBlock + titleBlock + '</div>'
+      + '</div>'
       + '<div class="profile-grid">'
       + '<div class="info-box"><div class="info-label">Email</div><div class="info-val">' + (p.email || '—') + '</div></div>'
-      + fieldVal('phone', 'Phone', p.phone, true)
-      + '<div class="info-box"><div class="info-label">Department</div><div class="info-val">' + (p.department || '—') + '</div></div>'
+      + textField('phone', 'Phone', p.phone)
+      + textField('department', 'Department', p.department)
       + '<div class="info-box"><div class="info-label">Supervisor</div><div class="info-val">' + supervisorName + '</div></div>'
-      + '<div class="info-box"><div class="info-label">Start Date</div><div class="info-val">' + formatDate(p.start_date) + '</div></div>'
-      + '<div class="info-box"><div class="info-label">Status</div><div class="info-val">' + (p.employment_status || '—') + '</div></div>'
+      + dateField('start_date', 'Start Date', p.start_date)
+      + textField('employment_status', 'Status', p.employment_status)
       + '</div>'
       + bioBlock
       + '<div class="clearance-section">'
       + '<div class="profile-grid">'
-      + '<div class="info-box"><div class="info-label">Clearance Level</div><div class="info-val">' + (p.clearance_level || '—') + '</div></div>'
-      + '<div class="info-box"><div class="info-label">Investigation Type</div><div class="info-val">' + (p.clearance_investigation_type || '—') + '</div></div>'
-      + '<div class="info-box"><div class="info-label">Granted</div><div class="info-val">' + formatDate(p.clearance_granted_date) + '</div></div>'
-      + '<div class="info-box"><div class="info-label">Expires</div><div class="info-val">' + formatDate(p.clearance_expiration_date) + '</div></div>'
+      + textField('clearance_level', 'Clearance Level', p.clearance_level)
+      + textField('clearance_investigation_type', 'Investigation Type', p.clearance_investigation_type)
+      + dateField('clearance_granted_date', 'Granted', p.clearance_granted_date)
+      + dateField('clearance_expiration_date', 'Expires', p.clearance_expiration_date)
       + '</div></div>'
       + '<div class="profile-actions">'
       + (editMode
-          ? '<button class="btn-save" onclick="saveProfile()">Save</button><button class="btn-cancel" onclick="cancelEditProfile()">Cancel</button><span class="save-status" id="save-status"></span>'
+          ? '<button class="btn-save" onclick="saveProfile()">Save</button><button class="btn-cancel" onclick="requestCancelEdit()">Cancel</button><span class="save-status" id="save-status"></span>'
           : '<button class="btn-edit" onclick="editProfile()">Edit Profile</button>')
       + '</div>'
       + '</div>';
-  }
 
-  var currentSupervisorName = '—';
+    // Track unsaved changes once fields render
+    if(editMode){
+      isEditingProfile = true;
+      container.querySelectorAll('input, textarea').forEach(function(el){
+        el.addEventListener('input', function(){ isEditingProfile = true; });
+      });
+    }
+  }
 
   function editProfile(){
     renderProfile(currentProfile, currentSupervisorName, true);
   }
 
-  function cancelEditProfile(){
+  function requestCancelEdit(){
+    isEditingProfile = false;
     loadProfile();
   }
 
   async function saveProfile(){
     var statusEl = document.getElementById('save-status');
+    var editableList = isAdmin() ? adminEditableFields : employeeEditableFields;
     var updates = {};
-    editableFields.forEach(function(key){
+    editableList.forEach(function(key){
       var el = document.getElementById('edit-' + key);
       if(el){ updates[key] = el.value; }
     });
@@ -341,12 +415,104 @@
       });
       if(!res.ok){ throw new Error('Save failed'); }
       statusEl.textContent = 'Saved';
+      isEditingProfile = false;
       setTimeout(loadProfile, 600);
     }catch(e){
       statusEl.textContent = 'Save failed — try again';
       console.error(e);
     }
   }
+
+  // ---------- Photo upload ----------
+  function handlePhotoSelected(event){
+    var file = event.target.files[0];
+    if(!file) return;
+
+    var allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if(allowed.indexOf(file.type) === -1){
+      alert('Please choose a JPEG, PNG, or WEBP image.');
+      event.target.value = '';
+      return;
+    }
+    if(file.size > MAX_PHOTO_BYTES){
+      alert('Image must be smaller than 5MB.');
+      event.target.value = '';
+      return;
+    }
+    uploadPhoto(file);
+  }
+
+  async function uploadPhoto(file){
+    var session = getSession();
+    var ext = file.name.split('.').pop().toLowerCase();
+    var fileName = session.user.id + '-' + Date.now() + '.' + ext;
+
+    try{
+      var uploadRes = await fetch(SUPABASE_URL + '/storage/v1/object/Bio%20photos/' + fileName, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + session.access_token,
+          'Content-Type': file.type
+        },
+        body: file
+      });
+      if(!uploadRes.ok){ throw new Error('Upload failed'); }
+
+      var photoUrl = PHOTO_BUCKET_URL + fileName;
+      var patchRes = await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + session.user.id, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ photo_url: photoUrl })
+      });
+      if(!patchRes.ok){ throw new Error('Profile update failed'); }
+
+      currentProfile.photo_url = photoUrl;
+      renderProfile(currentProfile, currentSupervisorName, true);
+    }catch(e){
+      alert('Photo upload failed. Try again.');
+      console.error(e);
+    }
+  }
+
+  // ---------- Unsaved changes guard ----------
+  function requestSwitchScreen(name){
+    if(isEditingProfile){
+      pendingNavTarget = name;
+      document.getElementById('unsaved-modal').classList.add('active');
+      return;
+    }
+    switchScreen(name);
+  }
+
+  function closeUnsavedModal(){
+    document.getElementById('unsaved-modal').classList.remove('active');
+    pendingNavTarget = null;
+  }
+
+  function confirmDiscard(){
+    isEditingProfile = false;
+    document.getElementById('unsaved-modal').classList.remove('active');
+    if(pendingNavTarget){
+      var target = pendingNavTarget;
+      pendingNavTarget = null;
+      switchScreen(target);
+      if(target === 'profile'){ loadProfile(); }
+      else { renderProfile(currentProfile, currentSupervisorName, false); }
+    }
+  }
+
+  window.addEventListener('beforeunload', function(e){
+    if(isEditingProfile){
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 
   function showApp(email){
     document.getElementById('login-wrap').style.display = 'none';
