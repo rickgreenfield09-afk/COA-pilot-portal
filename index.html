@@ -446,6 +446,7 @@
     var session = getSession();
     var ext = file.name.split('.').pop().toLowerCase();
     var fileName = session.user.id + '-' + Date.now() + '.' + ext;
+    var fileBuffer = await file.arrayBuffer();
 
     try{
       var uploadRes = await fetch(SUPABASE_URL + '/storage/v1/object/BioPhotos/' + fileName, {
@@ -453,11 +454,16 @@
         headers: {
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': 'Bearer ' + session.access_token,
-          'Content-Type': file.type
+          'Content-Type': file.type,
+          'x-upsert': 'true'
         },
-        body: file
+        body: fileBuffer
       });
-      if(!uploadRes.ok){ throw new Error('Upload failed'); }
+      if(!uploadRes.ok){
+        var errText = await uploadRes.text();
+        console.error('Upload response:', uploadRes.status, errText);
+        throw new Error('Upload failed: ' + uploadRes.status);
+      }
 
       var photoUrl = PHOTO_BUCKET_URL + fileName;
       var patchRes = await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + session.user.id, {
