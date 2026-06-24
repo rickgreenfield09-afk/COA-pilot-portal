@@ -31,7 +31,7 @@
   #app-shell.active{display:flex;}
   header{background:var(--header);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-shrink:0;}
   .logo-wrap{display:flex;align-items:center;gap:12px;}
-  .header-logo-img{height:32px;width:auto;display:block;}
+  .header-logo-img{height:32px;width:auto;display:block;background:#fff;border-radius:6px;padding:4px 8px;}
   .logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:3px;color:var(--teal);}
   .header-right{display:flex;align-items:center;gap:14px;}
   .user-email{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;}
@@ -61,6 +61,15 @@
   .info-val{font-size:14px;color:var(--text);}
   .bio-box{background:var(--raised);border-radius:6px;padding:14px;margin-bottom:20px;}
   .clearance-section{border-top:1px solid var(--border);padding-top:16px;}
+  .profile-actions{display:flex;gap:10px;margin-top:20px;}
+  .btn-edit{padding:9px 18px;border-radius:6px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;background:var(--raised);color:var(--teal);border:1px solid var(--border);transition:all 0.15s;}
+  .btn-edit:hover{border-color:var(--teal);}
+  .btn-save{padding:9px 18px;border-radius:6px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;background:var(--teal);color:var(--void);transition:all 0.15s;}
+  .btn-save:hover{background:#35d4c0;}
+  .btn-cancel{padding:9px 18px;border-radius:6px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--sub);border:1px solid var(--border);transition:all 0.15s;}
+  .btn-cancel:hover{color:var(--text);}
+  .info-edit-input{width:100%;background:var(--surface);border:1px solid var(--teal);border-radius:4px;padding:6px 8px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;}
+  .save-status{font-size:12px;color:var(--teal);font-family:'DM Mono',monospace;margin-left:8px;}
 </style>
 </head>
 <body>
@@ -220,6 +229,9 @@
     return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
+  var currentProfile = null;
+  var editableFields = ['phone', 'bio'];
+
   async function loadProfile(){
     var container = document.getElementById('profile-content');
     var session = getSession();
@@ -232,31 +244,106 @@
         return;
       }
       var p = rows[0];
-      container.innerHTML =
-        '<div class="profile-card">'
-        + '<div class="profile-top">'
-        + '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>'
-        + '<div>'
-        + '<div class="profile-name">' + (p.full_name || '—') + '</div>'
-        + '<div class="profile-role">' + (p.job_title || '—') + ' · Employee #' + p.employee_number + '</div>'
-        + '</div></div>'
-        + '<div class="profile-grid">'
-        + '<div class="info-box"><div class="info-label">Department</div><div class="info-val">' + (p.department || '—') + '</div></div>'
-        + '<div class="info-box"><div class="info-label">Phone</div><div class="info-val">' + (p.phone || '—') + '</div></div>'
-        + '<div class="info-box"><div class="info-label">Start Date</div><div class="info-val">' + formatDate(p.start_date) + '</div></div>'
-        + '<div class="info-box"><div class="info-label">Status</div><div class="info-val">' + (p.employment_status || '—') + '</div></div>'
-        + '</div>'
-        + '<div class="bio-box"><div class="info-label">Bio</div><div class="info-val">' + (p.bio || 'No bio added yet.') + '</div></div>'
-        + '<div class="clearance-section">'
-        + '<div class="profile-grid">'
-        + '<div class="info-box"><div class="info-label">Clearance Level</div><div class="info-val">' + (p.clearance_level || '—') + '</div></div>'
-        + '<div class="info-box"><div class="info-label">Investigation Type</div><div class="info-val">' + (p.clearance_investigation_type || '—') + '</div></div>'
-        + '<div class="info-box"><div class="info-label">Granted</div><div class="info-val">' + formatDate(p.clearance_granted_date) + '</div></div>'
-        + '<div class="info-box"><div class="info-label">Expires</div><div class="info-val">' + formatDate(p.clearance_expiration_date) + '</div></div>'
-        + '</div></div>'
-        + '</div>';
+      currentProfile = p;
+
+      var supervisorName = '—';
+      if(p.manager_id){
+        try{
+          var mgrRows = await dbRequest('profiles?id=eq.' + p.manager_id + '&select=full_name');
+          if(mgrRows.length){ supervisorName = mgrRows[0].full_name; }
+        }catch(e){ console.error(e); }
+      }
+      currentSupervisorName = supervisorName;
+
+      renderProfile(p, supervisorName, false);
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load profile</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  function renderProfile(p, supervisorName, editMode){
+    var container = document.getElementById('profile-content');
+
+    function fieldVal(key, label, value, editable){
+      if(editMode && editable){
+        return '<div class="info-box"><div class="info-label">' + label + '</div><input class="info-edit-input" id="edit-' + key + '" value="' + (value || '').replace(/"/g, '&quot;') + '"></div>';
+      }
+      return '<div class="info-box"><div class="info-label">' + label + '</div><div class="info-val">' + (value || '—') + '</div></div>';
+    }
+
+    var bioBlock = editMode
+      ? '<div class="bio-box"><div class="info-label">Bio</div><textarea class="info-edit-input" id="edit-bio" rows="3">' + (p.bio || '') + '</textarea></div>'
+      : '<div class="bio-box"><div class="info-label">Bio</div><div class="info-val">' + (p.bio || 'No bio added yet.') + '</div></div>';
+
+    container.innerHTML =
+      '<div class="profile-card">'
+      + '<div class="profile-top">'
+      + '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>'
+      + '<div>'
+      + '<div class="profile-name">' + (p.full_name || '—') + '</div>'
+      + '<div class="profile-role">' + (p.job_title || '—') + ' · Employee #' + p.employee_number + '</div>'
+      + '</div></div>'
+      + '<div class="profile-grid">'
+      + '<div class="info-box"><div class="info-label">Email</div><div class="info-val">' + (p.email || '—') + '</div></div>'
+      + fieldVal('phone', 'Phone', p.phone, true)
+      + '<div class="info-box"><div class="info-label">Department</div><div class="info-val">' + (p.department || '—') + '</div></div>'
+      + '<div class="info-box"><div class="info-label">Supervisor</div><div class="info-val">' + supervisorName + '</div></div>'
+      + '<div class="info-box"><div class="info-label">Start Date</div><div class="info-val">' + formatDate(p.start_date) + '</div></div>'
+      + '<div class="info-box"><div class="info-label">Status</div><div class="info-val">' + (p.employment_status || '—') + '</div></div>'
+      + '</div>'
+      + bioBlock
+      + '<div class="clearance-section">'
+      + '<div class="profile-grid">'
+      + '<div class="info-box"><div class="info-label">Clearance Level</div><div class="info-val">' + (p.clearance_level || '—') + '</div></div>'
+      + '<div class="info-box"><div class="info-label">Investigation Type</div><div class="info-val">' + (p.clearance_investigation_type || '—') + '</div></div>'
+      + '<div class="info-box"><div class="info-label">Granted</div><div class="info-val">' + formatDate(p.clearance_granted_date) + '</div></div>'
+      + '<div class="info-box"><div class="info-label">Expires</div><div class="info-val">' + formatDate(p.clearance_expiration_date) + '</div></div>'
+      + '</div></div>'
+      + '<div class="profile-actions">'
+      + (editMode
+          ? '<button class="btn-save" onclick="saveProfile()">Save</button><button class="btn-cancel" onclick="cancelEditProfile()">Cancel</button><span class="save-status" id="save-status"></span>'
+          : '<button class="btn-edit" onclick="editProfile()">Edit Profile</button>')
+      + '</div>'
+      + '</div>';
+  }
+
+  var currentSupervisorName = '—';
+
+  function editProfile(){
+    renderProfile(currentProfile, currentSupervisorName, true);
+  }
+
+  function cancelEditProfile(){
+    loadProfile();
+  }
+
+  async function saveProfile(){
+    var statusEl = document.getElementById('save-status');
+    var updates = {};
+    editableFields.forEach(function(key){
+      var el = document.getElementById('edit-' + key);
+      if(el){ updates[key] = el.value; }
+    });
+
+    statusEl.textContent = 'Saving...';
+    var session = getSession();
+    try{
+      var res = await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + session.user.id, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(updates)
+      });
+      if(!res.ok){ throw new Error('Save failed'); }
+      statusEl.textContent = 'Saved';
+      setTimeout(loadProfile, 600);
+    }catch(e){
+      statusEl.textContent = 'Save failed — try again';
       console.error(e);
     }
   }
