@@ -71,12 +71,6 @@
   .info-edit-input{width:100%;background:var(--surface);border:1px solid var(--teal);border-radius:4px;padding:6px 8px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;}
   .save-status{font-size:12px;color:var(--teal);font-family:'DM Mono',monospace;margin-left:8px;}
 
-  /* ---------- Photo upload ---------- */
-  .photo-wrap{position:relative;width:64px;height:64px;flex-shrink:0;}
-  .photo-img{width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--border);display:block;}
-  .photo-edit-btn{position:absolute;bottom:-2px;right:-2px;width:24px;height:24px;border-radius:50%;background:var(--teal);border:2px solid var(--surface);color:var(--void);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
-  .photo-edit-btn:hover{background:#35d4c0;}
-
   /* ---------- Modal ---------- */
   .modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;z-index:100;}
   .modal-overlay.active{display:flex;}
@@ -161,8 +155,6 @@
       </div>
     </div>
   </div>
-
-  <input type="file" id="photo-file-input" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="handlePhotoSelected(event)">
 
 <script>
   var SUPABASE_URL = 'https://llkatqqkzjzqfaosmrjl.supabase.co';
@@ -263,8 +255,6 @@
   var adminEditableFields = ['full_name', 'job_title', 'department', 'phone', 'bio', 'employment_status', 'clearance_level', 'clearance_investigation_type', 'clearance_granted_date', 'clearance_expiration_date'];
   var isEditingProfile = false;
   var pendingNavTarget = null;
-  var PHOTO_BUCKET_URL = 'https://llkatqqkzjzqfaosmrjl.supabase.co/storage/v1/object/public/Assets/';
-  var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
   function isAdmin(){
     return currentProfile && currentProfile.role === 'admin';
@@ -336,18 +326,12 @@
       ? '<div class="bio-box"><div class="info-label">Bio</div><textarea class="info-edit-input" id="edit-bio" rows="3">' + (p.bio || '') + '</textarea></div>'
       : '<div class="bio-box"><div class="info-label">Bio</div><div class="info-val">' + (p.bio || 'No bio added yet.') + '</div></div>';
 
-    var photoBlock = p.photo_url
-      ? '<img class="photo-img" src="' + p.photo_url + '" alt="Profile photo">'
-      : '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>';
-
-    var photoEditBtn = editMode
-      ? '<div class="photo-edit-btn" onclick="document.getElementById(\'photo-file-input\').click()">+</div>'
-      : '';
+    var photoBlock = '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>';
 
     container.innerHTML =
       '<div class="profile-card">'
       + '<div class="profile-top">'
-      + '<div class="photo-wrap">' + photoBlock + photoEditBtn + '</div>'
+      + '<div class="photo-wrap">' + photoBlock + '</div>'
       + '<div>' + nameBlock + titleBlock + '</div>'
       + '</div>'
       + '<div class="profile-grid">'
@@ -419,68 +403,6 @@
       setTimeout(loadProfile, 600);
     }catch(e){
       statusEl.textContent = 'Save failed — try again';
-      console.error(e);
-    }
-  }
-
-  // ---------- Photo upload ----------
-  function handlePhotoSelected(event){
-    var file = event.target.files[0];
-    if(!file) return;
-
-    var allowed = ['image/jpeg', 'image/png', 'image/webp'];
-    if(allowed.indexOf(file.type) === -1){
-      alert('Please choose a JPEG, PNG, or WEBP image.');
-      event.target.value = '';
-      return;
-    }
-    if(file.size > MAX_PHOTO_BYTES){
-      alert('Image must be smaller than 5MB.');
-      event.target.value = '';
-      return;
-    }
-    uploadPhoto(file);
-  }
-
-  async function uploadPhoto(file){
-    var session = getSession();
-    var ext = file.name.split('.').pop().toLowerCase();
-    var fileName = session.user.id + '-' + Date.now() + '.' + ext;
-    var fileBuffer = await file.arrayBuffer();
-
-    try{
-      var uploadRes = await fetch(SUPABASE_URL + '/storage/v1/object/Assets/' + fileName, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + session.access_token,
-          'Content-Type': file.type
-        },
-        body: fileBuffer
-      });
-      if(!uploadRes.ok){
-        var errText = await uploadRes.text();
-        console.error('Upload response:', uploadRes.status, errText);
-        throw new Error('Upload failed: ' + uploadRes.status);
-      }
-
-      var photoUrl = PHOTO_BUCKET_URL + fileName;
-      var patchRes = await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + session.user.id, {
-        method: 'PATCH',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + session.access_token,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify({ photo_url: photoUrl })
-      });
-      if(!patchRes.ok){ throw new Error('Profile update failed'); }
-
-      currentProfile.photo_url = photoUrl;
-      renderProfile(currentProfile, currentSupervisorName, true);
-    }catch(e){
-      alert('Photo upload failed. Try again.');
       console.error(e);
     }
   }
