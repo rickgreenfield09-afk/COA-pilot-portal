@@ -78,6 +78,30 @@
   .modal-title{font-family:'Bebas Neue',sans-serif;font-size:20px;margin-bottom:10px;}
   .modal-text{font-size:13px;color:var(--sub);margin-bottom:20px;line-height:1.5;}
   .modal-actions{display:flex;gap:10px;justify-content:flex-end;}
+
+  /* ---------- Resume screen ---------- */
+  .resume-search-wrap{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;}
+  .resume-search-input{flex:1;min-width:220px;margin-bottom:0;}
+  #resume-search-results{width:100%;display:flex;flex-direction:column;gap:6px;margin-top:10px;}
+  .search-result-row{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:10px 14px;cursor:pointer;transition:border-color .15s;}
+  .search-result-row:hover{border-color:var(--teal);}
+  .resume-viewing-banner{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;margin-bottom:14px;}
+  .resume-viewing-banner a{color:var(--teal);text-decoration:none;}
+  .resume-viewing-banner a:hover{text-decoration:underline;}
+  .resume-section{border-top:1px solid var(--border);padding-top:16px;margin-top:16px;}
+  .resume-section-title{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}
+  .resume-view-row{background:var(--raised);border-radius:6px;padding:12px 14px;margin-bottom:8px;}
+  .resume-view-row-title{font-size:14px;color:var(--text);font-weight:500;}
+  .resume-view-row-dates{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;margin-top:2px;}
+  .resume-view-row-desc{font-size:13px;color:var(--sub);margin-top:6px;line-height:1.4;}
+  .resume-row{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;}
+  .resume-row-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+  .btn-add-row{background:none;border:1px dashed var(--border);border-radius:6px;padding:8px 14px;color:var(--teal);font-size:12px;font-family:'DM Sans',sans-serif;cursor:pointer;margin-top:4px;}
+  .btn-add-row:hover{border-color:var(--teal);}
+  .btn-remove-row{background:none;border:none;color:var(--red);font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;padding:2px 0;}
+  .btn-remove-row:hover{text-decoration:underline;}
+  .skills-tags{display:flex;flex-wrap:wrap;gap:8px;}
+  .skill-tag{background:var(--raised);border:1px solid var(--border);border-radius:14px;padding:5px 12px;font-size:12px;color:var(--teal);font-family:'DM Mono',monospace;}
 </style>
 </head>
 <body>
@@ -130,9 +154,16 @@
         </div>
       </div>
       <div class="screen" id="screen-resume">
-        <div class="placeholder-card">
-          <div class="placeholder-title">Resume</div>
-          <div class="placeholder-sub">Coming next session</div>
+        <div class="resume-search-wrap" id="resume-search-wrap" style="display:none;">
+          <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract...">
+          <button class="btn-edit" onclick="searchResumes()">Search</button>
+          <div id="resume-search-results"></div>
+        </div>
+        <div id="resume-viewing-banner"></div>
+        <div id="resume-content">
+          <div class="placeholder-card">
+            <div class="placeholder-sub">Loading resume...</div>
+          </div>
         </div>
       </div>
       <div class="screen" id="screen-travel">
@@ -407,9 +438,255 @@
     }
   }
 
+  // ---------- Resume screen ----------
+  var currentResume = null;
+  var currentResumeOwner = null;
+  var isEditingResume = false;
+
+  function canEditResume(){
+    var session = getSession();
+    return currentResumeOwner && (currentResumeOwner.id === session.user.id || isAdmin());
+  }
+
+  function escAttr(v){
+    return (v == null ? '' : String(v)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function workHistoryRowHtml(w){
+    w = w || {};
+    return '<div class="resume-row">'
+      + '<div class="resume-row-grid">'
+      + '<input class="info-edit-input" placeholder="Job title" data-field="title" value="' + escAttr(w.title) + '">'
+      + '<input class="info-edit-input" placeholder="Company" data-field="company" value="' + escAttr(w.company) + '">'
+      + '<input class="info-edit-input" placeholder="Start (e.g. 2021)" data-field="start" value="' + escAttr(w.start) + '">'
+      + '<input class="info-edit-input" placeholder="End (e.g. Present)" data-field="end" value="' + escAttr(w.end) + '">'
+      + '</div>'
+      + '<textarea class="info-edit-input" placeholder="Description" data-field="description" rows="2">' + escAttr(w.description) + '</textarea>'
+      + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove()">Remove</button>'
+      + '</div>';
+  }
+
+  function eduRowHtml(ed){
+    ed = ed || {};
+    return '<div class="resume-row">'
+      + '<div class="resume-row-grid">'
+      + '<input class="info-edit-input" placeholder="Degree" data-field="degree" value="' + escAttr(ed.degree) + '">'
+      + '<input class="info-edit-input" placeholder="School" data-field="school" value="' + escAttr(ed.school) + '">'
+      + '<input class="info-edit-input" placeholder="Year" data-field="year" value="' + escAttr(ed.year) + '">'
+      + '</div>'
+      + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove()">Remove</button>'
+      + '</div>';
+  }
+
+  function certRowHtml(c){
+    c = c || {};
+    return '<div class="resume-row">'
+      + '<div class="resume-row-grid">'
+      + '<input class="info-edit-input" placeholder="Certification name" data-field="name" value="' + escAttr(c.name) + '">'
+      + '<input class="info-edit-input" placeholder="Issuer" data-field="issuer" value="' + escAttr(c.issuer) + '">'
+      + '<input class="info-edit-input" placeholder="Date" data-field="date" value="' + escAttr(c.date) + '">'
+      + '</div>'
+      + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove()">Remove</button>'
+      + '</div>';
+  }
+
+  function addWorkRow(){ document.getElementById('work-history-rows').insertAdjacentHTML('beforeend', workHistoryRowHtml()); }
+  function addEduRow(){ document.getElementById('education-rows').insertAdjacentHTML('beforeend', eduRowHtml()); }
+  function addCertRow(){ document.getElementById('cert-rows').insertAdjacentHTML('beforeend', certRowHtml()); }
+
+  function harvestRows(containerId, fields){
+    var rows = document.querySelectorAll('#' + containerId + ' .resume-row');
+    var out = [];
+    rows.forEach(function(row){
+      var obj = {};
+      var any = false;
+      fields.forEach(function(f){
+        var el = row.querySelector('[data-field="' + f + '"]');
+        var v = el ? el.value.trim() : '';
+        obj[f] = v;
+        if(v){ any = true; }
+      });
+      if(any){ out.push(obj); }
+    });
+    return out;
+  }
+
+  async function loadResume(ownerId){
+    var container = document.getElementById('resume-content');
+    container.innerHTML = '<div class="placeholder-card"><div class="placeholder-sub">Loading resume...</div></div>';
+    try{
+      var rows = await dbRequest('resumes?id=eq.' + ownerId + '&select=*,profiles(full_name,job_title)');
+      if(!rows.length){
+        container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No resume found</div><div class="placeholder-sub">This employee has no resume record yet.</div></div>';
+        return;
+      }
+      currentResume = rows[0];
+      currentResumeOwner = rows[0].profiles || {};
+      currentResumeOwner.id = ownerId;
+      isEditingResume = false;
+      renderResumeBanner();
+      renderResume(currentResume, currentResumeOwner, false);
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load resume</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  function renderResumeBanner(){
+    var el = document.getElementById('resume-viewing-banner');
+    var session = getSession();
+    if(currentResumeOwner.id !== session.user.id){
+      el.innerHTML = '<div class="resume-viewing-banner">Viewing <strong>' + (currentResumeOwner.full_name || '—') + '</strong>\'s resume &nbsp;·&nbsp; <a href="#" onclick="requestViewResume(\'' + session.user.id + '\');return false;">Back to mine</a></div>';
+    }else{
+      el.innerHTML = '';
+    }
+  }
+
+  function renderResume(r, owner, editMode){
+    var container = document.getElementById('resume-content');
+    var editable = editMode && canEditResume();
+
+    function listView(label, items, formatter){
+      if(!items || !items.length){
+        return '<div class="resume-section"><div class="resume-section-title">' + label + '</div><div class="info-val" style="color:var(--muted);">None added yet.</div></div>';
+      }
+      return '<div class="resume-section"><div class="resume-section-title">' + label + '</div>' + items.map(formatter).join('') + '</div>';
+    }
+
+    var summaryBlock = editable
+      ? '<div class="resume-section"><div class="resume-section-title">Summary</div><textarea class="info-edit-input" id="edit-summary" rows="3">' + escAttr(r.summary) + '</textarea></div>'
+      : '<div class="resume-section"><div class="resume-section-title">Summary</div><div class="info-val">' + (r.summary || 'No summary added yet.') + '</div></div>';
+
+    var yearsBlock = editable
+      ? '<div class="info-box"><div class="info-label">Years Experience</div><input type="number" step="0.5" class="info-edit-input" id="edit-years_experience" value="' + escAttr(r.years_experience) + '"></div>'
+      : '<div class="info-box"><div class="info-label">Years Experience</div><div class="info-val">' + (r.years_experience != null ? r.years_experience : '—') + '</div></div>';
+
+    var workBlock = editable
+      ? '<div class="resume-section"><div class="resume-section-title">Work History</div><div id="work-history-rows">' + (r.work_history || []).map(workHistoryRowHtml).join('') + '</div><button type="button" class="btn-add-row" onclick="addWorkRow()">+ Add position</button></div>'
+      : listView('Work History', r.work_history, function(w){
+          return '<div class="resume-view-row"><div class="resume-view-row-title">' + (w.title || '—') + ' · ' + (w.company || '—') + '</div>'
+            + '<div class="resume-view-row-dates">' + (w.start || '') + ' – ' + (w.end || '') + '</div>'
+            + (w.description ? '<div class="resume-view-row-desc">' + w.description + '</div>' : '')
+            + '</div>';
+        });
+
+    var eduBlock = editable
+      ? '<div class="resume-section"><div class="resume-section-title">Education</div><div id="education-rows">' + (r.education || []).map(eduRowHtml).join('') + '</div><button type="button" class="btn-add-row" onclick="addEduRow()">+ Add education</button></div>'
+      : listView('Education', r.education, function(ed){
+          return '<div class="resume-view-row"><div class="resume-view-row-title">' + (ed.degree || '—') + ' · ' + (ed.school || '—') + '</div><div class="resume-view-row-dates">' + (ed.year || '') + '</div></div>';
+        });
+
+    var certBlock = editable
+      ? '<div class="resume-section"><div class="resume-section-title">Certifications</div><div id="cert-rows">' + (r.certifications || []).map(certRowHtml).join('') + '</div><button type="button" class="btn-add-row" onclick="addCertRow()">+ Add certification</button></div>'
+      : listView('Certifications', r.certifications, function(c){
+          return '<div class="resume-view-row"><div class="resume-view-row-title">' + (c.name || '—') + ' · ' + (c.issuer || '—') + '</div><div class="resume-view-row-dates">' + (c.date || '') + '</div></div>';
+        });
+
+    var skillsBlock = editable
+      ? '<div class="resume-section"><div class="resume-section-title">Skills</div><input class="info-edit-input" id="edit-skills" placeholder="Comma-separated, e.g. Lean Six Sigma, Power Apps, SQL" value="' + escAttr((r.skills || []).join(', ')) + '"></div>'
+      : '<div class="resume-section"><div class="resume-section-title">Skills</div>'
+        + (r.skills && r.skills.length
+            ? '<div class="skills-tags">' + r.skills.map(function(s){ return '<span class="skill-tag">' + s + '</span>'; }).join('') + '</div>'
+            : '<div class="info-val" style="color:var(--muted);">None added yet.</div>')
+        + '</div>';
+
+    container.innerHTML =
+      '<div class="profile-card">'
+      + '<div class="profile-top"><div><div class="profile-name">' + (owner.full_name || '—') + '</div><div class="profile-role">' + (owner.job_title || '—') + '</div></div></div>'
+      + summaryBlock
+      + '<div class="profile-grid">' + yearsBlock + '</div>'
+      + workBlock + eduBlock + certBlock + skillsBlock
+      + '<div class="profile-actions">'
+      + (editMode
+          ? '<button class="btn-save" onclick="saveResume()">Save</button><button class="btn-cancel" onclick="requestCancelResumeEdit()">Cancel</button><span class="save-status" id="resume-save-status"></span>'
+          : (canEditResume() ? '<button class="btn-edit" onclick="editResume()">Edit Resume</button>' : ''))
+      + '</div>'
+      + '</div>';
+
+    if(editMode){
+      isEditingResume = true;
+      container.querySelectorAll('input, textarea').forEach(function(el){
+        el.addEventListener('input', function(){ isEditingResume = true; });
+      });
+    }
+  }
+
+  function editResume(){
+    renderResume(currentResume, currentResumeOwner, true);
+  }
+
+  function requestCancelResumeEdit(){
+    isEditingResume = false;
+    loadResume(currentResumeOwner.id);
+  }
+
+  async function saveResume(){
+    var statusEl = document.getElementById('resume-save-status');
+    var updates = {
+      summary: document.getElementById('edit-summary').value,
+      years_experience: document.getElementById('edit-years_experience').value ? parseFloat(document.getElementById('edit-years_experience').value) : null,
+      work_history: harvestRows('work-history-rows', ['title','company','start','end','description']),
+      education: harvestRows('education-rows', ['degree','school','year']),
+      certifications: harvestRows('cert-rows', ['name','issuer','date']),
+      skills: document.getElementById('edit-skills').value.split(',').map(function(s){ return s.trim(); }).filter(Boolean)
+    };
+    statusEl.textContent = 'Saving...';
+    var session = getSession();
+    try{
+      var res = await fetch(SUPABASE_URL + '/rest/v1/resumes?id=eq.' + currentResumeOwner.id, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(updates)
+      });
+      if(!res.ok){ throw new Error('Save failed'); }
+      statusEl.textContent = 'Saved';
+      isEditingResume = false;
+      setTimeout(function(){ loadResume(currentResumeOwner.id); }, 600);
+    }catch(e){
+      statusEl.textContent = 'Save failed — try again';
+      console.error(e);
+    }
+  }
+
+  function requestViewResume(ownerId){
+    if(isEditingResume){
+      pendingNavTarget = function(){ loadResume(ownerId); };
+      document.getElementById('unsaved-modal').classList.add('active');
+      return;
+    }
+    loadResume(ownerId);
+  }
+
+  async function searchResumes(){
+    var q = document.getElementById('resume-search-input').value.trim();
+    var resultsEl = document.getElementById('resume-search-results');
+    if(!q){ resultsEl.innerHTML = ''; return; }
+    resultsEl.innerHTML = '<div class="info-val" style="color:var(--muted);">Searching...</div>';
+    try{
+      var rows = await dbRequest('resumes?select=id,profiles(full_name,job_title)&search_doc=plfts.' + encodeURIComponent(q));
+      if(!rows.length){
+        resultsEl.innerHTML = '<div class="info-val" style="color:var(--muted);">No matches.</div>';
+        return;
+      }
+      resultsEl.innerHTML = rows.map(function(r){
+        var name = (r.profiles && r.profiles.full_name) || 'Unknown';
+        var title = (r.profiles && r.profiles.job_title) || '';
+        return '<div class="search-result-row" onclick="requestViewResume(\'' + r.id + '\')"><div class="resume-view-row-title">' + name + (title ? ' · ' + title : '') + '</div></div>';
+      }).join('');
+    }catch(e){
+      resultsEl.innerHTML = '<div class="info-val" style="color:var(--red);">Search failed.</div>';
+      console.error(e);
+    }
+  }
+
   // ---------- Unsaved changes guard ----------
   function requestSwitchScreen(name){
-    if(isEditingProfile){
+    if(isEditingProfile || isEditingResume){
       pendingNavTarget = name;
       document.getElementById('unsaved-modal').classList.add('active');
       return;
@@ -423,19 +700,23 @@
   }
 
   function confirmDiscard(){
+    var wasEditingProfile = isEditingProfile;
+    var wasEditingResume = isEditingResume;
     isEditingProfile = false;
+    isEditingResume = false;
     document.getElementById('unsaved-modal').classList.remove('active');
-    if(pendingNavTarget){
-      var target = pendingNavTarget;
-      pendingNavTarget = null;
-      switchScreen(target);
-      if(target === 'profile'){ loadProfile(); }
-      else { renderProfile(currentProfile, currentSupervisorName, false); }
-    }
+    var target = pendingNavTarget;
+    pendingNavTarget = null;
+    if(!target){ return; }
+    if(typeof target === 'function'){ target(); return; }
+    switchScreen(target);
+    if(target === 'profile'){ loadProfile(); }
+    else if(wasEditingProfile){ renderProfile(currentProfile, currentSupervisorName, false); }
+    if(target !== 'resume' && wasEditingResume){ renderResume(currentResume, currentResumeOwner, false); }
   }
 
   window.addEventListener('beforeunload', function(e){
-    if(isEditingProfile){
+    if(isEditingProfile || isEditingResume){
       e.preventDefault();
       e.returnValue = '';
     }
@@ -452,6 +733,12 @@
     document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.screen === name); });
     document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
     document.getElementById('screen-' + name).classList.add('active');
+    if(name === 'resume'){
+      document.getElementById('resume-search-wrap').style.display = isAdmin() ? 'block' : 'none';
+      document.getElementById('resume-search-input').value = '';
+      document.getElementById('resume-search-results').innerHTML = '';
+      loadResume(getSession().user.id);
+    }
   }
 
   // ---------- Session check on load ----------
