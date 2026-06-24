@@ -454,8 +454,7 @@
         headers: {
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': 'Bearer ' + session.access_token,
-          'Content-Type': file.type,
-          'x-upsert': 'true'
+          'Content-Type': file.type
         },
         body: fileBuffer
       });
