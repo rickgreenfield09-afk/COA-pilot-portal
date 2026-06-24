@@ -263,7 +263,7 @@
   var adminEditableFields = ['full_name', 'job_title', 'department', 'phone', 'bio', 'employment_status', 'clearance_level', 'clearance_investigation_type', 'clearance_granted_date', 'clearance_expiration_date'];
   var isEditingProfile = false;
   var pendingNavTarget = null;
-  var PHOTO_BUCKET_URL = 'https://llkatqqkzjzqfaosmrjl.supabase.co/storage/v1/object/public/Bio%20photos/';
+  var PHOTO_BUCKET_URL = 'https://llkatqqkzjzqfaosmrjl.supabase.co/storage/v1/object/public/BioPhotos/';
   var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
   function isAdmin(){
@@ -448,7 +448,7 @@
     var fileName = session.user.id + '-' + Date.now() + '.' + ext;
 
     try{
-      var uploadRes = await fetch(SUPABASE_URL + '/storage/v1/object/Bio%20photos/' + fileName, {
+      var uploadRes = await fetch(SUPABASE_URL + '/storage/v1/object/BioPhotos/' + fileName, {
         method: 'POST',
         headers: {
           'apikey': SUPABASE_ANON_KEY,
