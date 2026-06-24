@@ -13,6 +13,7 @@
   /* ---------- Login screen ---------- */
   .login-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;}
   .login-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:40px;width:100%;max-width:380px;}
+  .login-brand-img{display:block;max-width:180px;height:auto;margin:0 auto 14px;}
   .login-logo{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:3px;color:var(--teal);text-align:center;margin-bottom:4px;}
   .login-sub{font-size:12px;font-family:'DM Mono',monospace;color:var(--sub);text-align:center;margin-bottom:28px;letter-spacing:1px;}
   .field-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;display:block;}
@@ -30,6 +31,7 @@
   #app-shell.active{display:flex;}
   header{background:var(--header);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-shrink:0;}
   .logo-wrap{display:flex;align-items:center;gap:12px;}
+  .header-logo-img{height:32px;width:auto;display:block;}
   .logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:3px;color:var(--teal);}
   .header-right{display:flex;align-items:center;gap:14px;}
   .user-email{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;}
@@ -46,6 +48,19 @@
   .placeholder-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:40px;text-align:center;}
   .placeholder-title{font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);margin-bottom:8px;}
   .placeholder-sub{font-size:13px;color:var(--sub);}
+
+  /* ---------- Profile screen ---------- */
+  .profile-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:28px;}
+  .profile-top{display:flex;align-items:center;gap:16px;margin-bottom:24px;}
+  .profile-photo-initials{width:64px;height:64px;border-radius:50%;background:var(--raised);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--teal);flex-shrink:0;}
+  .profile-name{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;}
+  .profile-role{font-size:13px;color:var(--sub);font-family:'DM Mono',monospace;margin-top:2px;}
+  .profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
+  .info-box{background:var(--raised);border-radius:6px;padding:14px;}
+  .info-label{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;}
+  .info-val{font-size:14px;color:var(--text);}
+  .bio-box{background:var(--raised);border-radius:6px;padding:14px;margin-bottom:20px;}
+  .clearance-section{border-top:1px solid var(--border);padding-top:16px;}
 </style>
 </head>
 <body>
@@ -53,6 +68,7 @@
   <!-- LOGIN SCREEN -->
   <div class="login-wrap" id="login-wrap">
     <div class="login-card">
+      <img class="login-brand-img" src="https://llkatqqkzjzqfaosmrjl.supabase.co/storage/v1/object/public/Assets/COA-Transparent.png" alt="COA logo">
       <div class="login-logo">COA PORTAL</div>
       <div class="login-sub">EMPLOYEE SIGN IN</div>
       <label class="field-label" for="login-email">Email</label>
@@ -68,6 +84,7 @@
   <div id="app-shell">
     <header>
       <div class="logo-wrap">
+        <img class="header-logo-img" src="https://llkatqqkzjzqfaosmrjl.supabase.co/storage/v1/object/public/Assets/COA-Transparent.png" alt="COA logo">
         <div class="logo">COA PORTAL</div>
       </div>
       <div class="header-right">
@@ -83,9 +100,10 @@
     </nav>
     <main>
       <div class="screen active" id="screen-profile">
-        <div class="placeholder-card">
-          <div class="placeholder-title">Profile</div>
-          <div class="placeholder-sub">Coming next session</div>
+        <div id="profile-content">
+          <div class="placeholder-card">
+            <div class="placeholder-sub">Loading profile...</div>
+          </div>
         </div>
       </div>
       <div class="screen" id="screen-directory">
@@ -176,10 +194,78 @@
     document.getElementById('login-password').value = '';
   }
 
+  // ---------- Data REST calls (read-only, table access via PostgREST) ----------
+  async function dbRequest(path){
+    var session = getSession();
+    var res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + (session ? session.access_token : SUPABASE_ANON_KEY)
+      }
+    });
+    if(!res.ok){
+      throw new Error('Request failed: ' + res.status);
+    }
+    return res.json();
+  }
+
+  function getInitials(name){
+    if(!name) return '?';
+    var parts = name.trim().split(' ');
+    return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+  }
+
+  function formatDate(d){
+    if(!d) return '—';
+    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  async function loadProfile(){
+    var container = document.getElementById('profile-content');
+    var session = getSession();
+    if(!session || !session.user){ return; }
+
+    try{
+      var rows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=*');
+      if(!rows.length){
+        container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No profile found</div><div class="placeholder-sub">This account has no profile record yet.</div></div>';
+        return;
+      }
+      var p = rows[0];
+      container.innerHTML =
+        '<div class="profile-card">'
+        + '<div class="profile-top">'
+        + '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>'
+        + '<div>'
+        + '<div class="profile-name">' + (p.full_name || '—') + '</div>'
+        + '<div class="profile-role">' + (p.job_title || '—') + ' · Employee #' + p.employee_number + '</div>'
+        + '</div></div>'
+        + '<div class="profile-grid">'
+        + '<div class="info-box"><div class="info-label">Department</div><div class="info-val">' + (p.department || '—') + '</div></div>'
+        + '<div class="info-box"><div class="info-label">Phone</div><div class="info-val">' + (p.phone || '—') + '</div></div>'
+        + '<div class="info-box"><div class="info-label">Start Date</div><div class="info-val">' + formatDate(p.start_date) + '</div></div>'
+        + '<div class="info-box"><div class="info-label">Status</div><div class="info-val">' + (p.employment_status || '—') + '</div></div>'
+        + '</div>'
+        + '<div class="bio-box"><div class="info-label">Bio</div><div class="info-val">' + (p.bio || 'No bio added yet.') + '</div></div>'
+        + '<div class="clearance-section">'
+        + '<div class="profile-grid">'
+        + '<div class="info-box"><div class="info-label">Clearance Level</div><div class="info-val">' + (p.clearance_level || '—') + '</div></div>'
+        + '<div class="info-box"><div class="info-label">Investigation Type</div><div class="info-val">' + (p.clearance_investigation_type || '—') + '</div></div>'
+        + '<div class="info-box"><div class="info-label">Granted</div><div class="info-val">' + formatDate(p.clearance_granted_date) + '</div></div>'
+        + '<div class="info-box"><div class="info-label">Expires</div><div class="info-val">' + formatDate(p.clearance_expiration_date) + '</div></div>'
+        + '</div></div>'
+        + '</div>';
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load profile</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
   function showApp(email){
     document.getElementById('login-wrap').style.display = 'none';
     document.getElementById('app-shell').classList.add('active');
     document.getElementById('user-email-display').textContent = email;
+    loadProfile();
   }
 
   function switchScreen(name){
