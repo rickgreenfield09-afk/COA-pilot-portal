@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COA Employee Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--void:#0D1117;--surface:#161C26;--raised:#1E2733;--teal:#2AB8A6;--amber:#E8B84B;--red:#E05252;--purple:#BF5FFF;--header:#3E4E6C;--text:#F2EDE4;--sub:#8E92B0;--muted:#5C607E;--border:#2E3440;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--void);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+
+  /* ---------- Login screen ---------- */
+  .login-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .login-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:40px;width:100%;max-width:380px;}
+  .login-logo{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:3px;color:var(--teal);text-align:center;margin-bottom:4px;}
+  .login-sub{font-size:12px;font-family:'DM Mono',monospace;color:var(--sub);text-align:center;margin-bottom:28px;letter-spacing:1px;}
+  .field-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;display:block;}
+  .field-input{width:100%;background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:12px 14px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color 0.15s;margin-bottom:18px;}
+  .field-input:focus{border-color:var(--teal);}
+  .field-input::placeholder{color:var(--muted);}
+  .btn{width:100%;padding:12px;border-radius:6px;border:none;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.15s;}
+  .btn-primary{background:var(--teal);color:var(--void);}
+  .btn-primary:hover{background:#35d4c0;}
+  .btn-primary:disabled{background:var(--border);color:var(--muted);cursor:default;}
+  .login-error{font-size:12px;color:var(--red);font-family:'DM Mono',monospace;margin-top:14px;text-align:center;min-height:16px;}
+
+  /* ---------- App shell ---------- */
+  #app-shell{display:none;flex:1;flex-direction:column;}
+  #app-shell.active{display:flex;}
+  header{background:var(--header);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-shrink:0;}
+  .logo-wrap{display:flex;align-items:center;gap:12px;}
+  .logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:3px;color:var(--teal);}
+  .header-right{display:flex;align-items:center;gap:14px;}
+  .user-email{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;}
+  .btn-logout{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:7px 14px;font-size:12px;color:var(--sub);cursor:pointer;transition:all 0.15s;}
+  .btn-logout:hover{border-color:var(--red);color:var(--red);}
+  nav{background:var(--surface);border-bottom:1px solid var(--border);display:flex;padding:0 24px;gap:4px;flex-shrink:0;}
+  .nav-btn{background:none;border:none;color:var(--sub);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;padding:14px 16px;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s;}
+  .nav-btn:hover{color:var(--text);}
+  .nav-btn.active{color:var(--teal);border-bottom-color:var(--teal);}
+  main{flex:1;padding:24px;overflow-y:auto;}
+  .screen{display:none;animation:fadeIn 0.2s ease;}
+  .screen.active{display:block;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+  .placeholder-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:40px;text-align:center;}
+  .placeholder-title{font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);margin-bottom:8px;}
+  .placeholder-sub{font-size:13px;color:var(--sub);}
+</style>
+</head>
+<body>
+
+  <!-- LOGIN SCREEN -->
+  <div class="login-wrap" id="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">COA PORTAL</div>
+      <div class="login-sub">EMPLOYEE SIGN IN</div>
+      <label class="field-label" for="login-email">Email</label>
+      <input type="email" id="login-email" class="field-input" placeholder="you@company.com" autocomplete="username">
+      <label class="field-label" for="login-password">Password</label>
+      <input type="password" id="login-password" class="field-input" placeholder="••••••••" autocomplete="current-password">
+      <button class="btn btn-primary" id="login-btn" onclick="handleLogin()">Sign In</button>
+      <div class="login-error" id="login-error"></div>
+    </div>
+  </div>
+
+  <!-- APP SHELL -->
+  <div id="app-shell">
+    <header>
+      <div class="logo-wrap">
+        <div class="logo">COA PORTAL</div>
+      </div>
+      <div class="header-right">
+        <span class="user-email" id="user-email-display"></span>
+        <button class="btn-logout" onclick="handleLogout()">Sign Out</button>
+      </div>
+    </header>
+    <nav>
+      <button class="nav-btn active" data-screen="profile" onclick="switchScreen('profile')">Profile</button>
+      <button class="nav-btn" data-screen="directory" onclick="switchScreen('directory')">Directory</button>
+      <button class="nav-btn" data-screen="resume" onclick="switchScreen('resume')">Resume</button>
+      <button class="nav-btn" data-screen="travel" onclick="switchScreen('travel')">Travel</button>
+    </nav>
+    <main>
+      <div class="screen active" id="screen-profile">
+        <div class="placeholder-card">
+          <div class="placeholder-title">Profile</div>
+          <div class="placeholder-sub">Coming next session</div>
+        </div>
+      </div>
+      <div class="screen" id="screen-directory">
+        <div class="placeholder-card">
+          <div class="placeholder-title">Directory</div>
+          <div class="placeholder-sub">Coming next session</div>
+        </div>
+      </div>
+      <div class="screen" id="screen-resume">
+        <div class="placeholder-card">
+          <div class="placeholder-title">Resume</div>
+          <div class="placeholder-sub">Coming next session</div>
+        </div>
+      </div>
+      <div class="screen" id="screen-travel">
+        <div class="placeholder-card">
+          <div class="placeholder-title">Travel</div>
+          <div class="placeholder-sub">Coming next session</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+<script>
+  var SUPABASE_URL = 'https://llkatqqkzjzqfaosmrjl.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxsa2F0cXFremp6cWZhb3NtcmpsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDQ4MzQsImV4cCI6MjA5NzgyMDgzNH0.PA0uYmHZrfQB399jXr7LEUH0aU2CniFSkmFfZPy-dTs';
+
+  // ---------- Low-level auth REST calls (no SDK, matches no-framework stack rule) ----------
+  async function authRequest(path, body){
+    var res = await fetch(SUPABASE_URL + '/auth/v1/' + path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify(body)
+    });
+    var data = await res.json();
+    if(!res.ok){
+      throw new Error(data.error_description || data.msg || 'Authentication failed');
+    }
+    return data;
+  }
+
+  function saveSession(session){
+    sessionStorage.setItem('coa_session', JSON.stringify(session));
+  }
+  function getSession(){
+    var raw = sessionStorage.getItem('coa_session');
+    return raw ? JSON.parse(raw) : null;
+  }
+  function clearSession(){
+    sessionStorage.removeItem('coa_session');
+  }
+
+  async function handleLogin(){
+    var email = document.getElementById('login-email').value.trim();
+    var password = document.getElementById('login-password').value;
+    var errorEl = document.getElementById('login-error');
+    var btn = document.getElementById('login-btn');
+    errorEl.textContent = '';
+
+    if(!email || !password){
+      errorEl.textContent = 'Enter your email and password.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    try{
+      var data = await authRequest('token?grant_type=password', { email: email, password: password });
+      saveSession(data);
+      showApp(data.user.email);
+    }catch(e){
+      errorEl.textContent = 'Incorrect email or password.';
+    }finally{
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  }
+
+  function handleLogout(){
+    clearSession();
+    document.getElementById('app-shell').classList.remove('active');
+    document.getElementById('login-wrap').style.display = 'flex';
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-password').value = '';
+  }
+
+  function showApp(email){
+    document.getElementById('login-wrap').style.display = 'none';
+    document.getElementById('app-shell').classList.add('active');
+    document.getElementById('user-email-display').textContent = email;
+  }
+
+  function switchScreen(name){
+    document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.screen === name); });
+    document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+    document.getElementById('screen-' + name).classList.add('active');
+  }
+
+  // ---------- Session check on load ----------
+  (function init(){
+    var session = getSession();
+    if(session && session.user){
+      showApp(session.user.email);
+    }
+  })();
+</script>
+</body>
+</html>
