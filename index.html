@@ -128,7 +128,7 @@
   @media print{
     body *{visibility:hidden;}
     #print-resume-batch, #print-resume-batch *{visibility:visible;}
-    #print-resume-batch{position:absolute;top:0;left:0;width:100%;}
+    #print-resume-batch{position:static !important;top:auto !important;left:auto !important;width:100%;}
     .print-resume-page{page-break-after:always;padding:40px;}
     .print-resume-page:last-child{page-break-after:auto;}
   }
@@ -222,7 +222,7 @@
   </div>
 
   <!-- PRINT BATCH CONTAINER (populated and shown only during print) -->
-  <div id="print-resume-batch" style="display:none;"></div>
+  <div id="print-resume-batch" style="position:absolute;top:-99999px;left:-99999px;"></div>
 
 <script>
   var SUPABASE_URL = 'https://llkatqqkzjzqfaosmrjl.supabase.co';
