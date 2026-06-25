@@ -102,6 +102,17 @@
   .btn-remove-row:hover{text-decoration:underline;}
   .skills-tags{display:flex;flex-wrap:wrap;gap:8px;}
   .skill-tag{background:var(--raised);border:1px solid var(--border);border-radius:14px;padding:5px 12px;font-size:12px;color:var(--teal);font-family:'DM Mono',monospace;}
+  .resume-row-header{font-size:11px;font-family:'DM Mono',monospace;color:var(--teal);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
+  .resume-row-checkbox{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub);margin-bottom:8px;}
+  .resume-row-checkbox input{width:auto;}
+  .skill-pill-input-wrap{position:relative;}
+  .skill-pill-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
+  .skill-pill{background:var(--raised);border:1px solid var(--teal);border-radius:14px;padding:5px 10px 5px 12px;font-size:12px;color:var(--teal);font-family:'DM Mono',monospace;display:flex;align-items:center;gap:6px;}
+  .skill-pill button{background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;line-height:1;padding:0;}
+  .skill-bank-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-top:4px;max-height:180px;overflow-y:auto;z-index:10;}
+  .skill-bank-option{padding:8px 12px;font-size:13px;color:var(--text);cursor:pointer;}
+  .skill-bank-option:hover{background:var(--raised);}
+  .skill-bank-option.add-new{color:var(--teal);}
 </style>
 </head>
 <body>
@@ -452,18 +463,29 @@
     return (v == null ? '' : String(v)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  function workHistoryRowHtml(w){
+  function workHistoryRowHtml(w, idx){
     w = w || {};
+    var headerLabel = (idx === 0) ? 'Current Job' : ('Job ' + (idx + 1));
+    var checked = w.current ? 'checked' : '';
     return '<div class="resume-row">'
+      + '<div class="resume-row-header">' + headerLabel + '</div>'
       + '<div class="resume-row-grid">'
       + '<input class="info-edit-input" placeholder="Job title" data-field="title" value="' + escAttr(w.title) + '">'
       + '<input class="info-edit-input" placeholder="Company" data-field="company" value="' + escAttr(w.company) + '">'
-      + '<input class="info-edit-input" placeholder="Start (e.g. 2021)" data-field="start" value="' + escAttr(w.start) + '">'
-      + '<input class="info-edit-input" placeholder="End (e.g. Present)" data-field="end" value="' + escAttr(w.end) + '">'
+      + '<input type="date" class="info-edit-input" data-field="start" value="' + escAttr(w.start) + '">'
+      + '<input type="date" class="info-edit-input" data-field="end" value="' + escAttr(w.end) + '" ' + (w.current ? 'disabled' : '') + '>'
       + '</div>'
+      + '<label class="resume-row-checkbox"><input type="checkbox" data-field="current" ' + checked + ' onchange="this.closest(\'.resume-row\').querySelector(\'[data-field=end]\').disabled = this.checked; if(this.checked){ this.closest(\'.resume-row\').querySelector(\'[data-field=end]\').value=\'\'; }">I currently work here</label>'
       + '<textarea class="info-edit-input" placeholder="Description" data-field="description" rows="2">' + escAttr(w.description) + '</textarea>'
-      + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove()">Remove</button>'
+      + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove(); renumberWorkRows();">Remove</button>'
       + '</div>';
+  }
+
+  function renumberWorkRows(){
+    var rows = document.querySelectorAll('#work-history-rows .resume-row');
+    rows.forEach(function(row, i){
+      row.querySelector('.resume-row-header').textContent = (i === 0) ? 'Current Job' : ('Job ' + (i + 1));
+    });
   }
 
   function eduRowHtml(ed){
@@ -472,8 +494,11 @@
       + '<div class="resume-row-grid">'
       + '<input class="info-edit-input" placeholder="Degree" data-field="degree" value="' + escAttr(ed.degree) + '">'
       + '<input class="info-edit-input" placeholder="School" data-field="school" value="' + escAttr(ed.school) + '">'
+      + '<input class="info-edit-input" placeholder="Location (city, state)" data-field="location" value="' + escAttr(ed.location) + '">'
       + '<input class="info-edit-input" placeholder="Year" data-field="year" value="' + escAttr(ed.year) + '">'
       + '</div>'
+      + '<input class="info-edit-input" placeholder="GPA (optional)" data-field="gpa" value="' + escAttr(ed.gpa) + '" style="margin-bottom:8px;">'
+      + '<textarea class="info-edit-input" placeholder="Honors, coursework, activities, or other achievements (optional)" data-field="honors" rows="2">' + escAttr(ed.honors) + '</textarea>'
       + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove()">Remove</button>'
       + '</div>';
   }
@@ -484,17 +509,19 @@
       + '<div class="resume-row-grid">'
       + '<input class="info-edit-input" placeholder="Certification name" data-field="name" value="' + escAttr(c.name) + '">'
       + '<input class="info-edit-input" placeholder="Issuer" data-field="issuer" value="' + escAttr(c.issuer) + '">'
-      + '<input class="info-edit-input" placeholder="Date" data-field="date" value="' + escAttr(c.date) + '">'
+      + '<input type="date" class="info-edit-input" data-field="date" value="' + escAttr(c.date) + '">'
+      + '<input type="date" class="info-edit-input" placeholder="Expiration" data-field="expiration" value="' + escAttr(c.expiration) + '">'
       + '</div>'
       + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove()">Remove</button>'
       + '</div>';
   }
 
-  function addWorkRow(){ document.getElementById('work-history-rows').insertAdjacentHTML('beforeend', workHistoryRowHtml()); }
+  function addWorkRow(){ document.getElementById('work-history-rows').insertAdjacentHTML('beforeend', workHistoryRowHtml(null, document.querySelectorAll('#work-history-rows .resume-row').length)); }
   function addEduRow(){ document.getElementById('education-rows').insertAdjacentHTML('beforeend', eduRowHtml()); }
   function addCertRow(){ document.getElementById('cert-rows').insertAdjacentHTML('beforeend', certRowHtml()); }
 
-  function harvestRows(containerId, fields){
+  function harvestRows(containerId, fields, checkboxFields){
+    checkboxFields = checkboxFields || [];
     var rows = document.querySelectorAll('#' + containerId + ' .resume-row');
     var out = [];
     rows.forEach(function(row){
@@ -505,6 +532,10 @@
         var v = el ? el.value.trim() : '';
         obj[f] = v;
         if(v){ any = true; }
+      });
+      checkboxFields.forEach(function(f){
+        var el = row.querySelector('[data-field="' + f + '"]');
+        obj[f] = el ? el.checked : false;
       });
       if(any){ out.push(obj); }
     });
@@ -557,15 +588,28 @@
       ? '<div class="resume-section"><div class="resume-section-title">Summary</div><textarea class="info-edit-input" id="edit-summary" rows="3">' + escAttr(r.summary) + '</textarea></div>'
       : '<div class="resume-section"><div class="resume-section-title">Summary</div><div class="info-val">' + (r.summary || 'No summary added yet.') + '</div></div>';
 
+    var contactBlock = editable
+      ? '<div class="resume-section"><div class="resume-section-title">Contact</div><div class="profile-grid">'
+        + '<div class="info-box"><div class="info-label">Email</div><input type="email" class="info-edit-input" id="edit-email" value="' + escAttr(r.email) + '"></div>'
+        + '<div class="info-box"><div class="info-label">LinkedIn</div><input type="url" class="info-edit-input" id="edit-linkedin_url" placeholder="https://linkedin.com/in/..." value="' + escAttr(r.linkedin_url) + '"></div>'
+        + '<div class="info-box"><div class="info-label">Personal Phone</div><input type="tel" class="info-edit-input" id="edit-personal_phone" value="' + escAttr(r.personal_phone) + '"></div>'
+        + '</div></div>'
+      : '<div class="resume-section"><div class="resume-section-title">Contact</div><div class="profile-grid">'
+        + '<div class="info-box"><div class="info-label">Email</div><div class="info-val">' + (r.email || '—') + '</div></div>'
+        + '<div class="info-box"><div class="info-label">LinkedIn</div><div class="info-val">' + (r.linkedin_url ? '<a href="' + r.linkedin_url + '" target="_blank" style="color:var(--teal);">' + r.linkedin_url + '</a>' : '—') + '</div></div>'
+        + '<div class="info-box"><div class="info-label">Personal Phone</div><div class="info-val">' + (r.personal_phone || '—') + '</div></div>'
+        + '</div></div>';
+
     var yearsBlock = editable
-      ? '<div class="info-box"><div class="info-label">Years Experience</div><input type="number" step="0.5" class="info-edit-input" id="edit-years_experience" value="' + escAttr(r.years_experience) + '"></div>'
-      : '<div class="info-box"><div class="info-label">Years Experience</div><div class="info-val">' + (r.years_experience != null ? r.years_experience : '—') + '</div></div>';
+      ? '<div class="info-box"><div class="info-label">Years Experience</div><input type="text" class="info-edit-input" id="edit-years_experience" value="' + escAttr(r.years_experience) + '"></div>'
+      : '<div class="info-box"><div class="info-label">Years Experience</div><div class="info-val">' + (r.years_experience != null && r.years_experience !== '' ? r.years_experience : '—') + '</div></div>';
 
     var workBlock = editable
-      ? '<div class="resume-section"><div class="resume-section-title">Work History</div><div id="work-history-rows">' + (r.work_history || []).map(workHistoryRowHtml).join('') + '</div><button type="button" class="btn-add-row" onclick="addWorkRow()">+ Add position</button></div>'
-      : listView('Work History', r.work_history, function(w){
-          return '<div class="resume-view-row"><div class="resume-view-row-title">' + (w.title || '—') + ' · ' + (w.company || '—') + '</div>'
-            + '<div class="resume-view-row-dates">' + (w.start || '') + ' – ' + (w.end || '') + '</div>'
+      ? '<div class="resume-section"><div class="resume-section-title">Work History</div><div id="work-history-rows">' + (r.work_history || []).map(function(w, i){ return workHistoryRowHtml(w, i); }).join('') + '</div><button type="button" class="btn-add-row" onclick="addWorkRow()">+ Add position</button></div>'
+      : listView('Work History', r.work_history, function(w, i){
+          var label = (i === 0) ? 'Current Job' : ('Job ' + (i + 1));
+          return '<div class="resume-view-row"><div class="resume-row-header">' + label + '</div><div class="resume-view-row-title">' + (w.title || '—') + ' · ' + (w.company || '—') + '</div>'
+            + '<div class="resume-view-row-dates">' + formatDate(w.start) + ' – ' + (w.current ? 'Present' : formatDate(w.end)) + '</div>'
             + (w.description ? '<div class="resume-view-row-desc">' + w.description + '</div>' : '')
             + '</div>';
         });
@@ -573,17 +617,25 @@
     var eduBlock = editable
       ? '<div class="resume-section"><div class="resume-section-title">Education</div><div id="education-rows">' + (r.education || []).map(eduRowHtml).join('') + '</div><button type="button" class="btn-add-row" onclick="addEduRow()">+ Add education</button></div>'
       : listView('Education', r.education, function(ed){
-          return '<div class="resume-view-row"><div class="resume-view-row-title">' + (ed.degree || '—') + ' · ' + (ed.school || '—') + '</div><div class="resume-view-row-dates">' + (ed.year || '') + '</div></div>';
+          return '<div class="resume-view-row"><div class="resume-view-row-title">' + (ed.degree || '—') + ' · ' + (ed.school || '—') + (ed.location ? ' · ' + ed.location : '') + '</div>'
+            + '<div class="resume-view-row-dates">' + (ed.year || '') + (ed.gpa ? ' · GPA ' + ed.gpa : '') + '</div>'
+            + (ed.honors ? '<div class="resume-view-row-desc">' + ed.honors + '</div>' : '')
+            + '</div>';
         });
 
     var certBlock = editable
       ? '<div class="resume-section"><div class="resume-section-title">Certifications</div><div id="cert-rows">' + (r.certifications || []).map(certRowHtml).join('') + '</div><button type="button" class="btn-add-row" onclick="addCertRow()">+ Add certification</button></div>'
       : listView('Certifications', r.certifications, function(c){
-          return '<div class="resume-view-row"><div class="resume-view-row-title">' + (c.name || '—') + ' · ' + (c.issuer || '—') + '</div><div class="resume-view-row-dates">' + (c.date || '') + '</div></div>';
+          return '<div class="resume-view-row"><div class="resume-view-row-title">' + (c.name || '—') + ' · ' + (c.issuer || '—') + '</div>'
+            + '<div class="resume-view-row-dates">Earned ' + formatDate(c.date) + (c.expiration ? ' · Expires ' + formatDate(c.expiration) : '') + '</div></div>';
         });
 
     var skillsBlock = editable
-      ? '<div class="resume-section"><div class="resume-section-title">Skills</div><input class="info-edit-input" id="edit-skills" placeholder="Comma-separated, e.g. Lean Six Sigma, Power Apps, SQL" value="' + escAttr((r.skills || []).join(', ')) + '"></div>'
+      ? '<div class="resume-section"><div class="resume-section-title">Skills</div>'
+        + '<div class="skill-pill-list" id="skill-pill-list">' + (r.skills || []).map(function(s){ return skillPillHtml(s); }).join('') + '</div>'
+        + '<div class="skill-pill-input-wrap"><input class="info-edit-input" id="skill-bank-input" placeholder="Type to search or add a skill, press Enter" autocomplete="off" oninput="filterSkillBank(this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addSkillFromInput();}">'
+        + '<div class="skill-bank-dropdown" id="skill-bank-dropdown" style="display:none;"></div></div>'
+        + '</div>'
       : '<div class="resume-section"><div class="resume-section-title">Skills</div>'
         + (r.skills && r.skills.length
             ? '<div class="skills-tags">' + r.skills.map(function(s){ return '<span class="skill-tag">' + s + '</span>'; }).join('') + '</div>'
@@ -594,6 +646,7 @@
       '<div class="profile-card">'
       + '<div class="profile-top"><div><div class="profile-name">' + (owner.full_name || '—') + '</div><div class="profile-role">' + (owner.job_title || '—') + '</div></div></div>'
       + summaryBlock
+      + contactBlock
       + '<div class="profile-grid">' + yearsBlock + '</div>'
       + workBlock + eduBlock + certBlock + skillsBlock
       + '<div class="profile-actions">'
@@ -605,10 +658,82 @@
 
     if(editMode){
       isEditingResume = true;
+      loadSkillsBank();
       container.querySelectorAll('input, textarea').forEach(function(el){
         el.addEventListener('input', function(){ isEditingResume = true; });
       });
     }
+  }
+
+  var skillsBankCache = [];
+  var currentSkills = [];
+
+  function skillPillHtml(s){
+    return '<span class="skill-pill">' + s + '<button type="button" onclick="removeSkillPill(this, \'' + escAttr(s).replace(/'/g, "\\'") + '\')">×</button></span>';
+  }
+
+  async function loadSkillsBank(){
+    currentSkills = (currentResume.skills || []).slice();
+    try{
+      skillsBankCache = await dbRequest('skills_bank?select=label&order=label.asc');
+    }catch(e){
+      skillsBankCache = [];
+      console.error(e);
+    }
+  }
+
+  function filterSkillBank(query){
+    var dropdown = document.getElementById('skill-bank-dropdown');
+    query = query.trim().toLowerCase();
+    if(!query){ dropdown.style.display = 'none'; dropdown.innerHTML = ''; return; }
+    var matches = skillsBankCache.filter(function(s){ return s.label.toLowerCase().indexOf(query) !== -1 && currentSkills.indexOf(s.label) === -1; });
+    var exact = skillsBankCache.some(function(s){ return s.label.toLowerCase() === query; });
+    var html = matches.slice(0, 8).map(function(s){
+      return '<div class="skill-bank-option" onclick="addSkillPill(\'' + escAttr(s.label).replace(/'/g, "\\'") + '\')">' + s.label + '</div>';
+    }).join('');
+    if(!exact && query){
+      html += '<div class="skill-bank-option add-new" onclick="addSkillPill(document.getElementById(\'skill-bank-input\').value.trim())">+ Add "' + query + '" to skills bank</div>';
+    }
+    dropdown.innerHTML = html;
+    dropdown.style.display = html ? 'block' : 'none';
+  }
+
+  function addSkillFromInput(){
+    var input = document.getElementById('skill-bank-input');
+    var val = input.value.trim();
+    if(val){ addSkillPill(val); }
+  }
+
+  async function addSkillPill(label){
+    if(!label || currentSkills.indexOf(label) !== -1){ return; }
+    currentSkills.push(label);
+    document.getElementById('skill-pill-list').insertAdjacentHTML('beforeend', skillPillHtml(label));
+    var input = document.getElementById('skill-bank-input');
+    input.value = '';
+    document.getElementById('skill-bank-dropdown').style.display = 'none';
+    isEditingResume = true;
+    if(!skillsBankCache.some(function(s){ return s.label === label; })){
+      try{
+        var session = getSession();
+        await fetch(SUPABASE_URL + '/rest/v1/skills_bank', {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + session.access_token,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({ label: label, created_by: session.user.id })
+        });
+        skillsBankCache.push({ label: label });
+      }catch(e){ console.error(e); }
+    }
+  }
+
+  function removeSkillPill(btn, label){
+    currentSkills = currentSkills.filter(function(s){ return s !== label; });
+    btn.closest('.skill-pill').remove();
+    isEditingResume = true;
   }
 
   function editResume(){
@@ -624,11 +749,14 @@
     var statusEl = document.getElementById('resume-save-status');
     var updates = {
       summary: document.getElementById('edit-summary').value,
-      years_experience: document.getElementById('edit-years_experience').value ? parseFloat(document.getElementById('edit-years_experience').value) : null,
-      work_history: harvestRows('work-history-rows', ['title','company','start','end','description']),
-      education: harvestRows('education-rows', ['degree','school','year']),
-      certifications: harvestRows('cert-rows', ['name','issuer','date']),
-      skills: document.getElementById('edit-skills').value.split(',').map(function(s){ return s.trim(); }).filter(Boolean)
+      email: document.getElementById('edit-email').value.trim(),
+      linkedin_url: document.getElementById('edit-linkedin_url').value.trim(),
+      personal_phone: document.getElementById('edit-personal_phone').value.trim(),
+      years_experience: document.getElementById('edit-years_experience').value.trim(),
+      work_history: harvestRows('work-history-rows', ['title','company','start','end','description'], ['current']),
+      education: harvestRows('education-rows', ['degree','school','location','year','gpa','honors']),
+      certifications: harvestRows('cert-rows', ['name','issuer','date','expiration']),
+      skills: currentSkills
     };
     statusEl.textContent = 'Saving...';
     var session = getSession();
