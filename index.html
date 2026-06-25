@@ -105,6 +105,8 @@
   .resume-row-header{font-size:11px;font-family:'DM Mono',monospace;color:var(--teal);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
   .resume-row-checkbox{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub);margin-bottom:8px;}
   .resume-row-checkbox input{width:auto;}
+  .field-mini-label{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;display:block;}
+  .field-mini-wrap{display:flex;flex-direction:column;}
   .skill-pill-input-wrap{position:relative;}
   .skill-pill-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
   .skill-pill{background:var(--raised);border:1px solid var(--teal);border-radius:14px;padding:5px 10px 5px 12px;font-size:12px;color:var(--teal);font-family:'DM Mono',monospace;display:flex;align-items:center;gap:6px;}
@@ -490,6 +492,14 @@
     return (v == null ? '' : String(v)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  function bulletListHtml(text, style){
+    if(!text){ return ''; }
+    var lines = text.split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+    if(!lines.length){ return ''; }
+    var liStyle = style || '';
+    return '<ul style="margin:6px 0 0 18px;padding:0;' + liStyle + '">' + lines.map(function(l){ return '<li>' + l + '</li>'; }).join('') + '</ul>';
+  }
+
   function workHistoryRowHtml(w, idx){
     w = w || {};
     var headerLabel = (idx === 0) ? 'Current Job' : ('Job ' + (idx + 1));
@@ -500,13 +510,14 @@
     return '<div class="resume-row">'
       + '<div class="resume-row-header">' + headerLabel + '</div>'
       + '<div class="resume-row-grid">'
-      + '<input class="info-edit-input" placeholder="Job title" data-field="title" value="' + escAttr(w.title) + '">'
-      + '<input class="info-edit-input" placeholder="Company" data-field="company" value="' + escAttr(w.company) + '">'
-      + '<input type="date" class="info-edit-input" data-field="start" value="' + escAttr(w.start) + '">'
-      + '<input type="date" class="info-edit-input" data-field="end" value="' + escAttr(w.end) + '" ' + (idx === 0 && w.current ? 'disabled' : '') + '>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Job Title</span><input class="info-edit-input" placeholder="Job title" data-field="title" value="' + escAttr(w.title) + '"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Company</span><input class="info-edit-input" placeholder="Company" data-field="company" value="' + escAttr(w.company) + '"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Start Date</span><input type="date" class="info-edit-input" data-field="start" value="' + escAttr(w.start) + '"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">End Date</span><input type="date" class="info-edit-input" data-field="end" value="' + escAttr(w.end) + '" ' + (idx === 0 && w.current ? 'disabled' : '') + '></div>'
       + '</div>'
       + checkboxHtml
-      + '<textarea class="info-edit-input" placeholder="Description" data-field="description" rows="2">' + escAttr(w.description) + '</textarea>'
+      + '<span class="field-mini-label">Description (one achievement per line — each becomes a bullet point)</span>'
+      + '<textarea class="info-edit-input" placeholder="One achievement per line" data-field="description" rows="8">' + escAttr(w.description) + '</textarea>'
       + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove(); renumberWorkRows();">Remove</button>'
       + '</div>';
   }
@@ -624,7 +635,7 @@
     }
 
     var summaryBlock = editable
-      ? '<div class="resume-section"><div class="resume-section-title">Summary</div><textarea class="info-edit-input" id="edit-summary" rows="3">' + escAttr(r.summary) + '</textarea></div>'
+      ? '<div class="resume-section"><div class="resume-section-title">Summary</div><textarea class="info-edit-input" id="edit-summary" rows="5">' + escAttr(r.summary) + '</textarea></div>'
       : '<div class="resume-section"><div class="resume-section-title">Summary</div><div class="info-val">' + (r.summary || 'No summary added yet.') + '</div></div>';
 
     var contactBlock = editable
@@ -648,7 +659,7 @@
           var label = (i === 0) ? 'Current Job' : ('Job ' + (i + 1));
           return '<div class="resume-view-row"><div class="resume-row-header">' + label + '</div><div class="resume-view-row-title">' + (w.title || '—') + ' · ' + (w.company || '—') + '</div>'
             + '<div class="resume-view-row-dates">' + formatDate(w.start) + ' – ' + (w.current ? 'Present' : formatDate(w.end)) + '</div>'
-            + (w.description ? '<div class="resume-view-row-desc">' + w.description + '</div>' : '')
+            + bulletListHtml(w.description)
             + '</div>';
         });
 
@@ -928,7 +939,7 @@
       return '<div style="margin-bottom:10px;"><div style="font-size:11px;color:#2AB8A6;text-transform:uppercase;">' + label + '</div>'
         + '<div style="font-weight:600;">' + (w.title || '—') + ' · ' + (w.company || '—') + '</div>'
         + '<div style="font-size:12px;color:#555;">' + formatDate(w.start) + ' – ' + (w.current ? 'Present' : formatDate(w.end)) + '</div>'
-        + (w.description ? '<div style="font-size:13px;margin-top:4px;">' + w.description + '</div>' : '')
+        + bulletListHtml(w.description, 'font-size:13px;')
         + '</div>';
     }).join('') || '<div style="color:#999;">None added.</div>';
     var edu = (r.education || []).map(function(ed){
@@ -944,6 +955,9 @@
     var skills = (r.skills && r.skills.length)
       ? '<div>' + r.skills.map(function(s){ return '<span style="display:inline-block;border:1px solid #2AB8A6;color:#2AB8A6;border-radius:12px;padding:3px 10px;font-size:12px;margin:0 6px 6px 0;">' + s + '</span>'; }).join('') + '</div>'
       : '<div style="color:#999;">None added.</div>';
+    var clearance = (owner.clearance_level || owner.clearance_investigation_type || owner.clearance_expiration_date)
+      ? '<div style="font-size:13px;">' + (owner.clearance_level || '—') + (owner.clearance_investigation_type ? ' (' + owner.clearance_investigation_type + ')' : '') + (owner.clearance_expiration_date ? ' · Expires ' + formatDate(owner.clearance_expiration_date) : '') + '</div>'
+      : '';
 
     return '<div class="print-resume-page" style="color:#111;font-family:Arial,sans-serif;">'
       + '<div style="font-size:26px;font-weight:700;">' + (owner.full_name || '—') + '</div>'
@@ -954,6 +968,7 @@
       + pSection('Education', edu)
       + pSection('Certifications', certs)
       + pSection('Skills', skills)
+      + (clearance ? pSection('Security Clearance', clearance) : '')
       + '</div>';
   }
 
@@ -962,7 +977,7 @@
     var container = document.getElementById('print-resume-batch');
     container.innerHTML = '';
     for(var i = 0; i < resumeCart.length; i++){
-      var rows = await dbRequest('resumes?id=eq.' + resumeCart[i] + '&select=*,profiles(full_name,job_title)');
+      var rows = await dbRequest('resumes?id=eq.' + resumeCart[i] + '&select=*,profiles(full_name,job_title,clearance_level,clearance_investigation_type,clearance_expiration_date)');
       if(rows.length){
         container.insertAdjacentHTML('beforeend', printableResumeHtml(rows[0], rows[0].profiles || {}));
       }
