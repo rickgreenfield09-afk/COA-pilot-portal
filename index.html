@@ -114,6 +114,22 @@
   .skill-bank-option{padding:8px 12px;font-size:13px;color:var(--text);cursor:pointer;}
   .skill-bank-option:hover{background:var(--raised);}
   .skill-bank-option.add-new{color:var(--teal);}
+  .search-result-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .btn-cart-add{background:none;border:1px solid var(--teal);border-radius:6px;padding:5px 10px;color:var(--teal);font-size:11px;font-family:'DM Sans',sans-serif;cursor:pointer;flex-shrink:0;}
+  .btn-cart-add:hover{background:var(--teal);color:var(--void);}
+  .btn-cart-add:disabled{opacity:0.4;cursor:default;}
+  .resume-cart{background:var(--surface);border:1px solid var(--teal);border-radius:8px;padding:16px;margin-bottom:20px;}
+  .resume-cart-title{font-size:11px;font-family:'DM Mono',monospace;color:var(--teal);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}
+  .resume-cart-item{display:flex;align-items:center;justify-content:space-between;background:var(--raised);border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:13px;}
+  .resume-cart-item button{background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;}
+  .resume-cart-empty{font-size:13px;color:var(--muted);}
+  @media print{
+    body *{visibility:hidden;}
+    #print-resume-batch, #print-resume-batch *{visibility:visible;}
+    #print-resume-batch{position:absolute;top:0;left:0;width:100%;}
+    .print-resume-page{page-break-after:always;padding:40px;}
+    .print-resume-page:last-child{page-break-after:auto;}
+  }
 </style>
 </head>
 <body>
@@ -169,6 +185,11 @@
         <div class="resume-search-wrap" id="resume-search-wrap" style="display:none;">
           <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract..." oninput="debounceSearchResumes()">
           <div id="resume-search-results"></div>
+          <div class="resume-cart" style="width:100%;">
+            <div class="resume-cart-title">Resume Export Cart</div>
+            <div id="resume-cart-list"><div class="resume-cart-empty">No resumes added yet.</div></div>
+            <button class="btn-edit" id="print-cart-btn" onclick="printResumeCart()" disabled style="margin-top:8px;">Print Selected (0)</button>
+          </div>
         </div>
         <div id="resume-viewing-banner"></div>
         <div id="resume-content">
@@ -197,6 +218,9 @@
       </div>
     </div>
   </div>
+
+  <!-- PRINT BATCH CONTAINER (populated and shown only during print) -->
+  <div id="print-resume-batch" style="display:none;"></div>
 
 <script>
   var SUPABASE_URL = 'https://llkatqqkzjzqfaosmrjl.supabase.co';
@@ -826,6 +850,7 @@
   }
 
   var resumeSearchDebounce = null;
+  var resumeCart = [];
 
   function debounceSearchResumes(){
     clearTimeout(resumeSearchDebounce);
@@ -852,12 +877,97 @@
       resultsEl.innerHTML = matches.map(function(r){
         var name = (r.profiles && r.profiles.full_name) || 'Unknown';
         var title = (r.profiles && r.profiles.job_title) || '';
-        return '<div class="search-result-row" onclick="requestViewResume(\'' + r.id + '\')"><div class="resume-view-row-title">' + name + (title ? ' · ' + title : '') + '</div></div>';
+        var inCart = resumeCart.indexOf(r.id) !== -1;
+        return '<div class="search-result-row">'
+          + '<div onclick="requestViewResume(\'' + r.id + '\')" style="cursor:pointer;flex:1;"><div class="resume-view-row-title">' + name + (title ? ' · ' + title : '') + '</div></div>'
+          + '<button type="button" class="btn-cart-add" ' + (inCart ? 'disabled' : '') + ' onclick="event.stopPropagation();addToResumeCart(\'' + r.id + '\',\'' + escAttr(name).replace(/'/g, "\\'") + '\')">' + (inCart ? 'Added' : '+ Add to cart') + '</button>'
+          + '</div>';
       }).join('');
     }catch(e){
       resultsEl.innerHTML = '<div class="info-val" style="color:var(--red);">Search failed.</div>';
       console.error(e);
     }
+  }
+
+  var resumeCartMeta = {};
+
+  function addToResumeCart(id, name){
+    if(resumeCart.indexOf(id) !== -1){ return; }
+    resumeCart.push(id);
+    resumeCartMeta[id] = name;
+    renderResumeCart();
+    searchResumes();
+  }
+
+  function removeFromResumeCart(id){
+    resumeCart = resumeCart.filter(function(c){ return c !== id; });
+    renderResumeCart();
+    searchResumes();
+  }
+
+  function renderResumeCart(){
+    var listEl = document.getElementById('resume-cart-list');
+    var btn = document.getElementById('print-cart-btn');
+    if(!resumeCart.length){
+      listEl.innerHTML = '<div class="resume-cart-empty">No resumes added yet.</div>';
+    }else{
+      listEl.innerHTML = resumeCart.map(function(id){
+        return '<div class="resume-cart-item"><span>' + (resumeCartMeta[id] || 'Unknown') + '</span><button type="button" onclick="removeFromResumeCart(\'' + id + '\')">Remove</button></div>';
+      }).join('');
+    }
+    btn.textContent = 'Print Selected (' + resumeCart.length + ')';
+    btn.disabled = resumeCart.length === 0;
+  }
+
+  function printableResumeHtml(r, owner){
+    function pSection(label, html){
+      return '<div style="margin-top:18px;"><div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#5C607E;margin-bottom:8px;">' + label + '</div>' + html + '</div>';
+    }
+    var work = (r.work_history || []).map(function(w, i){
+      var label = (i === 0) ? 'Current Job' : ('Job ' + (i + 1));
+      return '<div style="margin-bottom:10px;"><div style="font-size:11px;color:#2AB8A6;text-transform:uppercase;">' + label + '</div>'
+        + '<div style="font-weight:600;">' + (w.title || '—') + ' · ' + (w.company || '—') + '</div>'
+        + '<div style="font-size:12px;color:#555;">' + formatDate(w.start) + ' – ' + (w.current ? 'Present' : formatDate(w.end)) + '</div>'
+        + (w.description ? '<div style="font-size:13px;margin-top:4px;">' + w.description + '</div>' : '')
+        + '</div>';
+    }).join('') || '<div style="color:#999;">None added.</div>';
+    var edu = (r.education || []).map(function(ed){
+      return '<div style="margin-bottom:8px;"><div style="font-weight:600;">' + (ed.degree || '—') + ' · ' + (ed.school || '—') + (ed.location ? ' · ' + ed.location : '') + '</div>'
+        + '<div style="font-size:12px;color:#555;">' + (ed.year || '') + (ed.gpa ? ' · GPA ' + ed.gpa : '') + '</div>'
+        + (ed.honors ? '<div style="font-size:13px;">' + ed.honors + '</div>' : '')
+        + '</div>';
+    }).join('') || '<div style="color:#999;">None added.</div>';
+    var certs = (r.certifications || []).map(function(c){
+      return '<div style="margin-bottom:6px;"><span style="font-weight:600;">' + (c.name || '—') + '</span> · ' + (c.issuer || '—')
+        + '<div style="font-size:12px;color:#555;">Earned ' + formatDate(c.date) + (c.expiration ? ' · Expires ' + formatDate(c.expiration) : '') + '</div></div>';
+    }).join('') || '<div style="color:#999;">None added.</div>';
+    var skills = (r.skills && r.skills.length)
+      ? '<div>' + r.skills.map(function(s){ return '<span style="display:inline-block;border:1px solid #2AB8A6;color:#2AB8A6;border-radius:12px;padding:3px 10px;font-size:12px;margin:0 6px 6px 0;">' + s + '</span>'; }).join('') + '</div>'
+      : '<div style="color:#999;">None added.</div>';
+
+    return '<div class="print-resume-page" style="color:#111;font-family:Arial,sans-serif;">'
+      + '<div style="font-size:26px;font-weight:700;">' + (owner.full_name || '—') + '</div>'
+      + '<div style="font-size:14px;color:#555;margin-bottom:6px;">' + (owner.job_title || '—') + '</div>'
+      + '<div style="font-size:12px;color:#555;">' + (r.email || '') + (r.linkedin_url ? ' · ' + r.linkedin_url : '') + (r.personal_phone ? ' · ' + r.personal_phone : '') + (r.years_experience ? ' · ' + r.years_experience + ' yrs experience' : '') + '</div>'
+      + (r.summary ? pSection('Summary', '<div style="font-size:13px;">' + r.summary + '</div>') : '')
+      + pSection('Work History', work)
+      + pSection('Education', edu)
+      + pSection('Certifications', certs)
+      + pSection('Skills', skills)
+      + '</div>';
+  }
+
+  async function printResumeCart(){
+    if(!resumeCart.length){ return; }
+    var container = document.getElementById('print-resume-batch');
+    container.innerHTML = '';
+    for(var i = 0; i < resumeCart.length; i++){
+      var rows = await dbRequest('resumes?id=eq.' + resumeCart[i] + '&select=*,profiles(full_name,job_title)');
+      if(rows.length){
+        container.insertAdjacentHTML('beforeend', printableResumeHtml(rows[0], rows[0].profiles || {}));
+      }
+    }
+    window.print();
   }
 
   // ---------- Unsaved changes guard ----------
