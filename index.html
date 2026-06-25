@@ -467,15 +467,18 @@
     w = w || {};
     var headerLabel = (idx === 0) ? 'Current Job' : ('Job ' + (idx + 1));
     var checked = w.current ? 'checked' : '';
+    var checkboxHtml = (idx === 0)
+      ? '<label class="resume-row-checkbox"><input type="checkbox" data-field="current" ' + checked + ' onchange="this.closest(\'.resume-row\').querySelector(\'[data-field=end]\').disabled = this.checked; if(this.checked){ this.closest(\'.resume-row\').querySelector(\'[data-field=end]\').value=\'\'; }">I currently work here</label>'
+      : '';
     return '<div class="resume-row">'
       + '<div class="resume-row-header">' + headerLabel + '</div>'
       + '<div class="resume-row-grid">'
       + '<input class="info-edit-input" placeholder="Job title" data-field="title" value="' + escAttr(w.title) + '">'
       + '<input class="info-edit-input" placeholder="Company" data-field="company" value="' + escAttr(w.company) + '">'
       + '<input type="date" class="info-edit-input" data-field="start" value="' + escAttr(w.start) + '">'
-      + '<input type="date" class="info-edit-input" data-field="end" value="' + escAttr(w.end) + '" ' + (w.current ? 'disabled' : '') + '>'
+      + '<input type="date" class="info-edit-input" data-field="end" value="' + escAttr(w.end) + '" ' + (idx === 0 && w.current ? 'disabled' : '') + '>'
       + '</div>'
-      + '<label class="resume-row-checkbox"><input type="checkbox" data-field="current" ' + checked + ' onchange="this.closest(\'.resume-row\').querySelector(\'[data-field=end]\').disabled = this.checked; if(this.checked){ this.closest(\'.resume-row\').querySelector(\'[data-field=end]\').value=\'\'; }">I currently work here</label>'
+      + checkboxHtml
       + '<textarea class="info-edit-input" placeholder="Description" data-field="description" rows="2">' + escAttr(w.description) + '</textarea>'
       + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove(); renumberWorkRows();">Remove</button>'
       + '</div>';
@@ -485,6 +488,15 @@
     var rows = document.querySelectorAll('#work-history-rows .resume-row');
     rows.forEach(function(row, i){
       row.querySelector('.resume-row-header').textContent = (i === 0) ? 'Current Job' : ('Job ' + (i + 1));
+      var existingCheckbox = row.querySelector('.resume-row-checkbox');
+      if(i === 0 && !existingCheckbox){
+        row.querySelector('.resume-row-grid').insertAdjacentHTML('afterend',
+          '<label class="resume-row-checkbox"><input type="checkbox" data-field="current" onchange="this.closest(\'.resume-row\').querySelector(\'[data-field=end]\').disabled = this.checked; if(this.checked){ this.closest(\'.resume-row\').querySelector(\'[data-field=end]\').value=\'\'; }">I currently work here</label>');
+      }else if(i !== 0 && existingCheckbox){
+        var endInput = row.querySelector('[data-field=end]');
+        endInput.disabled = false;
+        existingCheckbox.remove();
+      }
     });
   }
 
@@ -592,17 +604,16 @@
       ? '<div class="resume-section"><div class="resume-section-title">Contact</div><div class="profile-grid">'
         + '<div class="info-box"><div class="info-label">Email</div><input type="email" class="info-edit-input" id="edit-email" value="' + escAttr(r.email) + '"></div>'
         + '<div class="info-box"><div class="info-label">LinkedIn</div><input type="url" class="info-edit-input" id="edit-linkedin_url" placeholder="https://linkedin.com/in/..." value="' + escAttr(r.linkedin_url) + '"></div>'
+        + '<div class="info-box"><div class="info-label">Years Experience</div><input type="text" class="info-edit-input" id="edit-years_experience" value="' + escAttr(r.years_experience) + '"></div>'
         + '<div class="info-box"><div class="info-label">Personal Phone</div><input type="tel" class="info-edit-input" id="edit-personal_phone" value="' + escAttr(r.personal_phone) + '"></div>'
         + '</div></div>'
       : '<div class="resume-section"><div class="resume-section-title">Contact</div><div class="profile-grid">'
         + '<div class="info-box"><div class="info-label">Email</div><div class="info-val">' + (r.email || '—') + '</div></div>'
         + '<div class="info-box"><div class="info-label">LinkedIn</div><div class="info-val">' + (r.linkedin_url ? '<a href="' + r.linkedin_url + '" target="_blank" style="color:var(--teal);">' + r.linkedin_url + '</a>' : '—') + '</div></div>'
+        + '<div class="info-box"><div class="info-label">Years Experience</div><div class="info-val">' + (r.years_experience != null && r.years_experience !== '' ? r.years_experience : '—') + '</div></div>'
         + '<div class="info-box"><div class="info-label">Personal Phone</div><div class="info-val">' + (r.personal_phone || '—') + '</div></div>'
         + '</div></div>';
 
-    var yearsBlock = editable
-      ? '<div class="info-box"><div class="info-label">Years Experience</div><input type="text" class="info-edit-input" id="edit-years_experience" value="' + escAttr(r.years_experience) + '"></div>'
-      : '<div class="info-box"><div class="info-label">Years Experience</div><div class="info-val">' + (r.years_experience != null && r.years_experience !== '' ? r.years_experience : '—') + '</div></div>';
 
     var workBlock = editable
       ? '<div class="resume-section"><div class="resume-section-title">Work History</div><div id="work-history-rows">' + (r.work_history || []).map(function(w, i){ return workHistoryRowHtml(w, i); }).join('') + '</div><button type="button" class="btn-add-row" onclick="addWorkRow()">+ Add position</button></div>'
@@ -633,8 +644,13 @@
     var skillsBlock = editable
       ? '<div class="resume-section"><div class="resume-section-title">Skills</div>'
         + '<div class="skill-pill-list" id="skill-pill-list">' + (r.skills || []).map(function(s){ return skillPillHtml(s); }).join('') + '</div>'
-        + '<div class="skill-pill-input-wrap"><input class="info-edit-input" id="skill-bank-input" placeholder="Type to search or add a skill, press Enter" autocomplete="off" oninput="filterSkillBank(this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addSkillFromInput();}">'
-        + '<div class="skill-bank-dropdown" id="skill-bank-dropdown" style="display:none;"></div></div>'
+        + '<div class="skill-pill-input-wrap">'
+        + '<button type="button" class="btn-add-row" onclick="toggleSkillDropdown()">+ Select skills</button>'
+        + '<span class="save-status" id="skill-counter" style="margin-left:10px;"></span>'
+        + '<div class="skill-bank-dropdown" id="skill-bank-dropdown" style="display:none;">'
+        + '<input class="info-edit-input" id="skill-bank-filter" placeholder="Filter skills or type a new one..." autocomplete="off" style="margin:8px;width:calc(100% - 16px);" oninput="renderSkillDropdownList(this.value)">'
+        + '<div id="skill-bank-options"></div>'
+        + '</div></div>'
         + '</div>'
       : '<div class="resume-section"><div class="resume-section-title">Skills</div>'
         + (r.skills && r.skills.length
@@ -647,7 +663,6 @@
       + '<div class="profile-top"><div><div class="profile-name">' + (owner.full_name || '—') + '</div><div class="profile-role">' + (owner.job_title || '—') + '</div></div></div>'
       + summaryBlock
       + contactBlock
-      + '<div class="profile-grid">' + yearsBlock + '</div>'
       + workBlock + eduBlock + certBlock + skillsBlock
       + '<div class="profile-actions">'
       + (editMode
@@ -667,9 +682,10 @@
 
   var skillsBankCache = [];
   var currentSkills = [];
+  var SKILLS_MAX = 12;
 
   function skillPillHtml(s){
-    return '<span class="skill-pill">' + s + '<button type="button" onclick="removeSkillPill(this, \'' + escAttr(s).replace(/'/g, "\\'") + '\')">×</button></span>';
+    return '<span class="skill-pill" data-skill="' + escAttr(s) + '">' + s + '<button type="button" onclick="removeSkillPill(this, \'' + escAttr(s).replace(/'/g, "\\'") + '\')">×</button></span>';
   }
 
   async function loadSkillsBank(){
@@ -680,60 +696,83 @@
       skillsBankCache = [];
       console.error(e);
     }
+    renderSkillCounter();
   }
 
-  function filterSkillBank(query){
+  function renderSkillCounter(){
+    var el = document.getElementById('skill-counter');
+    if(el){ el.textContent = currentSkills.length + '/' + SKILLS_MAX + ' selected'; }
+  }
+
+  function toggleSkillDropdown(){
     var dropdown = document.getElementById('skill-bank-dropdown');
-    query = query.trim().toLowerCase();
-    if(!query){ dropdown.style.display = 'none'; dropdown.innerHTML = ''; return; }
-    var matches = skillsBankCache.filter(function(s){ return s.label.toLowerCase().indexOf(query) !== -1 && currentSkills.indexOf(s.label) === -1; });
-    var exact = skillsBankCache.some(function(s){ return s.label.toLowerCase() === query; });
-    var html = matches.slice(0, 8).map(function(s){
-      return '<div class="skill-bank-option" onclick="addSkillPill(\'' + escAttr(s.label).replace(/'/g, "\\'") + '\')">' + s.label + '</div>';
+    if(dropdown.style.display === 'block'){ dropdown.style.display = 'none'; return; }
+    renderSkillDropdownList();
+    dropdown.style.display = 'block';
+  }
+
+  function renderSkillDropdownList(filterText){
+    var optionsEl = document.getElementById('skill-bank-options');
+    var query = (filterText || '').trim().toLowerCase();
+    var atMax = currentSkills.length >= SKILLS_MAX;
+    var matches = skillsBankCache.filter(function(s){ return !query || s.label.toLowerCase().indexOf(query) !== -1; });
+    var html = matches.map(function(s){
+      var picked = currentSkills.indexOf(s.label) !== -1;
+      var disabled = (!picked && atMax) ? 'disabled' : '';
+      return '<label class="skill-bank-option" style="display:flex;align-items:center;gap:8px;' + (disabled ? 'opacity:0.4;' : '') + '">'
+        + '<input type="checkbox" ' + (picked ? 'checked' : '') + ' ' + disabled + ' onchange="toggleSkillSelection(\'' + escAttr(s.label).replace(/'/g, "\\'") + '\', this.checked)">'
+        + s.label + '</label>';
     }).join('');
-    if(!exact && query){
-      html += '<div class="skill-bank-option add-new" onclick="addSkillPill(document.getElementById(\'skill-bank-input\').value.trim())">+ Add "' + query + '" to skills bank</div>';
+    if(query && !skillsBankCache.some(function(s){ return s.label.toLowerCase() === query; }) && !atMax){
+      html += '<div class="skill-bank-option add-new" onclick="addNewSkillToBank(document.getElementById(\'skill-bank-filter\').value.trim())">+ Add "' + filterText + '" to skills bank</div>';
     }
-    dropdown.innerHTML = html;
-    dropdown.style.display = html ? 'block' : 'none';
+    optionsEl.innerHTML = html || '<div class="skill-bank-option" style="color:var(--muted);">No matches.</div>';
   }
 
-  function addSkillFromInput(){
-    var input = document.getElementById('skill-bank-input');
-    var val = input.value.trim();
-    if(val){ addSkillPill(val); }
-  }
-
-  async function addSkillPill(label){
-    if(!label || currentSkills.indexOf(label) !== -1){ return; }
-    currentSkills.push(label);
-    document.getElementById('skill-pill-list').insertAdjacentHTML('beforeend', skillPillHtml(label));
-    var input = document.getElementById('skill-bank-input');
-    input.value = '';
-    document.getElementById('skill-bank-dropdown').style.display = 'none';
+  function toggleSkillSelection(label, isChecked){
+    if(isChecked){
+      if(currentSkills.length >= SKILLS_MAX){ return; }
+      currentSkills.push(label);
+      document.getElementById('skill-pill-list').insertAdjacentHTML('beforeend', skillPillHtml(label));
+    }else{
+      currentSkills = currentSkills.filter(function(s){ return s !== label; });
+      var pill = document.querySelector('#skill-pill-list .skill-pill[data-skill="' + escAttr(label) + '"]');
+      if(pill){ pill.remove(); }
+    }
     isEditingResume = true;
-    if(!skillsBankCache.some(function(s){ return s.label === label; })){
-      try{
-        var session = getSession();
-        await fetch(SUPABASE_URL + '/rest/v1/skills_bank', {
-          method: 'POST',
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': 'Bearer ' + session.access_token,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal'
-          },
-          body: JSON.stringify({ label: label, created_by: session.user.id })
-        });
-        skillsBankCache.push({ label: label });
-      }catch(e){ console.error(e); }
-    }
+    renderSkillCounter();
+    renderSkillDropdownList(document.getElementById('skill-bank-filter').value);
+  }
+
+  async function addNewSkillToBank(label){
+    if(!label || currentSkills.length >= SKILLS_MAX){ return; }
+    skillsBankCache.push({ label: label });
+    skillsBankCache.sort(function(a, b){ return a.label.localeCompare(b.label); });
+    toggleSkillSelection(label, true);
+    document.getElementById('skill-bank-filter').value = '';
+    renderSkillDropdownList('');
+    try{
+      var session = getSession();
+      await fetch(SUPABASE_URL + '/rest/v1/skills_bank', {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ label: label, created_by: session.user.id })
+      });
+    }catch(e){ console.error(e); }
   }
 
   function removeSkillPill(btn, label){
     currentSkills = currentSkills.filter(function(s){ return s !== label; });
     btn.closest('.skill-pill').remove();
     isEditingResume = true;
+    renderSkillCounter();
+    var dropdown = document.getElementById('skill-bank-dropdown');
+    if(dropdown.style.display === 'block'){ renderSkillDropdownList(document.getElementById('skill-bank-filter').value); }
   }
 
   function editResume(){
