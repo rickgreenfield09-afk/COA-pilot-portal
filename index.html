@@ -122,6 +122,38 @@
   .btn-cart-add:disabled{opacity:0.4;cursor:default;}
   .resume-cart{background:var(--surface);border:1px solid var(--teal);border-radius:8px;padding:16px;margin-bottom:20px;}
   .resume-cart-title{font-size:11px;font-family:'DM Mono',monospace;color:var(--teal);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}
+
+  /* ---- Dashboard ---- */
+  .dash-header-strip{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px 28px;margin-bottom:20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
+  .dash-header-strip .profile-name{margin-bottom:2px;}
+  .dash-header-meta{display:flex;gap:24px;flex-wrap:wrap;margin-left:auto;}
+  .dash-meta-item{font-size:12px;color:var(--sub);}
+  .dash-meta-item span{display:block;font-size:13px;color:var(--text);font-family:'DM Mono',monospace;margin-top:2px;}
+
+  .danger-box{background:rgba(224,82,82,0.08);border:1px solid var(--red);border-radius:8px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:flex-start;gap:12px;}
+  .danger-box-icon{color:var(--red);font-size:18px;line-height:1;flex-shrink:0;}
+  .danger-box-title{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px;}
+  .danger-box-text{font-size:13px;color:var(--text);}
+  .danger-box-text .demo-tag{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-left:6px;}
+
+  .shortcuts-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}
+  .shortcuts-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}
+  .shortcut-tile{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:border-color 0.15s;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);}
+  .shortcut-tile:hover{border-color:var(--teal);}
+  .shortcut-tile-icon{color:var(--teal);font-size:16px;flex-shrink:0;}
+
+  .dash-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .dash-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px 20px;}
+  .dash-card-title{font-size:11px;font-family:'DM Mono',monospace;color:var(--teal);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;}
+  .dash-card-empty{font-size:13px;color:var(--sub);padding:8px 0;}
+  .dash-card-badge{background:var(--raised);color:var(--muted);font-size:10px;font-family:'DM Mono',monospace;padding:2px 8px;border-radius:10px;}
+  .dash-card-badge.soon{color:var(--amber);}
+
+  @media (max-width:900px){
+    .shortcuts-grid{grid-template-columns:repeat(2,1fr);}
+    .dash-grid{grid-template-columns:1fr;}
+    .dash-header-meta{margin-left:0;}
+  }
   .resume-cart-item{display:flex;align-items:center;justify-content:space-between;background:var(--raised);border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:13px;}
   .resume-cart-item button{background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;}
   .resume-cart-empty{font-size:13px;color:var(--muted);}
@@ -163,13 +195,21 @@
       </div>
     </header>
     <nav>
-      <button class="nav-btn active" data-screen="profile" onclick="requestSwitchScreen('profile')">Profile</button>
+      <button class="nav-btn active" data-screen="home" onclick="requestSwitchScreen('home')">Home</button>
+      <button class="nav-btn" data-screen="profile" onclick="requestSwitchScreen('profile')">Profile</button>
       <button class="nav-btn" data-screen="directory" onclick="requestSwitchScreen('directory')">Directory</button>
       <button class="nav-btn" data-screen="resume" onclick="requestSwitchScreen('resume')">Resume</button>
       <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel</button>
     </nav>
     <main>
-      <div class="screen active" id="screen-profile">
+      <div class="screen active" id="screen-home">
+        <div id="home-content">
+          <div class="placeholder-card">
+            <div class="placeholder-sub">Loading dashboard...</div>
+          </div>
+        </div>
+      </div>
+      <div class="screen" id="screen-profile">
         <div id="profile-content">
           <div class="placeholder-card">
             <div class="placeholder-sub">Loading profile...</div>
@@ -318,8 +358,8 @@
 
   var currentProfile = null;
   var currentSupervisorName = '—';
-  var employeeEditableFields = ['phone', 'bio', 'home_email', 'home_phone'];
-  var adminEditableFields = ['full_name', 'job_title', 'department', 'phone', 'bio', 'home_email', 'home_phone', 'employment_status', 'clearance_level', 'clearance_investigation_type', 'clearance_granted_date', 'clearance_expiration_date'];
+  var employeeEditableFields = ['phone', 'bio', 'home_email', 'home_phone', 'location'];
+  var adminEditableFields = ['full_name', 'job_title', 'department', 'phone', 'bio', 'home_email', 'home_phone', 'employment_status', 'clearance_level', 'clearance_investigation_type', 'clearance_granted_date', 'clearance_expiration_date', 'location'];
   var isEditingProfile = false;
   var pendingNavTarget = null;
 
@@ -407,6 +447,7 @@
       + textField('home_email', 'Home Email', p.home_email)
       + textField('home_phone', 'Home Phone', p.home_phone)
       + textField('department', 'Department', p.department)
+      + textField('location', 'Location', p.location)
       + '<div class="info-box"><div class="info-label">Supervisor</div><div class="info-val">' + supervisorName + '</div></div>'
       + dateField('start_date', 'Start Date', p.start_date)
       + textField('employment_status', 'Status', p.employment_status)
@@ -1053,18 +1094,71 @@
     document.getElementById('login-wrap').style.display = 'none';
     document.getElementById('app-shell').classList.add('active');
     document.getElementById('user-email-display').textContent = email;
-    loadProfile();
+    loadDashboard();
   }
 
   function switchScreen(name){
     document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.screen === name); });
     document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
     document.getElementById('screen-' + name).classList.add('active');
+    if(name === 'home'){
+      loadDashboard();
+    }
+    if(name === 'profile'){
+      loadProfile();
+    }
     if(name === 'resume'){
       document.getElementById('resume-search-wrap').style.display = isAdmin() ? 'block' : 'none';
       document.getElementById('resume-search-input').value = '';
       document.getElementById('resume-search-results').innerHTML = '';
       loadResume(getSession().user.id);
+    }
+  }
+
+  // ---------- Dashboard ----------
+  async function loadDashboard(){
+    var container = document.getElementById('home-content');
+    var session = getSession();
+    if(!session || !session.user){ return; }
+
+    try{
+      var rows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=*');
+      var p = rows.length ? rows[0] : {};
+
+      container.innerHTML =
+        '<div class="dash-header-strip">'
+        + '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>'
+        + '<div><div class="profile-name">' + (p.full_name || '—') + '</div><div class="profile-role">' + (p.job_title || '—') + '</div></div>'
+        + '<div class="dash-header-meta">'
+        + '<div class="dash-meta-item">Department<span>' + (p.department || '—') + '</span></div>'
+        + '<div class="dash-meta-item">Location<span>' + (p.location || '—') + '</span></div>'
+        + '<div class="dash-meta-item">Status<span>' + (p.employment_status || '—') + '</span></div>'
+        + '</div>'
+        + '</div>'
+
+        + '<div class="danger-box">'
+        + '<div class="danger-box-icon">&#9888;</div>'
+        + '<div><div class="danger-box-title">Action needed within 30 days</div>'
+        + '<div class="danger-box-text">Security clearance investigation renewal is due soon.<span class="demo-tag">Example — not live</span></div></div>'
+        + '</div>'
+
+        + '<div class="shortcuts-label">Shortcuts</div>'
+        + '<div class="shortcuts-grid">'
+        + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'profile\')"><span class="shortcut-tile-icon">&#9788;</span>My Profile</div>'
+        + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'resume\')"><span class="shortcut-tile-icon">&#9776;</span>My Resume</div>'
+        + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'directory\')"><span class="shortcut-tile-icon">&#9737;</span>Company Directory</div>'
+        + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'travel\')"><span class="shortcut-tile-icon">&#9992;</span>Travel</div>'
+        + '</div>'
+
+        + '<div class="dash-grid">'
+        + '<div class="dash-card"><div class="dash-card-title">Upcoming Training Deadlines<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No training data connected yet.</div></div>'
+        + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No travel data connected yet.</div></div>'
+        + '<div class="dash-card"><div class="dash-card-title">Assets In Your Care<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Asset tracker coming next session.</div></div>'
+        + '<div class="dash-card"><div class="dash-card-title">News &amp; Messages<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">May or may not be built — under evaluation.</div></div>'
+        + '</div>';
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load dashboard</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
     }
   }
 
