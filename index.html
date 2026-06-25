@@ -109,7 +109,8 @@
   .skill-pill-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;}
   .skill-pill{background:var(--raised);border:1px solid var(--teal);border-radius:14px;padding:5px 10px 5px 12px;font-size:12px;color:var(--teal);font-family:'DM Mono',monospace;display:flex;align-items:center;gap:6px;}
   .skill-pill button{background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;line-height:1;padding:0;}
-  .skill-bank-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-top:4px;max-height:180px;overflow-y:auto;z-index:10;}
+  .skill-bank-panel{background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-top:10px;display:flex;flex-direction:column;}
+  .skill-bank-options-list{overflow-y:auto;max-height:220px;padding:4px 0;}
   .skill-bank-option{padding:8px 12px;font-size:13px;color:var(--text);cursor:pointer;}
   .skill-bank-option:hover{background:var(--raised);}
   .skill-bank-option.add-new{color:var(--teal);}
@@ -645,11 +646,10 @@
       ? '<div class="resume-section"><div class="resume-section-title">Skills</div>'
         + '<div class="skill-pill-list" id="skill-pill-list">' + (r.skills || []).map(function(s){ return skillPillHtml(s); }).join('') + '</div>'
         + '<div class="skill-pill-input-wrap">'
-        + '<button type="button" class="btn-add-row" onclick="toggleSkillDropdown()">+ Select skills</button>'
-        + '<span class="save-status" id="skill-counter" style="margin-left:10px;"></span>'
-        + '<div class="skill-bank-dropdown" id="skill-bank-dropdown" style="display:none;">'
+        + '<span class="save-status" id="skill-counter"></span>'
+        + '<div class="skill-bank-panel" id="skill-bank-dropdown">'
         + '<input class="info-edit-input" id="skill-bank-filter" placeholder="Filter skills or type a new one..." autocomplete="off" style="margin:8px;width:calc(100% - 16px);" oninput="renderSkillDropdownList(this.value)">'
-        + '<div id="skill-bank-options"></div>'
+        + '<div class="skill-bank-options-list" id="skill-bank-options"></div>'
         + '</div></div>'
         + '</div>'
       : '<div class="resume-section"><div class="resume-section-title">Skills</div>'
@@ -697,18 +697,12 @@
       console.error(e);
     }
     renderSkillCounter();
+    renderSkillDropdownList('');
   }
 
   function renderSkillCounter(){
     var el = document.getElementById('skill-counter');
     if(el){ el.textContent = currentSkills.length + '/' + SKILLS_MAX + ' selected'; }
-  }
-
-  function toggleSkillDropdown(){
-    var dropdown = document.getElementById('skill-bank-dropdown');
-    if(dropdown.style.display === 'block'){ dropdown.style.display = 'none'; return; }
-    renderSkillDropdownList();
-    dropdown.style.display = 'block';
   }
 
   function renderSkillDropdownList(filterText){
@@ -771,8 +765,7 @@
     btn.closest('.skill-pill').remove();
     isEditingResume = true;
     renderSkillCounter();
-    var dropdown = document.getElementById('skill-bank-dropdown');
-    if(dropdown.style.display === 'block'){ renderSkillDropdownList(document.getElementById('skill-bank-filter').value); }
+    renderSkillDropdownList(document.getElementById('skill-bank-filter').value);
   }
 
   function editResume(){
@@ -786,12 +779,13 @@
 
   async function saveResume(){
     var statusEl = document.getElementById('resume-save-status');
+    var yearsVal = document.getElementById('edit-years_experience').value.trim();
     var updates = {
       summary: document.getElementById('edit-summary').value,
       email: document.getElementById('edit-email').value.trim(),
       linkedin_url: document.getElementById('edit-linkedin_url').value.trim(),
       personal_phone: document.getElementById('edit-personal_phone').value.trim(),
-      years_experience: document.getElementById('edit-years_experience').value.trim(),
+      years_experience: yearsVal === '' ? null : yearsVal,
       work_history: harvestRows('work-history-rows', ['title','company','start','end','description'], ['current']),
       education: harvestRows('education-rows', ['degree','school','location','year','gpa','honors']),
       certifications: harvestRows('cert-rows', ['name','issuer','date','expiration']),
