@@ -126,9 +126,8 @@
   .resume-cart-item button{background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;}
   .resume-cart-empty{font-size:13px;color:var(--muted);}
   @media print{
-    body *{visibility:hidden;}
-    #print-resume-batch, #print-resume-batch *{visibility:visible;}
-    #print-resume-batch{position:static !important;top:auto !important;left:auto !important;width:100%;}
+    body > *:not(#print-resume-batch){display:none !important;}
+    #print-resume-batch{display:block !important;position:static;width:100%;}
     .print-resume-page{page-break-after:always;padding:40px;}
     .print-resume-page:last-child{page-break-after:auto;}
   }
@@ -512,6 +511,7 @@
       + '<div class="resume-row-grid">'
       + '<div class="field-mini-wrap"><span class="field-mini-label">Job Title</span><input class="info-edit-input" placeholder="Job title" data-field="title" value="' + escAttr(w.title) + '"></div>'
       + '<div class="field-mini-wrap"><span class="field-mini-label">Company</span><input class="info-edit-input" placeholder="Company" data-field="company" value="' + escAttr(w.company) + '"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Location</span><input class="info-edit-input" placeholder="City, State" data-field="location" value="' + escAttr(w.location) + '"></div>'
       + '<div class="field-mini-wrap"><span class="field-mini-label">Start Date</span><input type="date" class="info-edit-input" data-field="start" value="' + escAttr(w.start) + '"></div>'
       + '<div class="field-mini-wrap"><span class="field-mini-label">End Date</span><input type="date" class="info-edit-input" data-field="end" value="' + escAttr(w.end) + '" ' + (idx === 0 && w.current ? 'disabled' : '') + '></div>'
       + '</div>'
@@ -542,13 +542,14 @@
     ed = ed || {};
     return '<div class="resume-row">'
       + '<div class="resume-row-grid">'
-      + '<input class="info-edit-input" placeholder="Degree" data-field="degree" value="' + escAttr(ed.degree) + '">'
-      + '<input class="info-edit-input" placeholder="School" data-field="school" value="' + escAttr(ed.school) + '">'
-      + '<input class="info-edit-input" placeholder="Location (city, state)" data-field="location" value="' + escAttr(ed.location) + '">'
-      + '<input class="info-edit-input" placeholder="Year" data-field="year" value="' + escAttr(ed.year) + '">'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Degree *</span><input class="info-edit-input" placeholder="Degree" data-field="degree" value="' + escAttr(ed.degree) + '"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">School *</span><input class="info-edit-input" placeholder="School" data-field="school" value="' + escAttr(ed.school) + '"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Location</span><input class="info-edit-input" placeholder="City, State" data-field="location" value="' + escAttr(ed.location) + '"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Date Earned *</span><input class="info-edit-input" placeholder="e.g. 2018" data-field="year" value="' + escAttr(ed.year) + '"></div>'
       + '</div>'
-      + '<input class="info-edit-input" placeholder="GPA (optional)" data-field="gpa" value="' + escAttr(ed.gpa) + '" style="margin-bottom:8px;">'
-      + '<textarea class="info-edit-input" placeholder="Honors, coursework, activities, or other achievements (optional)" data-field="honors" rows="2">' + escAttr(ed.honors) + '</textarea>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">GPA (optional)</span><input class="info-edit-input" placeholder="GPA" data-field="gpa" value="' + escAttr(ed.gpa) + '" style="margin-bottom:8px;"></div>'
+      + '<span class="field-mini-label">Honors, coursework, activities, or other achievements (optional)</span>'
+      + '<textarea class="info-edit-input" placeholder="Honors, coursework, activities, or other achievements" data-field="honors" rows="2">' + escAttr(ed.honors) + '</textarea>'
       + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove()">Remove</button>'
       + '</div>';
   }
@@ -557,10 +558,10 @@
     c = c || {};
     return '<div class="resume-row">'
       + '<div class="resume-row-grid">'
-      + '<input class="info-edit-input" placeholder="Certification name" data-field="name" value="' + escAttr(c.name) + '">'
-      + '<input class="info-edit-input" placeholder="Issuer" data-field="issuer" value="' + escAttr(c.issuer) + '">'
-      + '<input type="date" class="info-edit-input" data-field="date" value="' + escAttr(c.date) + '">'
-      + '<input type="date" class="info-edit-input" placeholder="Expiration" data-field="expiration" value="' + escAttr(c.expiration) + '">'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Certification Name *</span><input class="info-edit-input" placeholder="Certification name" data-field="name" value="' + escAttr(c.name) + '"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Issuer *</span><input class="info-edit-input" placeholder="Issuer" data-field="issuer" value="' + escAttr(c.issuer) + '"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Date Earned *</span><input type="date" class="info-edit-input" data-field="date" value="' + escAttr(c.date) + '"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Expiration (optional)</span><input type="date" class="info-edit-input" data-field="expiration" value="' + escAttr(c.expiration) + '"></div>'
       + '</div>'
       + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove()">Remove</button>'
       + '</div>';
@@ -657,7 +658,8 @@
       ? '<div class="resume-section"><div class="resume-section-title">Work History</div><div id="work-history-rows">' + (r.work_history || []).map(function(w, i){ return workHistoryRowHtml(w, i); }).join('') + '</div><button type="button" class="btn-add-row" onclick="addWorkRow()">+ Add position</button></div>'
       : listView('Work History', r.work_history, function(w, i){
           var label = (i === 0) ? 'Current Job' : ('Job ' + (i + 1));
-          return '<div class="resume-view-row"><div class="resume-row-header">' + label + '</div><div class="resume-view-row-title">' + (w.title || '—') + ' · ' + (w.company || '—') + '</div>'
+          return '<div class="resume-view-row"><div class="resume-row-header">' + label + '</div><div class="resume-view-row-title">' + (w.title || '—') + '</div>'
+            + '<div class="resume-view-row-dates">' + (w.company || '—') + (w.location ? ', ' + w.location : '') + '</div>'
             + '<div class="resume-view-row-dates">' + formatDate(w.start) + ' – ' + (w.current ? 'Present' : formatDate(w.end)) + '</div>'
             + bulletListHtml(w.description)
             + '</div>';
@@ -814,8 +816,32 @@
     loadResume(currentResumeOwner.id);
   }
 
+  function validateRequiredRows(containerId, requiredFields, rowLabel){
+    var rows = document.querySelectorAll('#' + containerId + ' .resume-row');
+    for(var i = 0; i < rows.length; i++){
+      var row = rows[i];
+      var values = {};
+      row.querySelectorAll('[data-field]').forEach(function(el){
+        values[el.dataset.field] = el.value ? el.value.trim() : '';
+      });
+      var hasAny = Object.keys(values).some(function(k){ return values[k]; });
+      if(!hasAny){ continue; }
+      var missing = requiredFields.filter(function(f){ return !values[f]; });
+      if(missing.length){
+        return rowLabel + ' #' + (i + 1) + ' is missing: ' + missing.join(', ');
+      }
+    }
+    return null;
+  }
+
   async function saveResume(){
     var statusEl = document.getElementById('resume-save-status');
+
+    var eduError = validateRequiredRows('education-rows', ['degree','school','year'], 'Education entry');
+    if(eduError){ statusEl.textContent = eduError; return; }
+    var certError = validateRequiredRows('cert-rows', ['name','issuer','date'], 'Certification entry');
+    if(certError){ statusEl.textContent = certError; return; }
+
     var yearsVal = document.getElementById('edit-years_experience').value.trim();
     var updates = {
       summary: document.getElementById('edit-summary').value,
@@ -823,7 +849,7 @@
       linkedin_url: document.getElementById('edit-linkedin_url').value.trim(),
       personal_phone: document.getElementById('edit-personal_phone').value.trim(),
       years_experience: yearsVal === '' ? null : yearsVal,
-      work_history: harvestRows('work-history-rows', ['title','company','start','end','description'], ['current']),
+      work_history: harvestRows('work-history-rows', ['title','company','location','start','end','description'], ['current']),
       education: harvestRows('education-rows', ['degree','school','location','year','gpa','honors']),
       certifications: harvestRows('cert-rows', ['name','issuer','date','expiration']),
       skills: currentSkills
@@ -934,10 +960,10 @@
     function pSection(label, html){
       return '<div style="margin-top:18px;"><div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#5C607E;margin-bottom:8px;">' + label + '</div>' + html + '</div>';
     }
-    var work = (r.work_history || []).map(function(w, i){
-      var label = (i === 0) ? 'Current Job' : ('Job ' + (i + 1));
-      return '<div style="margin-bottom:10px;"><div style="font-size:11px;color:#2AB8A6;text-transform:uppercase;">' + label + '</div>'
-        + '<div style="font-weight:600;">' + (w.title || '—') + ' · ' + (w.company || '—') + '</div>'
+    var work = (r.work_history || []).map(function(w){
+      return '<div style="margin-bottom:10px;">'
+        + '<div style="font-weight:600;">' + (w.title || '—') + '</div>'
+        + '<div style="font-size:13px;">' + (w.company || '—') + (w.location ? ', ' + w.location : '') + '</div>'
         + '<div style="font-size:12px;color:#555;">' + formatDate(w.start) + ' – ' + (w.current ? 'Present' : formatDate(w.end)) + '</div>'
         + bulletListHtml(w.description, 'font-size:13px;')
         + '</div>';
@@ -953,16 +979,16 @@
         + '<div style="font-size:12px;color:#555;">Earned ' + formatDate(c.date) + (c.expiration ? ' · Expires ' + formatDate(c.expiration) : '') + '</div></div>';
     }).join('') || '<div style="color:#999;">None added.</div>';
     var skills = (r.skills && r.skills.length)
-      ? '<div>' + r.skills.map(function(s){ return '<span style="display:inline-block;border:1px solid #2AB8A6;color:#2AB8A6;border-radius:12px;padding:3px 10px;font-size:12px;margin:0 6px 6px 0;">' + s + '</span>'; }).join('') + '</div>'
+      ? '<div style="font-size:13px;">' + r.skills.join(', ') + '</div>'
       : '<div style="color:#999;">None added.</div>';
     var clearance = (owner.clearance_level || owner.clearance_investigation_type || owner.clearance_expiration_date)
       ? '<div style="font-size:13px;">' + (owner.clearance_level || '—') + (owner.clearance_investigation_type ? ' (' + owner.clearance_investigation_type + ')' : '') + (owner.clearance_expiration_date ? ' · Expires ' + formatDate(owner.clearance_expiration_date) : '') + '</div>'
       : '';
 
     return '<div class="print-resume-page" style="color:#111;font-family:Arial,sans-serif;">'
-      + '<div style="font-size:26px;font-weight:700;">' + (owner.full_name || '—') + '</div>'
-      + '<div style="font-size:14px;color:#555;margin-bottom:6px;">' + (owner.job_title || '—') + '</div>'
-      + '<div style="font-size:12px;color:#555;">' + (r.email || '') + (r.linkedin_url ? ' · ' + r.linkedin_url : '') + (r.personal_phone ? ' · ' + r.personal_phone : '') + (r.years_experience ? ' · ' + r.years_experience + ' yrs experience' : '') + '</div>'
+      + '<div style="text-align:center;font-size:26px;font-weight:700;">' + (owner.full_name || '—') + '</div>'
+      + '<div style="text-align:center;font-size:14px;color:#555;margin-bottom:6px;">' + (owner.job_title || '—') + '</div>'
+      + '<div style="text-align:center;font-size:12px;color:#555;">' + (r.email || '') + (r.linkedin_url ? ' · ' + r.linkedin_url : '') + (r.personal_phone ? ' · ' + r.personal_phone : '') + (r.years_experience ? ' · ' + r.years_experience + ' yrs experience' : '') + '</div>'
       + (r.summary ? pSection('Summary', '<div style="font-size:13px;">' + r.summary + '</div>') : '')
       + pSection('Work History', work)
       + pSection('Education', edu)
