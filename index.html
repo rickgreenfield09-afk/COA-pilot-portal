@@ -833,18 +833,23 @@
   }
 
   async function searchResumes(){
-    var q = document.getElementById('resume-search-input').value.trim();
+    var q = document.getElementById('resume-search-input').value.trim().toLowerCase();
     var resultsEl = document.getElementById('resume-search-results');
     if(!q){ resultsEl.innerHTML = ''; return; }
     resultsEl.innerHTML = '<div class="info-val" style="color:var(--muted);">Searching...</div>';
     try{
-      var likeTerm = encodeURIComponent('*' + q + '*');
-      var rows = await dbRequest('resumes?select=id,summary,profiles!inner(full_name,job_title)&or=(summary.ilike.' + likeTerm + ',profiles.full_name.ilike.' + likeTerm + ')');
-      if(!rows.length){
+      var rows = await dbRequest('resumes?select=id,summary,skills,profiles(full_name,job_title)');
+      var matches = rows.filter(function(r){
+        var name = (r.profiles && r.profiles.full_name || '').toLowerCase();
+        var summary = (r.summary || '').toLowerCase();
+        var skills = (r.skills || []).join(' ').toLowerCase();
+        return name.indexOf(q) !== -1 || summary.indexOf(q) !== -1 || skills.indexOf(q) !== -1;
+      });
+      if(!matches.length){
         resultsEl.innerHTML = '<div class="info-val" style="color:var(--muted);">No matches.</div>';
         return;
       }
-      resultsEl.innerHTML = rows.map(function(r){
+      resultsEl.innerHTML = matches.map(function(r){
         var name = (r.profiles && r.profiles.full_name) || 'Unknown';
         var title = (r.profiles && r.profiles.job_title) || '';
         return '<div class="search-result-row" onclick="requestViewResume(\'' + r.id + '\')"><div class="resume-view-row-title">' + name + (title ? ' · ' + title : '') + '</div></div>';
