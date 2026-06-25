@@ -167,8 +167,7 @@
       </div>
       <div class="screen" id="screen-resume">
         <div class="resume-search-wrap" id="resume-search-wrap" style="display:none;">
-          <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract...">
-          <button class="btn-edit" onclick="searchResumes()">Search</button>
+          <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract..." oninput="debounceSearchResumes()">
           <div id="resume-search-results"></div>
         </div>
         <div id="resume-viewing-banner"></div>
@@ -294,8 +293,8 @@
 
   var currentProfile = null;
   var currentSupervisorName = '—';
-  var employeeEditableFields = ['phone', 'bio'];
-  var adminEditableFields = ['full_name', 'job_title', 'department', 'phone', 'bio', 'employment_status', 'clearance_level', 'clearance_investigation_type', 'clearance_granted_date', 'clearance_expiration_date'];
+  var employeeEditableFields = ['phone', 'bio', 'home_email', 'home_phone'];
+  var adminEditableFields = ['full_name', 'job_title', 'department', 'phone', 'bio', 'home_email', 'home_phone', 'employment_status', 'clearance_level', 'clearance_investigation_type', 'clearance_granted_date', 'clearance_expiration_date'];
   var isEditingProfile = false;
   var pendingNavTarget = null;
 
@@ -378,8 +377,10 @@
       + '<div>' + nameBlock + titleBlock + '</div>'
       + '</div>'
       + '<div class="profile-grid">'
-      + '<div class="info-box"><div class="info-label">Email</div><div class="info-val">' + (p.email || '—') + '</div></div>'
-      + textField('phone', 'Phone', p.phone)
+      + '<div class="info-box"><div class="info-label">Work Email</div><div class="info-val">' + (p.email || '—') + '</div></div>'
+      + textField('phone', 'Work Phone', p.phone)
+      + textField('home_email', 'Home Email', p.home_email)
+      + textField('home_phone', 'Home Phone', p.home_phone)
       + textField('department', 'Department', p.department)
       + '<div class="info-box"><div class="info-label">Supervisor</div><div class="info-val">' + supervisorName + '</div></div>'
       + dateField('start_date', 'Start Date', p.start_date)
@@ -429,8 +430,9 @@
 
     statusEl.textContent = 'Saving...';
     var session = getSession();
+    var targetId = currentProfile.id;
     try{
-      var res = await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + session.user.id, {
+      var res = await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + targetId, {
         method: 'PATCH',
         headers: {
           'apikey': SUPABASE_ANON_KEY,
@@ -823,13 +825,21 @@
     loadResume(ownerId);
   }
 
+  var resumeSearchDebounce = null;
+
+  function debounceSearchResumes(){
+    clearTimeout(resumeSearchDebounce);
+    resumeSearchDebounce = setTimeout(searchResumes, 250);
+  }
+
   async function searchResumes(){
     var q = document.getElementById('resume-search-input').value.trim();
     var resultsEl = document.getElementById('resume-search-results');
     if(!q){ resultsEl.innerHTML = ''; return; }
     resultsEl.innerHTML = '<div class="info-val" style="color:var(--muted);">Searching...</div>';
     try{
-      var rows = await dbRequest('resumes?select=id,profiles(full_name,job_title)&search_doc=plfts.' + encodeURIComponent(q));
+      var likeTerm = encodeURIComponent('*' + q + '*');
+      var rows = await dbRequest('resumes?select=id,summary,profiles!inner(full_name,job_title)&or=(summary.ilike.' + likeTerm + ',profiles.full_name.ilike.' + likeTerm + ')');
       if(!rows.length){
         resultsEl.innerHTML = '<div class="info-val" style="color:var(--muted);">No matches.</div>';
         return;
