@@ -151,6 +151,22 @@
   .training-subscreen{display:none;}
   .training-subscreen.active{display:block;}
 
+  /* ---------- Request Training screen ---------- */
+  .request-training-layout{display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:start;}
+  .form-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px;}
+  .form-card-title{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--text);margin-bottom:18px;}
+  .mode-toggle-wrap{display:flex;gap:8px;margin-bottom:20px;}
+  .mode-toggle-btn{flex:1;background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:10px;color:var(--sub);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.15s;}
+  .mode-toggle-btn:hover{border-color:var(--teal);}
+  .mode-toggle-btn.active{background:var(--teal);color:var(--void);border-color:var(--teal);}
+  .form-row-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:4px;}
+  .request-list-col{display:flex;flex-direction:column;gap:12px;}
+  .request-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;}
+  .request-card-course{font-size:14px;color:var(--text);font-weight:600;margin-bottom:4px;}
+  .request-card-status{font-size:11px;font-family:'DM Mono',monospace;color:var(--teal);text-transform:uppercase;letter-spacing:1px;}
+  .roster-result-row{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:8px 12px;cursor:pointer;margin-bottom:4px;font-size:13px;}
+  .roster-result-row:hover{border-color:var(--teal);}
+
   .shortcuts-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}
   .shortcuts-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}
   .shortcut-tile{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:border-color 0.15s;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--text);}
@@ -288,9 +304,141 @@
           </div>
         </div>
         <div class="training-subscreen" id="training-request">
-          <div class="placeholder-card">
-            <div class="placeholder-title">Request Training</div>
-            <div class="placeholder-sub">Coming next session</div>
+          <div class="request-training-layout">
+            <div class="request-form-col">
+              <div class="form-card">
+                <div class="form-card-title">New Training Request</div>
+
+                <div class="mode-toggle-wrap">
+                  <button class="mode-toggle-btn active" id="mode-btn-self" onclick="setRequestMode('self')">Request for Myself</button>
+                  <button class="mode-toggle-btn" id="mode-btn-team" onclick="setRequestMode('team')">Request for a Team</button>
+                </div>
+
+                <div id="roster-picker-wrap" style="display:none;">
+                  <label class="field-label">Select Employees</label>
+                  <input type="text" class="field-input" id="roster-search-input" placeholder="Search employees..." oninput="filterRosterSearch()">
+                  <div id="roster-search-results"></div>
+                  <div class="skill-pill-list" id="roster-selected-chips"></div>
+                </div>
+
+                <div class="form-row-grid">
+                  <div class="field-mini-wrap">
+                    <label class="field-label">Course Name</label>
+                    <input type="text" class="field-input" id="req-course-name">
+                  </div>
+                  <div class="field-mini-wrap">
+                    <label class="field-label">Training Provider</label>
+                    <input type="text" class="field-input" id="req-provider">
+                  </div>
+                </div>
+
+                <div class="form-row-grid">
+                  <div class="field-mini-wrap">
+                    <label class="field-label">Issuing Body</label>
+                    <input type="text" class="field-input" id="req-issuing-body">
+                  </div>
+                  <div class="field-mini-wrap">
+                    <label class="field-label">Cost</label>
+                    <input type="number" class="field-input" id="req-cost" placeholder="0.00">
+                  </div>
+                </div>
+
+                <div class="form-row-grid">
+                  <div class="field-mini-wrap">
+                    <label class="field-label">Training Start Date</label>
+                    <input type="date" class="field-input" id="req-start-date">
+                  </div>
+                  <div class="field-mini-wrap">
+                    <label class="field-label">Training End Date</label>
+                    <input type="date" class="field-input" id="req-end-date">
+                  </div>
+                </div>
+
+                <div class="form-row-grid">
+                  <div class="field-mini-wrap">
+                    <label class="field-label">Renewal Required?</label>
+                    <select class="field-input" id="req-renewal-required" onchange="toggleRenewalFields()">
+                      <option value="no">Not Required</option>
+                      <option value="yes">Required</option>
+                    </select>
+                  </div>
+                  <div class="field-mini-wrap">
+                    <label class="field-label">Delivery Type</label>
+                    <select class="field-input" id="req-delivery-type" onchange="toggleTravelSection()">
+                      <option value="online">Online</option>
+                      <option value="in-person">In-Person</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div id="renewal-fields-wrap" style="display:none;">
+                  <div class="form-row-grid">
+                    <div class="field-mini-wrap">
+                      <label class="field-label">Renewal Cycle</label>
+                      <select class="field-input" id="req-renewal-cycle" onchange="toggleCustomCycle()">
+                        <option value="annual">Annual</option>
+                        <option value="biennial">Biennial</option>
+                        <option value="triennial">Triennial</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div class="field-mini-wrap">
+                      <label class="field-label">PDU/CE Value</label>
+                      <input type="number" class="field-input" id="req-pdu-value" placeholder="0">
+                    </div>
+                  </div>
+                  <div class="form-row-grid" id="custom-cycle-wrap" style="display:none;">
+                    <div class="field-mini-wrap">
+                      <label class="field-label">Cycle Length (number)</label>
+                      <input type="number" class="field-input" id="req-cycle-number" placeholder="e.g. 18">
+                    </div>
+                    <div class="field-mini-wrap">
+                      <label class="field-label">Unit</label>
+                      <select class="field-input" id="req-cycle-unit">
+                        <option value="months">Months</option>
+                        <option value="years">Years</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="travel-section-wrap" style="display:none;">
+                  <div class="resume-section-title">Travel Information</div>
+                  <div class="form-row-grid">
+                    <div class="field-mini-wrap">
+                      <label class="field-label">Departure Location</label>
+                      <input type="text" class="field-input" id="req-departure-location">
+                    </div>
+                    <div class="field-mini-wrap">
+                      <label class="field-label">Hosting/Destination Location</label>
+                      <input type="text" class="field-input" id="req-destination-location">
+                    </div>
+                  </div>
+                  <div class="form-row-grid" id="group-travel-options-wrap" style="display:none;">
+                    <div class="resume-row-checkbox"><input type="checkbox" id="req-room-block"> Request room block for group</div>
+                    <div class="resume-row-checkbox"><input type="checkbox" id="req-ground-transport-block"> Request ground transportation block for group</div>
+                  </div>
+                  <div class="warning-box" style="margin-top:8px;">
+                    <div class="warning-box-icon">&#9888;</div>
+                    <div><div class="warning-box-text">Travel cost is determined by the Travel Admin after submission, not entered here.</div></div>
+                  </div>
+                </div>
+
+                <div class="profile-actions">
+                  <button class="btn-cancel" onclick="saveRequestDraft()">Save Draft</button>
+                  <button class="btn-save" onclick="submitTrainingRequest()">Submit Request</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="request-list-col">
+              <div class="form-card-title" style="margin-bottom:14px;">My Requests</div>
+              <div id="my-requests-list">
+                <div class="placeholder-card">
+                  <div class="placeholder-sub">No requests yet.</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1175,6 +1323,124 @@
     document.querySelectorAll('.subtab-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.subtab === name); });
     document.querySelectorAll('.training-subscreen').forEach(function(s){ s.classList.remove('active'); });
     document.getElementById('training-' + name).classList.add('active');
+    if(name === 'request'){
+      loadMyRequests();
+    }
+  }
+
+  // ---------- Request Training: mode toggle ----------
+  var requestMode = 'self';
+  var selectedRoster = []; // array of {id, full_name}
+
+  function setRequestMode(mode){
+    requestMode = mode;
+    document.getElementById('mode-btn-self').classList.toggle('active', mode === 'self');
+    document.getElementById('mode-btn-team').classList.toggle('active', mode === 'team');
+    document.getElementById('roster-picker-wrap').style.display = mode === 'team' ? 'block' : 'none';
+    toggleTravelSection(); // group travel options depend on mode too
+  }
+
+  // ---------- Request Training: conditional fields ----------
+  function toggleRenewalFields(){
+    var required = document.getElementById('req-renewal-required').value === 'yes';
+    document.getElementById('renewal-fields-wrap').style.display = required ? 'block' : 'none';
+  }
+
+  function toggleCustomCycle(){
+    var isOther = document.getElementById('req-renewal-cycle').value === 'other';
+    document.getElementById('custom-cycle-wrap').style.display = isOther ? 'grid' : 'none';
+  }
+
+  function toggleTravelSection(){
+    var inPerson = document.getElementById('req-delivery-type').value === 'in-person';
+    document.getElementById('travel-section-wrap').style.display = inPerson ? 'block' : 'none';
+    document.getElementById('group-travel-options-wrap').style.display = (inPerson && requestMode === 'team') ? 'grid' : 'none';
+  }
+
+  // ---------- Request Training: roster picker ----------
+  async function filterRosterSearch(){
+    var q = document.getElementById('roster-search-input').value.trim();
+    var resultsBox = document.getElementById('roster-search-results');
+    if(q.length < 2){ resultsBox.innerHTML = ''; return; }
+    try{
+      var scopeFilter = isAdmin() ? '' : '&manager_id=eq.' + getSession().user.id;
+      var rows = await dbRequest('profiles?full_name=ilike.*' + encodeURIComponent(q) + '*' + scopeFilter + '&select=id,full_name&limit=10');
+      resultsBox.innerHTML = rows.map(function(r){
+        return '<div class="roster-result-row" onclick="addToRoster(\'' + r.id + '\',\'' + (r.full_name || '').replace(/'/g,"") + '\')">' + (r.full_name || 'Unnamed') + '</div>';
+      }).join('');
+    }catch(e){
+      console.error(e);
+      resultsBox.innerHTML = '<div class="placeholder-sub">Search failed.</div>';
+    }
+  }
+
+  function addToRoster(id, name){
+    if(selectedRoster.some(function(p){ return p.id === id; })){ return; }
+    selectedRoster.push({id: id, full_name: name});
+    document.getElementById('roster-search-input').value = '';
+    document.getElementById('roster-search-results').innerHTML = '';
+    renderRosterChips();
+  }
+
+  function removeFromRoster(id){
+    selectedRoster = selectedRoster.filter(function(p){ return p.id !== id; });
+    renderRosterChips();
+  }
+
+  function renderRosterChips(){
+    var wrap = document.getElementById('roster-selected-chips');
+    wrap.innerHTML = selectedRoster.map(function(p){
+      return '<span class="skill-pill">' + p.full_name + '<button onclick="removeFromRoster(\'' + p.id + '\')">&times;</button></span>';
+    }).join('');
+  }
+
+  // ---------- Request Training: save / submit ----------
+  function collectRequestFormData(){
+    return {
+      course_name: document.getElementById('req-course-name').value,
+      training_provider: document.getElementById('req-provider').value,
+      issuing_body: document.getElementById('req-issuing-body').value,
+      cost_per_person: document.getElementById('req-cost').value,
+      issue_date: document.getElementById('req-start-date').value,
+      expiration_date: document.getElementById('req-end-date').value,
+      renewal_required: document.getElementById('req-renewal-required').value,
+      renewal_cycle: document.getElementById('req-renewal-cycle') ? document.getElementById('req-renewal-cycle').value : null,
+      future_pdu_value: document.getElementById('req-pdu-value') ? document.getElementById('req-pdu-value').value : null,
+      delivery_type: document.getElementById('req-delivery-type').value,
+      departure_location: document.getElementById('req-departure-location') ? document.getElementById('req-departure-location').value : null,
+      destination_location: document.getElementById('req-destination-location') ? document.getElementById('req-destination-location').value : null,
+      is_group_request: requestMode === 'team',
+      roster: requestMode === 'team' ? selectedRoster.map(function(p){ return p.id; }) : [getSession().user.id]
+    };
+  }
+
+  function validateRequestForm(data){
+    if(!data.course_name){ return 'Course Name is required.'; }
+    if(!data.issue_date || !data.expiration_date){ return 'Training start and end dates are required.'; }
+    if(data.renewal_required === 'yes' && !data.future_pdu_value){ return 'PDU/CE Value is required when renewal is required.'; }
+    if(data.is_group_request && data.roster.length === 0){ return 'Select at least one employee for a team request.'; }
+    return null;
+  }
+
+  async function saveRequestDraft(){
+    var data = collectRequestFormData();
+    data.current_status = 'draft';
+    console.log('Draft save (Supabase wiring pending):', data);
+    alert('Draft save logic pending Supabase wiring for this screen.');
+  }
+
+  async function submitTrainingRequest(){
+    var data = collectRequestFormData();
+    var error = validateRequestForm(data);
+    if(error){ alert(error); return; }
+    data.current_status = 'submitted';
+    console.log('Submit (Supabase wiring pending):', data);
+    alert('Submit logic pending Supabase wiring for this screen.');
+  }
+
+  async function loadMyRequests(){
+    var container = document.getElementById('my-requests-list');
+    container.innerHTML = '<div class="placeholder-card"><div class="placeholder-sub">Request history loads once Supabase wiring is in place.</div></div>';
   }
 
   // ---------- Dashboard ----------
