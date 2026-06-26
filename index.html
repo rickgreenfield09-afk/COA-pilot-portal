@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>COA Employee Portal</title>
+<title>COA Employee Self-Service Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{--void:#0D1117;--surface:#161C26;--raised:#1E2733;--teal:#2AB8A6;--amber:#E8B84B;--red:#E05252;--purple:#BF5FFF;--header:#3E4E6C;--text:#F2EDE4;--sub:#8E92B0;--muted:#5C607E;--border:#2E3440;}
@@ -166,6 +166,8 @@
   .request-card-status{font-size:11px;font-family:'DM Mono',monospace;color:var(--teal);text-transform:uppercase;letter-spacing:1px;}
   .roster-result-row{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:8px 12px;cursor:pointer;margin-bottom:4px;font-size:13px;}
   .roster-result-row:hover{border-color:var(--teal);}
+  .no-spinner::-webkit-outer-spin-button,.no-spinner::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .no-spinner{-moz-appearance:textfield;}
 
   .shortcuts-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}
   .shortcuts-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}
@@ -179,6 +181,17 @@
   .dash-card-empty{font-size:13px;color:var(--sub);padding:8px 0;}
   .dash-card-badge{background:var(--raised);color:var(--muted);font-size:10px;font-family:'DM Mono',monospace;padding:2px 8px;border-radius:10px;}
   .dash-card-badge.soon{color:var(--amber);}
+
+  /* ---------- Dashboard top row: News + Alerts ---------- */
+  .dash-top-row{display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:20px;align-items:start;}
+  .news-item{background:var(--raised);border-radius:6px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:border-color .15s;border:1px solid transparent;}
+  .news-item:hover{border-color:var(--teal);}
+  .news-item-title{font-size:13px;color:var(--text);font-weight:500;}
+  .news-item-date{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:2px;}
+  .news-item-body{font-size:12px;color:var(--sub);margin-top:8px;line-height:1.4;display:none;}
+  .news-item.expanded .news-item-body{display:block;}
+  .alert-stack{display:flex;flex-direction:column;gap:0;}
+  @media (max-width:900px){.dash-top-row{grid-template-columns:1fr;}}
 
   @media (max-width:900px){
     .shortcuts-grid{grid-template-columns:repeat(2,1fr);}
@@ -202,7 +215,7 @@
   <div class="login-wrap" id="login-wrap">
     <div class="login-card">
       <img class="login-brand-img" src="https://llkatqqkzjzqfaosmrjl.supabase.co/storage/v1/object/public/Assets/COA-Transparent.png" alt="COA logo">
-      <div class="login-logo">COA PORTAL</div>
+      <div class="login-logo">COA EMPLOYEE PORTAL</div>
       <div class="login-sub">EMPLOYEE SIGN IN</div>
       <label class="field-label" for="login-email">Email</label>
       <input type="email" id="login-email" class="field-input" placeholder="you@company.com" autocomplete="username">
@@ -218,7 +231,7 @@
     <header>
       <div class="logo-wrap">
         <img class="header-logo-img" src="https://llkatqqkzjzqfaosmrjl.supabase.co/storage/v1/object/public/Assets/COA-Transparent.png" alt="COA logo">
-        <div class="logo">COA PORTAL</div>
+        <div class="logo">COA EMPLOYEE PORTAL</div>
       </div>
       <div class="header-right">
         <span class="user-email" id="user-email-display"></span>
@@ -334,12 +347,12 @@
 
                 <div class="form-row-grid">
                   <div class="field-mini-wrap">
-                    <label class="field-label">Issuing Body</label>
+                    <label class="field-label">Certificate Issuing Body</label>
                     <input type="text" class="field-input" id="req-issuing-body">
                   </div>
                   <div class="field-mini-wrap">
-                    <label class="field-label">Cost</label>
-                    <input type="number" class="field-input" id="req-cost" placeholder="0.00">
+                    <label class="field-label">Course Cost</label>
+                    <input type="number" class="field-input no-spinner" id="req-cost" placeholder="0.00">
                   </div>
                 </div>
 
@@ -414,13 +427,44 @@
                       <input type="text" class="field-input" id="req-destination-location">
                     </div>
                   </div>
+                  <div class="form-row-grid">
+                    <div class="field-mini-wrap">
+                      <label class="field-label">Travel Start Date</label>
+                      <input type="date" class="field-input" id="req-travel-start-date">
+                    </div>
+                    <div class="field-mini-wrap">
+                      <label class="field-label">Travel End Date</label>
+                      <input type="date" class="field-input" id="req-travel-end-date">
+                    </div>
+                  </div>
+                  <div class="form-row-grid">
+                    <div class="field-mini-wrap">
+                      <label class="field-label">Preferred Hotel Brand</label>
+                      <input type="text" class="field-input" id="req-preferred-hotel">
+                    </div>
+                    <div class="field-mini-wrap">
+                      <label class="field-label">Preferred Air Carrier</label>
+                      <input type="text" class="field-input" id="req-preferred-air">
+                    </div>
+                  </div>
+                  <div class="form-row-grid">
+                    <div class="field-mini-wrap">
+                      <label class="field-label">Preferred Car Service</label>
+                      <input type="text" class="field-input" id="req-preferred-car">
+                    </div>
+                    <div class="field-mini-wrap"></div>
+                  </div>
+                  <div class="field-mini-wrap" style="margin-bottom:14px;">
+                    <label class="field-label">Travel/Lodging Preferences (optional notes)</label>
+                    <input type="text" class="field-input" id="req-travel-preferences" placeholder="e.g. prefer aisle seat, late checkout, etc.">
+                  </div>
                   <div class="form-row-grid" id="group-travel-options-wrap" style="display:none;">
                     <div class="resume-row-checkbox"><input type="checkbox" id="req-room-block"> Request room block for group</div>
                     <div class="resume-row-checkbox"><input type="checkbox" id="req-ground-transport-block"> Request ground transportation block for group</div>
                   </div>
                   <div class="warning-box" style="margin-top:8px;">
                     <div class="warning-box-icon">&#9888;</div>
-                    <div><div class="warning-box-text">Travel cost is determined by the Travel Admin after submission, not entered here.</div></div>
+                    <div><div class="warning-box-text">Travel cost and final booking are determined by the Travel Admin after submission. Preferences above are requests, not guarantees.</div></div>
                   </div>
                 </div>
 
@@ -1409,6 +1453,12 @@
       delivery_type: document.getElementById('req-delivery-type').value,
       departure_location: document.getElementById('req-departure-location') ? document.getElementById('req-departure-location').value : null,
       destination_location: document.getElementById('req-destination-location') ? document.getElementById('req-destination-location').value : null,
+      travel_start_date: document.getElementById('req-travel-start-date') ? document.getElementById('req-travel-start-date').value : null,
+      travel_end_date: document.getElementById('req-travel-end-date') ? document.getElementById('req-travel-end-date').value : null,
+      preferred_hotel: document.getElementById('req-preferred-hotel') ? document.getElementById('req-preferred-hotel').value : null,
+      preferred_air: document.getElementById('req-preferred-air') ? document.getElementById('req-preferred-air').value : null,
+      preferred_car: document.getElementById('req-preferred-car') ? document.getElementById('req-preferred-car').value : null,
+      travel_preferences_notes: document.getElementById('req-travel-preferences') ? document.getElementById('req-travel-preferences').value : null,
       is_group_request: requestMode === 'team',
       roster: requestMode === 'team' ? selectedRoster.map(function(p){ return p.id; }) : [getSession().user.id]
     };
@@ -1453,10 +1503,12 @@
       var rows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=*');
       var p = rows.length ? rows[0] : {};
 
+      var greetName = p.preferred_name || (p.full_name ? p.full_name.split(' ')[0] : '');
+
       container.innerHTML =
         '<div class="dash-header-strip">'
         + '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>'
-        + '<div><div class="profile-name">' + (p.full_name || '—') + '</div><div class="profile-role">' + (p.job_title || '—') + '</div></div>'
+        + '<div><div class="profile-name">Welcome' + (greetName ? ', ' + greetName : '') + '</div><div class="profile-role">' + (p.job_title || '—') + '</div></div>'
         + '<div class="dash-header-meta">'
         + '<div class="dash-meta-item">Department<span>' + (p.department || '—') + '</span></div>'
         + '<div class="dash-meta-item">Location<span>' + (p.location || '—') + '</span></div>'
@@ -1464,16 +1516,38 @@
         + '</div>'
         + '</div>'
 
+        + '<div class="dash-top-row">'
+        + '<div class="dash-card">'
+        + '<div class="dash-card-title">News &amp; Notes<span class="dash-card-badge soon">Soon</span></div>'
+        + '<div class="news-item" onclick="this.classList.toggle(\'expanded\')">'
+        + '<div class="news-item-title">Example: Q3 All-Hands Recap</div>'
+        + '<div class="news-item-date">Demo item — not live</div>'
+        + '<div class="news-item-body">This is placeholder body text showing how a news item expands when clicked. Real content connects once News &amp; Notes is built.</div>'
+        + '</div>'
+        + '<div class="news-item" onclick="this.classList.toggle(\'expanded\')">'
+        + '<div class="news-item-title">Example: New Training Module Available</div>'
+        + '<div class="news-item-date">Demo item — not live</div>'
+        + '<div class="news-item-body">Placeholder expanded text for the second demo news item.</div>'
+        + '</div>'
+        + '</div>'
+
+        + '<div class="alert-stack">'
         + '<div class="danger-box">'
         + '<div class="danger-box-icon">&#9888;</div>'
         + '<div><div class="danger-box-title">Action needed within 30 days</div>'
         + '<div class="danger-box-text">Security clearance investigation renewal is due soon.<span class="demo-tag">Example — not live</span></div></div>'
         + '</div>'
-
         + '<div class="warning-box">'
         + '<div class="warning-box-icon">&#9888;</div>'
         + '<div><div class="warning-box-title">Action Needed: Training Survey</div>'
         + '<div class="warning-box-text">Completed training is awaiting your feedback. <a href="#">Fill out survey</a><span class="demo-tag">Example — not live</span></div></div>'
+        + '</div>'
+        + '<div class="warning-box">'
+        + '<div class="warning-box-icon">&#9888;</div>'
+        + '<div><div class="warning-box-title">Pending Approvals</div>'
+        + '<div class="warning-box-text">You have requests awaiting your review. <a href="#">View pending approvals</a><span class="demo-tag">Example — not live</span></div></div>'
+        + '</div>'
+        + '</div>'
         + '</div>'
 
         + '<div class="shortcuts-label">Shortcuts</div>'
@@ -1489,7 +1563,6 @@
         + '<div class="dash-card"><div class="dash-card-title">Action Needed<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No surveys pending yet.</div></div>'
         + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No travel data connected yet.</div></div>'
         + '<div class="dash-card"><div class="dash-card-title">Assets In Your Care<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Asset tracker coming next session.</div></div>'
-        + '<div class="dash-card"><div class="dash-card-title">News &amp; Messages<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">May or may not be built — under evaluation.</div></div>'
         + '</div>';
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load dashboard</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
