@@ -135,6 +135,21 @@
   .danger-box-title{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--red);margin-bottom:4px;}
   .danger-box-text{font-size:13px;color:var(--text);}
   .danger-box-text .demo-tag{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-left:6px;}
+  .warning-box{background:rgba(232,184,75,0.08);border:1px solid var(--amber);border-radius:8px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:flex-start;gap:12px;}
+  .warning-box-icon{color:var(--amber);font-size:18px;line-height:1;flex-shrink:0;}
+  .warning-box-title{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--amber);margin-bottom:4px;}
+  .warning-box-text{font-size:13px;color:var(--text);}
+  .warning-box-text .demo-tag{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-left:6px;}
+  .warning-box-text a{color:var(--amber);text-decoration:none;font-weight:600;}
+  .warning-box-text a:hover{text-decoration:underline;}
+
+  /* ---------- Training subtabs ---------- */
+  .subtab-bar{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:20px;}
+  .subtab-btn{background:none;border:none;color:var(--sub);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;padding:10px 14px;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s;}
+  .subtab-btn:hover{color:var(--text);}
+  .subtab-btn.active{color:var(--teal);border-bottom-color:var(--teal);}
+  .training-subscreen{display:none;}
+  .training-subscreen.active{display:block;}
 
   .shortcuts-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}
   .shortcuts-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}
@@ -195,11 +210,13 @@
       </div>
     </header>
     <nav>
-      <button class="nav-btn active" data-screen="home" onclick="requestSwitchScreen('home')">Home</button>
+      <button class="nav-btn active" data-screen="home" onclick="requestSwitchScreen('home')">Dashboard</button>
       <button class="nav-btn" data-screen="profile" onclick="requestSwitchScreen('profile')">Profile</button>
       <button class="nav-btn" data-screen="directory" onclick="requestSwitchScreen('directory')">Directory</button>
       <button class="nav-btn" data-screen="resume" onclick="requestSwitchScreen('resume')">Resume</button>
       <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel</button>
+      <button class="nav-btn" data-screen="training" onclick="requestSwitchScreen('training')">Training</button>
+      <button class="nav-btn" data-screen="admin" onclick="requestSwitchScreen('admin')">Admin</button>
     </nav>
     <main>
       <div class="screen active" id="screen-home">
@@ -243,6 +260,44 @@
         <div class="placeholder-card">
           <div class="placeholder-title">Travel</div>
           <div class="placeholder-sub">Coming next session</div>
+        </div>
+      </div>
+      <div class="screen" id="screen-training">
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-subtab="internal" onclick="switchTrainingSubtab('internal')">Internal Training</button>
+          <button class="subtab-btn" data-subtab="government" onclick="switchTrainingSubtab('government')">Government Training</button>
+          <button class="subtab-btn" data-subtab="external" onclick="switchTrainingSubtab('external')">External Training</button>
+          <button class="subtab-btn" data-subtab="request" onclick="switchTrainingSubtab('request')">Request Training</button>
+        </div>
+        <div class="training-subscreen active" id="training-internal">
+          <div class="placeholder-card">
+            <div class="placeholder-title">Internal Training</div>
+            <div class="placeholder-sub">Coming next session</div>
+          </div>
+        </div>
+        <div class="training-subscreen" id="training-government">
+          <div class="placeholder-card">
+            <div class="placeholder-title">Government Training</div>
+            <div class="placeholder-sub">Coming next session</div>
+          </div>
+        </div>
+        <div class="training-subscreen" id="training-external">
+          <div class="placeholder-card">
+            <div class="placeholder-title">External Training</div>
+            <div class="placeholder-sub">Coming next session</div>
+          </div>
+        </div>
+        <div class="training-subscreen" id="training-request">
+          <div class="placeholder-card">
+            <div class="placeholder-title">Request Training</div>
+            <div class="placeholder-sub">Coming next session</div>
+          </div>
+        </div>
+      </div>
+      <div class="screen" id="screen-admin">
+        <div class="placeholder-card">
+          <div class="placeholder-title">Admin</div>
+          <div class="placeholder-sub">Survey builder and employee management coming next session</div>
         </div>
       </div>
     </main>
@@ -1115,6 +1170,13 @@
     }
   }
 
+  // ---------- Training subtabs ----------
+  function switchTrainingSubtab(name){
+    document.querySelectorAll('.subtab-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.subtab === name); });
+    document.querySelectorAll('.training-subscreen').forEach(function(s){ s.classList.remove('active'); });
+    document.getElementById('training-' + name).classList.add('active');
+  }
+
   // ---------- Dashboard ----------
   async function loadDashboard(){
     var container = document.getElementById('home-content');
@@ -1142,6 +1204,12 @@
         + '<div class="danger-box-text">Security clearance investigation renewal is due soon.<span class="demo-tag">Example — not live</span></div></div>'
         + '</div>'
 
+        + '<div class="warning-box">'
+        + '<div class="warning-box-icon">&#9888;</div>'
+        + '<div><div class="warning-box-title">Action Needed: Training Survey</div>'
+        + '<div class="warning-box-text">Completed training is awaiting your feedback. <a href="#">Fill out survey</a><span class="demo-tag">Example — not live</span></div></div>'
+        + '</div>'
+
         + '<div class="shortcuts-label">Shortcuts</div>'
         + '<div class="shortcuts-grid">'
         + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'profile\')"><span class="shortcut-tile-icon">&#9788;</span>My Profile</div>'
@@ -1152,6 +1220,7 @@
 
         + '<div class="dash-grid">'
         + '<div class="dash-card"><div class="dash-card-title">Upcoming Training Deadlines<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No training data connected yet.</div></div>'
+        + '<div class="dash-card"><div class="dash-card-title">Action Needed<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No surveys pending yet.</div></div>'
         + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No travel data connected yet.</div></div>'
         + '<div class="dash-card"><div class="dash-card-title">Assets In Your Care<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Asset tracker coming next session.</div></div>'
         + '<div class="dash-card"><div class="dash-card-title">News &amp; Messages<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">May or may not be built — under evaluation.</div></div>'
