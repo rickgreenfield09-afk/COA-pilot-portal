@@ -174,12 +174,11 @@
   .news-item.expanded .news-item-body{display:block;}
   .alert-stack{display:flex;flex-direction:column;gap:0;}
 
-  /* ---------- Quick time entry card ---------- */
-  .quick-entry-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;}
-  .quick-entry-row .field-label{margin-bottom:6px;}
-  .quick-entry-row select.field-input,.quick-entry-row input.field-input{margin-bottom:0;}
-  .quick-entry-submit{width:auto;padding:11px 18px;white-space:nowrap;}
-  @media (max-width:700px){.quick-entry-row{grid-template-columns:1fr;}}
+  /* ---------- Quick time entry card (narrow column, in alert-stack) ---------- */
+  .quick-entry-col{display:flex;flex-direction:column;gap:10px;}
+  .quick-entry-col .field-label{margin-bottom:6px;}
+  .quick-entry-col select.field-input,.quick-entry-col input.field-input{margin-bottom:0;}
+  .quick-entry-col button{margin-top:2px;}
 
   @media (max-width:900px){
     .shortcuts-grid{grid-template-columns:repeat(2,1fr);}
@@ -198,29 +197,61 @@
   }
 
   /* ---------- Timekeeping screen ---------- */
+  .tk-subscreen{display:none;}
+  .tk-subscreen.active{display:block;}
   .tk-entry-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:24px;}
-  .tk-entry-grid{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;}
-  .tk-entry-grid .field-label{margin-bottom:6px;}
-  .tk-entry-grid select.field-input{margin-bottom:0;}
-  .tk-entry-grid input.field-input{margin-bottom:0;}
-  .tk-submit-btn{width:auto;padding:12px 20px;white-space:nowrap;}
   .tk-section-title{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;}
-  .tk-table{width:100%;border-collapse:collapse;}
-  .tk-table th{text-align:left;font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--border);}
-  .tk-table td{font-size:13px;color:var(--text);padding:10px 10px;border-bottom:1px solid var(--border);}
   .tk-status-pill{font-size:11px;font-family:'DM Mono',monospace;padding:3px 9px;border-radius:10px;display:inline-block;}
   .tk-status-pill.draft{background:var(--raised);color:var(--sub);}
   .tk-status-pill.submitted{background:rgba(232,184,75,0.12);color:var(--amber);}
+  .tk-status-pill.pending{background:rgba(232,184,75,0.12);color:var(--amber);}
   .tk-status-pill.approved{background:rgba(42,184,166,0.12);color:var(--teal);}
   .tk-status-pill.rejected{background:rgba(224,82,82,0.12);color:var(--red);}
-  .tk-approve-btn{background:none;border:1px solid var(--teal);border-radius:6px;padding:5px 12px;color:var(--teal);font-size:11px;font-family:'DM Sans',sans-serif;cursor:pointer;}
-  .tk-approve-btn:hover{background:var(--teal);color:var(--void);}
-  .tk-reject-btn{background:none;border:1px solid var(--red);border-radius:6px;padding:5px 12px;color:var(--red);font-size:11px;font-family:'DM Sans',sans-serif;cursor:pointer;margin-left:6px;}
-  .tk-reject-btn:hover{background:var(--red);color:var(--void);}
   .tk-empty{font-size:13px;color:var(--muted);padding:16px 0;}
-  @media (max-width:700px){
-    .tk-entry-grid{grid-template-columns:1fr;}
-  }
+
+  /* Period header */
+  .tk-period-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+  .tk-period-label{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;}
+  .tk-period-dates{font-size:12px;font-family:'DM Mono',monospace;color:var(--sub);margin-top:2px;}
+  .tk-period-nav{display:flex;gap:8px;align-items:center;}
+  .tk-period-nav-btn{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:12px;color:var(--sub);cursor:pointer;}
+  .tk-period-nav-btn:hover{border-color:var(--teal);color:var(--teal);}
+  .tk-period-nav-btn:disabled{opacity:0.4;cursor:default;}
+
+  /* Period grid */
+  .tk-grid-table{width:100%;border-collapse:collapse;}
+  .tk-grid-table th{text-align:left;font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--border);}
+  .tk-grid-table td{font-size:13px;color:var(--text);padding:8px 10px;border-bottom:1px solid var(--border);}
+  .tk-grid-table tr.tk-week-divider td{border-bottom:1px solid var(--teal);}
+  .tk-grid-input{width:100%;background:var(--raised);border:1px solid var(--border);border-radius:4px;padding:6px 8px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;}
+  .tk-grid-input:focus{border-color:var(--teal);}
+  .tk-grid-input.tk-input-error{border-color:var(--red);}
+  .tk-grid-input[readonly]{background:transparent;border-color:transparent;color:var(--sub);}
+  .tk-grid-input[disabled]{background:transparent;border-color:transparent;color:var(--sub);cursor:default;}
+  select.tk-grid-input{cursor:pointer;}
+  select.tk-grid-input[disabled]{cursor:default;}
+  .tk-hours-cell{font-family:'DM Mono',monospace;color:var(--text);}
+  .tk-hours-cell.tk-ot{color:var(--amber);}
+  .tk-grid-row-error{font-size:11px;color:var(--red);font-family:'DM Mono',monospace;margin-top:2px;}
+  .tk-grid-footer{display:flex;justify-content:flex-end;gap:24px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:13px;}
+  .tk-grid-footer-item{font-family:'DM Mono',monospace;color:var(--sub);}
+  .tk-grid-footer-item span{color:var(--text);font-weight:600;}
+  .tk-grid-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;}
+  .tk-day-pto{background:rgba(191,95,255,0.08);}
+
+  /* PTO request */
+  .tk-pto-form-grid{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;}
+  .tk-pto-form-grid .field-label{margin-bottom:6px;}
+  .tk-pto-form-grid input.field-input{margin-bottom:0;}
+  @media (max-width:700px){.tk-pto-form-grid{grid-template-columns:1fr;}}
+
+  /* PTO balance */
+  .tk-pto-balance-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
+  .tk-pto-stat-box{background:var(--raised);border-radius:6px;padding:16px;}
+  .tk-pto-stat-label{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;}
+  .tk-pto-stat-val{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--teal);}
+  .tk-pto-stat-sub{font-size:11px;color:var(--sub);margin-top:4px;}
+  @media (max-width:700px){.tk-pto-balance-grid{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -284,10 +315,23 @@
         </div>
       </div>
       <div class="screen" id="screen-timekeeping">
-        <div id="timekeeping-content">
-          <div class="placeholder-card">
-            <div class="placeholder-sub">Loading timekeeping...</div>
-          </div>
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-tksubtab="current" onclick="switchTkSubtab('current')">Current Period</button>
+          <button class="subtab-btn" data-tksubtab="history" onclick="switchTkSubtab('history')">History</button>
+          <button class="subtab-btn" data-tksubtab="ptorequest" onclick="switchTkSubtab('ptorequest')">Request PTO</button>
+          <button class="subtab-btn" data-tksubtab="ptobalance" onclick="switchTkSubtab('ptobalance')">PTO Balance</button>
+        </div>
+        <div class="tk-subscreen active" id="tk-current">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="tk-subscreen" id="tk-history">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="tk-subscreen" id="tk-ptorequest">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="tk-subscreen" id="tk-ptobalance">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
         </div>
       </div>
       <div class="screen" id="screen-resume">
@@ -1214,7 +1258,7 @@
       loadProfile();
     }
     if(name === 'timekeeping'){
-      loadTimekeeping();
+      switchTkSubtab('current');
     }
     if(name === 'resume'){
       document.getElementById('resume-search-wrap').style.display = isAdmin() ? 'block' : 'none';
@@ -1308,22 +1352,21 @@
         + '<div class="dash-card-title">Pending Approvals</div>'
         + pendingApprovalsHtml
         + '</div>'
-        + '</div>'
-        + '</div>'
-
-        + '<div class="dash-card" style="margin-bottom:20px;">'
+        + '<div class="dash-card">'
         + '<div class="dash-card-title">Quick Time Entry</div>'
-        + '<div class="quick-entry-row">'
-        + '<div><label class="field-label" for="qte-hours">Hours</label><input type="number" id="qte-hours" class="field-input" step="0.25" min="0" placeholder="8.0"></div>'
+        + '<div class="quick-entry-col">'
+        + '<div><label class="field-label" for="qte-hours">Hours</label><input type="text" inputmode="decimal" id="qte-hours" class="field-input" placeholder="8.0"></div>'
         + '<div><label class="field-label" for="qte-type">Type</label><select id="qte-type" class="field-input">'
         + TK_TYPES.map(function(t){ return '<option value="' + t + '">' + t + '</option>'; }).join('')
         + '</select></div>'
         + '<div><label class="field-label" for="qte-project">Project</label><select id="qte-project" class="field-input">'
         + projectOptions
         + '</select></div>'
-        + '<button class="btn btn-primary quick-entry-submit" onclick="submitQuickTimeEntry()">Log Today</button>'
+        + '<button class="btn btn-primary" onclick="submitQuickTimeEntry()">Log Today</button>'
         + '</div>'
         + '<div class="login-error" id="qte-error"></div>'
+        + '</div>'
+        + '</div>'
         + '</div>'
 
         + '<div class="shortcuts-label">Shortcuts</div>'
@@ -1354,8 +1397,8 @@
     var projectVal = document.getElementById('qte-project').value;
     errorEl.textContent = '';
 
-    if(!hoursVal){
-      errorEl.textContent = 'Enter number of hours.';
+    if(!hoursVal || isNaN(parseFloat(hoursVal)) || parseFloat(hoursVal) <= 0){
+      errorEl.textContent = 'Enter a valid number of hours.';
       return;
     }
 
@@ -1378,6 +1421,11 @@
 
   // ---------- Timekeeping ----------
   var TK_TYPES = ['regular', 'overtime', 'bonus'];
+  var TK_ANCHOR = new Date('2026-06-21T00:00:00');
+  var TK_DAY_MS = 24 * 60 * 60 * 1000;
+  var tkCurrentPeriodOffset = 0;   // 0 = period containing today, -1 = prior period, etc. (Current Period tab)
+  var tkHistoryPeriodOffset = -1;  // History tab starts one period back
+  var TK_PROJECTS_CACHE = null;
 
   async function dbWrite(path, method, body){
     var session = getSession();
@@ -1400,41 +1448,139 @@
     return '<span class="tk-status-pill ' + status + '">' + status + '</span>';
   }
 
-  async function loadTimekeeping(){
-    var container = document.getElementById('timekeeping-content');
+  function switchTkSubtab(name){
+    document.querySelectorAll('.tk-subscreen').forEach(function(s){ s.classList.remove('active'); });
+    document.querySelectorAll('[data-tksubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.tksubtab === name); });
+    document.getElementById('tk-' + name).classList.add('active');
+    if(name === 'current'){ loadTkPeriod('tk-current', tkCurrentPeriodOffset, true); }
+    if(name === 'history'){ loadTkPeriod('tk-history', tkHistoryPeriodOffset, false); }
+    if(name === 'ptorequest'){ loadPtoRequest(); }
+    if(name === 'ptobalance'){ loadPtoBalance(); }
+  }
+
+  // ---- Period math: anchor 6/21/2026 (Sunday), 14-day rolling periods ----
+  function tkPeriodBounds(offset){
+    var start = new Date(TK_ANCHOR.getTime() + offset * 14 * TK_DAY_MS);
+    var end = new Date(start.getTime() + 13 * TK_DAY_MS);
+    return { start: start, end: end };
+  }
+
+  function tkPeriodNumber(offset){
+    // Period 1 = the anchor period itself, increasing going forward, decreasing (but still labeled) going back
+    return offset + 1;
+  }
+
+  function tkDateToISO(d){
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+
+  function tkOffsetForToday(){
+    var todayUTC = new Date(new Date().toISOString().slice(0,10) + 'T00:00:00');
+    var diffDays = Math.round((todayUTC - TK_ANCHOR) / TK_DAY_MS);
+    return Math.floor(diffDays / 14);
+  }
+
+  async function tkGetProjects(){
+    if(TK_PROJECTS_CACHE){ return TK_PROJECTS_CACHE; }
+    try{
+      TK_PROJECTS_CACHE = await dbRequest('projects?active=eq.true&select=id,name&order=name.asc');
+    }catch(e){ TK_PROJECTS_CACHE = []; console.error(e); }
+    return TK_PROJECTS_CACHE;
+  }
+
+  function tkHoursFromTimes(startVal, endVal){
+    if(!startVal || !endVal){ return null; }
+    var sParts = startVal.split(':'); var eParts = endVal.split(':');
+    var sMin = parseInt(sParts[0],10)*60 + parseInt(sParts[1],10);
+    var eMin = parseInt(eParts[0],10)*60 + parseInt(eParts[1],10);
+    if(eMin <= sMin){ return 'error'; }
+    return Math.round(((eMin - sMin) / 60) * 100) / 100;
+  }
+
+  // ---- Shared period loader: editable=true for Current Period, false for History ----
+  async function loadTkPeriod(containerId, offset, editable){
+    var container = document.getElementById(containerId);
     var session = getSession();
     if(!session || !session.user){ return; }
+    var bounds = tkPeriodBounds(offset);
+    var startISO = tkDateToISO(bounds.start);
+    var endISO = tkDateToISO(bounds.end);
+    var projects = await tkGetProjects();
 
     try{
-      var myRows = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&order=work_date.desc&select=*');
+      var rows = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
+      var byDate = {};
+      rows.forEach(function(r){ byDate[r.work_date] = r; });
 
-      var html = ''
-        + '<div class="tk-entry-card">'
-        + '<div class="tk-section-title">Log Hours</div>'
-        + '<div class="tk-entry-grid">'
-        + '<div><label class="field-label" for="tk-date">Date</label><input type="date" id="tk-date" class="field-input"></div>'
-        + '<div><label class="field-label" for="tk-hours">Hours</label><input type="number" id="tk-hours" class="field-input" step="0.25" min="0" placeholder="8.0"></div>'
-        + '<div><label class="field-label" for="tk-type">Type</label><select id="tk-type" class="field-input">'
-        + TK_TYPES.map(function(t){ return '<option value="' + t + '">' + t + '</option>'; }).join('')
-        + '</select></div>'
-        + '<button class="btn btn-primary tk-submit-btn" onclick="submitTimeEntry()">Submit</button>'
-        + '</div>'
-        + '<div class="login-error" id="tk-entry-error"></div>'
-        + '</div>'
+      var days = [];
+      for(var i=0;i<14;i++){
+        days.push(new Date(bounds.start.getTime() + i*TK_DAY_MS));
+      }
 
-        + '<div class="tk-entry-card">'
-        + '<div class="tk-section-title">My Entries</div>'
-        + renderTkTable(myRows, false)
+      var canEditFuture = editable; // future/today periods editable, history never editable
+      var navDisabledNext = editable && offset >= tkOffsetForToday() ? '' : '';
+
+      var html = '<div class="tk-entry-card">'
+        + '<div class="tk-period-header">'
+        + '<div><div class="tk-period-label">Pay Period ' + tkPeriodNumber(offset) + '</div>'
+        + '<div class="tk-period-dates">' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div></div>'
+        + '<div class="tk-period-nav">'
+        + '<button class="tk-period-nav-btn" onclick="tkNavPeriod(\'' + containerId + '\',' + (editable?1:0) + ',-1)">&larr; Prev</button>'
+        + '<button class="tk-period-nav-btn" onclick="tkNavPeriod(\'' + containerId + '\',' + (editable?1:0) + ',1)">Next &rarr;</button>'
+        + '</div>'
+        + '</div>'
+        + '<table class="tk-grid-table"><thead><tr>'
+        + '<th>Day / Date</th><th>Start</th><th>Stop</th><th>Project</th><th>Hours</th>'
+        + '</tr></thead><tbody>';
+
+      var weekTotals = [0,0];
+      days.forEach(function(d, idx){
+        var iso = tkDateToISO(d);
+        var row = byDate[iso];
+        var weekIdx = idx < 7 ? 0 : 1;
+        var dayLabel = d.toLocaleDateString('en-US', { weekday:'long' }) + ', ' + formatDate(iso);
+        var isPto = row && row.earning_type === 'pto';
+        var rowClass = (idx === 6) ? 'tk-week-divider' : '';
+        if(isPto){ rowClass += ' tk-day-pto'; }
+
+        var startVal = row && row.day_start ? row.day_start.slice(0,5) : '';
+        var endVal = row && row.day_end ? row.day_end.slice(0,5) : '';
+        var projectVal = row && row.project_id ? row.project_id : '';
+        var hours = row && row.hours != null ? row.hours : 0;
+        weekTotals[weekIdx] += hours;
+
+        var rowEditable = editable && !isPto;
+        var inputAttrs = rowEditable ? '' : (isPto ? 'disabled' : 'readonly');
+
+        var projectSelect = '<select class="tk-grid-input" id="tkg-proj-' + iso + '" ' + (rowEditable ? '' : 'disabled') + '>'
+          + '<option value="">—</option>'
+          + projects.map(function(p){ return '<option value="' + p.id + '"' + (p.id === projectVal ? ' selected' : '') + '>' + p.name + '</option>'; }).join('')
+          + '</select>';
+
+        html += '<tr class="' + rowClass + '" data-date="' + iso + '">'
+          + '<td>' + dayLabel + (isPto ? ' <span class="tk-status-pill pending" style="margin-left:6px;">PTO</span>' : '') + '</td>'
+          + '<td><input type="time" class="tk-grid-input" id="tkg-start-' + iso + '" value="' + startVal + '" ' + inputAttrs + ' onchange="tkRecalcRow(\'' + iso + '\')"></td>'
+          + '<td><input type="time" class="tk-grid-input" id="tkg-end-' + iso + '" value="' + endVal + '" ' + inputAttrs + ' onchange="tkRecalcRow(\'' + iso + '\')"></td>'
+          + '<td>' + projectSelect + '</td>'
+          + '<td><span class="tk-hours-cell" id="tkg-hours-' + iso + '">' + (hours || '—') + '</span><div class="tk-grid-row-error" id="tkg-error-' + iso + '"></div></td>'
+          + '</tr>';
+      });
+
+      html += '</tbody></table>'
+        + '<div class="tk-grid-footer">'
+        + '<div class="tk-grid-footer-item">Week 1: <span>' + weekTotals[0].toFixed(2) + ' hrs</span></div>'
+        + '<div class="tk-grid-footer-item">Week 2: <span>' + weekTotals[1].toFixed(2) + ' hrs</span></div>'
+        + '<div class="tk-grid-footer-item">Total: <span>' + (weekTotals[0]+weekTotals[1]).toFixed(2) + ' hrs</span></div>'
         + '</div>';
 
-      if(isAdmin()){
-        var pendingRows = await dbRequest('time_entries?status=eq.submitted&order=work_date.asc&select=*');
-        html += '<div class="tk-entry-card">'
-          + '<div class="tk-section-title">Pending Approval (All Employees)</div>'
-          + renderTkTable(pendingRows, true)
+      if(editable){
+        html += '<div class="tk-grid-actions">'
+          + '<div class="login-error" id="tkg-save-error" style="margin-top:0;flex:1;"></div>'
+          + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="saveTkPeriod(\'' + startISO + '\',\'' + endISO + '\')">Save Period</button>'
           + '</div>';
       }
 
+      html += '</div>';
       container.innerHTML = html;
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load timekeeping</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
@@ -1442,68 +1588,211 @@
     }
   }
 
-  function renderTkTable(rows, showApprovalActions){
-    if(!rows.length){
-      return '<div class="tk-empty">No entries yet.</div>';
+  function tkNavPeriod(containerId, editableFlag, dir){
+    if(containerId === 'tk-current'){
+      tkCurrentPeriodOffset += dir;
+      loadTkPeriod(containerId, tkCurrentPeriodOffset, true);
+    } else {
+      tkHistoryPeriodOffset += dir;
+      loadTkPeriod(containerId, tkHistoryPeriodOffset, false);
     }
-    var body = rows.map(function(r){
-      var actions = '—';
-      if(showApprovalActions && r.status === 'submitted'){
-        actions = '<button class="tk-approve-btn" onclick="reviewTimeEntry(\'' + r.id + '\',\'approved\')">Approve</button>'
-          + '<button class="tk-reject-btn" onclick="reviewTimeEntry(\'' + r.id + '\',\'rejected\')">Reject</button>';
-      }
-      return '<tr>'
-        + '<td>' + formatDate(r.work_date) + '</td>'
-        + '<td>' + (r.hours != null ? r.hours : '—') + '</td>'
-        + '<td>' + (r.earning_type || '—') + '</td>'
-        + '<td>' + tkStatusPill(r.status || 'draft') + '</td>'
-        + '<td>' + actions + '</td>'
-        + '</tr>';
-    }).join('');
-    return '<table class="tk-table">'
-      + '<thead><tr><th>Date</th><th>Hours</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>'
-      + '<tbody>' + body + '</tbody>'
-      + '</table>';
   }
 
-  async function submitTimeEntry(){
-    var errorEl = document.getElementById('tk-entry-error');
-    var session = getSession();
-    var dateVal = document.getElementById('tk-date').value;
-    var hoursVal = document.getElementById('tk-hours').value;
-    var typeVal = document.getElementById('tk-type').value;
+  function tkRecalcRow(iso){
+    var startEl = document.getElementById('tkg-start-' + iso);
+    var endEl = document.getElementById('tkg-end-' + iso);
+    var hoursEl = document.getElementById('tkg-hours-' + iso);
+    var errorEl = document.getElementById('tkg-error-' + iso);
+    if(!startEl || !endEl){ return; }
     errorEl.textContent = '';
+    startEl.classList.remove('tk-input-error');
+    endEl.classList.remove('tk-input-error');
 
-    if(!dateVal || !hoursVal){
-      errorEl.textContent = 'Enter a date and number of hours.';
+    var result = tkHoursFromTimes(startEl.value, endEl.value);
+    if(result === 'error'){
+      errorEl.textContent = 'Stop must be after Start.';
+      startEl.classList.add('tk-input-error');
+      endEl.classList.add('tk-input-error');
+      hoursEl.textContent = '—';
+      hoursEl.dataset.invalid = '1';
+    } else {
+      hoursEl.textContent = result == null ? '—' : result;
+      delete hoursEl.dataset.invalid;
+    }
+  }
+
+  async function saveTkPeriod(startISO, endISO){
+    var session = getSession();
+    var saveErrorEl = document.getElementById('tkg-save-error');
+    saveErrorEl.textContent = '';
+
+    var rows = document.querySelectorAll('#tk-current tr[data-date]');
+    var hasError = false;
+    var payload = [];
+
+    rows.forEach(function(tr){
+      var iso = tr.dataset.date;
+      var hoursEl = document.getElementById('tkg-hours-' + iso);
+      if(hoursEl && hoursEl.dataset.invalid){ hasError = true; }
+    });
+
+    if(hasError){
+      saveErrorEl.textContent = 'Fix invalid Start/Stop times before saving (Stop must be after Start).';
       return;
     }
 
-    try{
-      await dbWrite('time_entries', 'POST', {
-        employee_id: session.user.id,
-        work_date: dateVal,
-        hours: parseFloat(hoursVal),
-        earning_type: typeVal,
-        status: 'submitted'
+    rows.forEach(function(tr){
+      var iso = tr.dataset.date;
+      var startEl = document.getElementById('tkg-start-' + iso);
+      var endEl = document.getElementById('tkg-end-' + iso);
+      var projEl = document.getElementById('tkg-proj-' + iso);
+      if(!startEl || startEl.disabled){ return; } // skip PTO rows, untouched
+      if(!startEl.value && !endEl.value){ return; } // skip empty days
+      var hoursResult = tkHoursFromTimes(startEl.value, endEl.value);
+      if(hoursResult === 'error' || hoursResult == null){ return; }
+      payload.push({
+        work_date: iso,
+        day_start: startEl.value,
+        day_end: endEl.value,
+        project_id: projEl.value || null,
+        hours: hoursResult
       });
-      loadTimekeeping();
+    });
+
+    // Weekly OT recalculation across the two weeks of this period
+    var week1Total = 0, week2Total = 0;
+    payload.forEach(function(p){
+      var dayIdx = Math.round((new Date(p.work_date + 'T00:00:00') - new Date(startISO + 'T00:00:00')) / TK_DAY_MS);
+      if(dayIdx < 7){ week1Total += p.hours; } else { week2Total += p.hours; }
+    });
+
+    try{
+      for(var i=0;i<payload.length;i++){
+        var p = payload[i];
+        var dayIdx = Math.round((new Date(p.work_date + 'T00:00:00') - new Date(startISO + 'T00:00:00')) / TK_DAY_MS);
+        var existing = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=eq.' + p.work_date + '&select=id');
+        var body = {
+          employee_id: session.user.id,
+          work_date: p.work_date,
+          day_start: p.day_start,
+          day_end: p.day_end,
+          project_id: p.project_id,
+          hours: p.hours,
+          earning_type: 'regular',
+          status: 'submitted'
+        };
+        if(existing.length){
+          await dbWrite('time_entries?id=eq.' + existing[0].id, 'PATCH', body);
+        } else {
+          await dbWrite('time_entries', 'POST', body);
+        }
+      }
+      loadTkPeriod('tk-current', tkCurrentPeriodOffset, true);
     }catch(e){
-      errorEl.textContent = 'Could not submit entry — try again.';
+      saveErrorEl.textContent = 'Could not save period — try again.';
       console.error(e);
     }
   }
 
-  async function reviewTimeEntry(id, newStatus){
+  // ---- PTO Request ----
+  function loadPtoRequest(){
+    var container = document.getElementById('tk-ptorequest');
+    container.innerHTML = '<div class="tk-entry-card">'
+      + '<div class="tk-section-title">Request PTO</div>'
+      + '<div class="tk-pto-form-grid">'
+      + '<div><label class="field-label" for="pto-start">Start Date</label><input type="date" id="pto-start" class="field-input"></div>'
+      + '<div><label class="field-label" for="pto-end">End Date</label><input type="date" id="pto-end" class="field-input"></div>'
+      + '<button class="btn btn-primary" style="width:auto;padding:12px 20px;white-space:nowrap;" onclick="submitPtoRequest()">Submit Request</button>'
+      + '</div>'
+      + '<div class="login-error" id="pto-request-error"></div>'
+      + '</div>';
+  }
+
+  async function submitPtoRequest(){
+    var errorEl = document.getElementById('pto-request-error');
     var session = getSession();
+    var startVal = document.getElementById('pto-start').value;
+    var endVal = document.getElementById('pto-end').value;
+    errorEl.textContent = '';
+
+    if(!startVal || !endVal){
+      errorEl.textContent = 'Enter a start and end date.';
+      return;
+    }
+    if(new Date(endVal) < new Date(startVal)){
+      errorEl.textContent = 'End date must be on or after start date.';
+      return;
+    }
+
     try{
-      await dbWrite('time_entries?id=eq.' + id, 'PATCH', {
-        status: newStatus,
-        approved_by: session.user.id,
-        approved_at: new Date().toISOString()
-      });
-      loadTimekeeping();
+      var d = new Date(startVal + 'T00:00:00');
+      var end = new Date(endVal + 'T00:00:00');
+      var inserts = [];
+      while(d <= end){
+        inserts.push({
+          employee_id: session.user.id,
+          work_date: tkDateToISO(d),
+          hours: 8,
+          earning_type: 'pto',
+          status: 'pending'
+        });
+        d = new Date(d.getTime() + TK_DAY_MS);
+      }
+      for(var i=0;i<inserts.length;i++){
+        await dbWrite('time_entries', 'POST', inserts[i]);
+      }
+      document.getElementById('pto-start').value = '';
+      document.getElementById('pto-end').value = '';
+      errorEl.style.color = 'var(--teal)';
+      errorEl.textContent = 'PTO request submitted for manager approval.';
     }catch(e){
+      errorEl.style.color = 'var(--red)';
+      errorEl.textContent = 'Could not submit request — try again.';
+      console.error(e);
+    }
+  }
+
+  // ---- PTO Balance ----
+  async function loadPtoBalance(){
+    var container = document.getElementById('tk-ptobalance');
+    var session = getSession();
+    if(!session || !session.user){ return; }
+
+    try{
+      var profRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=pto_balance_hours,pto_accrual_rate');
+      var prof = profRows.length ? profRows[0] : { pto_balance_hours:0, pto_accrual_rate:0 };
+      var currentBalance = parseFloat(prof.pto_balance_hours) || 0;
+      var accrualRate = parseFloat(prof.pto_accrual_rate) || 0;
+
+      var bounds = tkPeriodBounds(tkCurrentPeriodOffset);
+      var startISO = tkDateToISO(bounds.start);
+      var endISO = tkDateToISO(bounds.end);
+      var ptoRows = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&earning_type=eq.pto&status=eq.pending&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=hours');
+      var pendingPtoHours = ptoRows.reduce(function(sum,r){ return sum + (parseFloat(r.hours)||0); }, 0);
+      var pendingBalance = currentBalance - pendingPtoHours;
+
+      var todayOffset = tkOffsetForToday();
+      var yearEnd = new Date(new Date().getFullYear() + '-12-31T00:00:00');
+      var periodsRemaining = 0;
+      var cursorOffset = todayOffset;
+      while(tkPeriodBounds(cursorOffset).end <= yearEnd){
+        periodsRemaining++;
+        cursorOffset++;
+      }
+      var projectedEarn = periodsRemaining * accrualRate;
+      var projectedTotal = currentBalance + projectedEarn;
+
+      container.innerHTML = '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">PTO Balance</div>'
+        + '<div class="tk-pto-balance-grid">'
+        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Current Balance</div><div class="tk-pto-stat-val">' + currentBalance.toFixed(2) + '</div><div class="tk-pto-stat-sub">hours available</div></div>'
+        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Pending Balance</div><div class="tk-pto-stat-val">' + pendingBalance.toFixed(2) + '</div><div class="tk-pto-stat-sub">after current period\'s unapproved PTO</div></div>'
+        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Accrual Rate</div><div class="tk-pto-stat-val">' + accrualRate.toFixed(2) + '</div><div class="tk-pto-stat-sub">hours per pay period</div></div>'
+        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Projected by Dec 31</div><div class="tk-pto-stat-val">+' + projectedEarn.toFixed(2) + '</div><div class="tk-pto-stat-sub">projected total: ' + projectedTotal.toFixed(2) + ' hrs</div></div>'
+        + '</div>'
+        + '</div>';
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load PTO balance</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
   }
