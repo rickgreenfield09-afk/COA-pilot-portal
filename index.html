@@ -175,11 +175,12 @@
   .alert-stack{display:flex;flex-direction:column;gap:0;}
 
   /* ---------- Quick time entry card (narrow column, in alert-stack) ---------- */
-  .quick-entry-col{display:flex;flex-direction:column;gap:10px;}
-  .quick-entry-col .field-label{margin-bottom:6px;}
-  .quick-entry-col select.field-input,.quick-entry-col input.field-input{margin-bottom:0;}
-  .quick-entry-col button{margin-top:2px;}
-  .qte-hours-input{max-width:64px;text-align:center;}
+  .quick-entry-row{display:grid;grid-template-columns:60px 1fr 1fr auto;gap:10px;align-items:end;}
+  .quick-entry-row .field-label{margin-bottom:6px;}
+  .quick-entry-row select.field-input,.quick-entry-row input.field-input{margin-bottom:0;}
+  .quick-entry-row button{white-space:nowrap;padding:11px 16px;}
+  .qte-hours-input{text-align:center;}
+  @media (max-width:500px){.quick-entry-row{grid-template-columns:1fr;}}
 
   @media (max-width:900px){
     .shortcuts-grid{grid-template-columns:repeat(2,1fr);}
@@ -258,11 +259,12 @@
 
   /* PTO balance */
   .tk-pto-balance-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;}
+  .tk-pto-summary-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
   .tk-pto-stat-box{background:var(--raised);border-radius:6px;padding:16px;}
   .tk-pto-stat-label{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;}
   .tk-pto-stat-val{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--teal);}
   .tk-pto-stat-sub{font-size:11px;color:var(--sub);margin-top:4px;}
-  @media (max-width:700px){.tk-pto-balance-grid{grid-template-columns:1fr;}}
+  @media (max-width:700px){.tk-pto-balance-grid{grid-template-columns:1fr;}.tk-pto-summary-row{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -1366,10 +1368,10 @@
         + '</div>'
         + '<div class="dash-card" style="margin-top:16px;">'
         + '<div class="dash-card-title">Quick Time Entry</div>'
-        + '<div class="quick-entry-col">'
+        + '<div class="quick-entry-row">'
         + '<div><label class="field-label" for="qte-hours">Hours</label><input type="text" inputmode="decimal" id="qte-hours" class="field-input qte-hours-input" maxlength="2" placeholder="8"></div>'
         + '<div><label class="field-label" for="qte-status">Status</label><select id="qte-status" class="field-input">'
-        + TK_TYPES.map(function(t){ return '<option value="' + t + '">' + TK_TYPE_LABELS[t] + '</option>'; }).join('')
+        + TK_SELECTABLE_TYPES.map(function(t){ return '<option value="' + t + '">' + TK_TYPE_LABELS[t] + '</option>'; }).join('')
         + '</select></div>'
         + '<div><label class="field-label" for="qte-project">Project</label><select id="qte-project" class="field-input">'
         + projectOptions
@@ -1434,6 +1436,7 @@
   // ---------- Timekeeping ----------
   var TK_TYPES = ['regular', 'overtime', 'pto', 'training', 'travel', 'admin', 'award'];
   var TK_TYPE_LABELS = { regular:'Regular', overtime:'Overtime', pto:'PTO', training:'Training', travel:'Travel', admin:'Admin', award:'Award' };
+  var TK_SELECTABLE_TYPES = ['regular', 'pto', 'training', 'travel', 'admin', 'award']; // overtime is system-assigned only, never user-selectable
   var TK_ANCHOR = new Date('2026-06-21T00:00:00');
   var TK_DAY_MS = 24 * 60 * 60 * 1000;
   var tkCurrentPeriodOffset = 0;   // 0 = period containing today, -1 = prior period, etc. (Current Period tab)
@@ -1549,17 +1552,28 @@
         days.push(new Date(bounds.start.getTime() + i*TK_DAY_MS));
       }
 
+      // Current Period: only the period containing today is actually editable.
+      // Future periods are viewable (so people can see what's coming) but
+      // locked for entry until that period arrives. History stays read-only
+      // regardless (editable param is false for History from the start).
+      var todayOffset = tkOffsetForToday();
+      var isFuturePeriod = editable && offset > todayOffset;
+      var gridEditable = editable && !isFuturePeriod;
+
       var navHtml = '';
       if(showNav){
+        var showPrev = offset > todayOffset; // only appears once they've moved forward past today's period
+        var showToday = offset !== todayOffset;
         navHtml = '<div class="tk-period-nav">'
-          + '<button class="tk-period-nav-btn" onclick="tkNavPeriod(\'' + containerId + '\',' + (editable?1:0) + ',-1)">&larr; Prev</button>'
+          + (showPrev ? '<button class="tk-period-nav-btn" onclick="tkNavPeriod(\'' + containerId + '\',' + (editable?1:0) + ',-1)">&larr; Prev</button>' : '')
+          + (showToday ? '<button class="tk-period-nav-btn" onclick="tkGoToCurrentPeriod(\'' + containerId + '\')">Today</button>' : '')
           + '<button class="tk-period-nav-btn" onclick="tkNavPeriod(\'' + containerId + '\',' + (editable?1:0) + ',1)">Next &rarr;</button>'
           + '</div>';
       }
 
       var html = '<div class="tk-entry-card">'
         + '<div class="tk-period-header">'
-        + '<div><div class="tk-period-label">Pay Period ' + tkPeriodNumber(offset) + '</div>'
+        + '<div><div class="tk-period-label">Pay Period ' + tkPeriodNumber(offset) + (isFuturePeriod ? ' <span class="tk-status-pill draft" style="margin-left:6px;">Upcoming — view only</span>' : '') + '</div>'
         + '<div class="tk-period-dates">' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div></div>'
         + navHtml
         + '</div>'
@@ -1584,7 +1598,7 @@
         var hours = row && row.hours != null ? row.hours : 0;
         weekTotals[weekIdx] += hours;
 
-        var rowEditable = editable && !isLockedType;
+        var rowEditable = gridEditable && !isLockedType;
         var inputAttrs = rowEditable ? '' : 'disabled';
 
         var projectSelect = '<select class="tk-grid-input" id="tkg-proj-' + iso + '" ' + (rowEditable ? '' : 'disabled') + '>'
@@ -1592,8 +1606,11 @@
           + projects.map(function(p){ return '<option value="' + p.id + '"' + (p.id === projectVal ? ' selected' : '') + '>' + p.name + '</option>'; }).join('')
           + '</select>';
 
-        var statusSelect = '<select class="tk-grid-input" id="tkg-type-' + iso + '" ' + (rowEditable ? '' : 'disabled') + '>'
-          + TK_TYPES.map(function(t){ return '<option value="' + t + '"' + (t === earningType ? ' selected' : '') + '>' + TK_TYPE_LABELS[t] + '</option>'; }).join('')
+        var statusOptions = earningType === 'overtime'
+          ? '<option value="overtime" selected>Overtime (system-assigned)</option>'
+          : TK_SELECTABLE_TYPES.map(function(t){ return '<option value="' + t + '"' + (t === earningType ? ' selected' : '') + '>' + TK_TYPE_LABELS[t] + '</option>'; }).join('');
+        var statusSelect = '<select class="tk-grid-input" id="tkg-type-' + iso + '" ' + (rowEditable && earningType !== 'overtime' ? '' : 'disabled') + '>'
+          + statusOptions
           + '</select>';
 
         var startCell = rowEditable
@@ -1623,7 +1640,7 @@
         + '<div class="tk-grid-footer-item">Total: <span>' + (weekTotals[0]+weekTotals[1]).toFixed(2) + ' hrs</span></div>'
         + '</div>';
 
-      if(editable){
+      if(gridEditable){
         html += '<div class="tk-grid-actions">'
           + '<div class="login-error" id="tkg-save-error" style="margin-top:0;flex:1;"></div>'
           + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="saveTkPeriod(\'' + startISO + '\',\'' + endISO + '\')">Save Period</button>'
@@ -1647,13 +1664,15 @@
   }
 
   function tkNavPeriod(containerId, editableFlag, dir){
-    if(containerId === 'tk-current'){
-      tkCurrentPeriodOffset += dir;
-      loadTkPeriod(containerId, tkCurrentPeriodOffset, true);
-    } else {
-      tkHistoryPeriodOffset += dir;
-      loadTkPeriod(containerId, tkHistoryPeriodOffset, false);
-    }
+    // Only Current Period uses this now — History is driven entirely by
+    // the year/period dropdowns (initTkHistory / tkHistoryPeriodChanged).
+    tkCurrentPeriodOffset += dir;
+    loadTkPeriod(containerId, tkCurrentPeriodOffset, true);
+  }
+
+  function tkGoToCurrentPeriod(containerId){
+    tkCurrentPeriodOffset = tkOffsetForToday();
+    loadTkPeriod(containerId, tkCurrentPeriodOffset, true);
   }
 
   // ---- History: year + period dropdowns drive which period's grid renders ----
@@ -1841,7 +1860,7 @@
     try{
       var stats = await tkComputePtoStats();
       container.innerHTML = '<div class="tk-entry-card">'
-        + '<div class="tk-pto-balance-grid" style="margin-bottom:4px;">'
+        + '<div class="tk-pto-summary-row" style="margin-bottom:4px;">'
         + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Current Balance</div><div class="tk-pto-stat-val">' + stats.currentBalance.toFixed(2) + '</div></div>'
         + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Pending Balance</div><div class="tk-pto-stat-val">' + stats.pendingBalance.toFixed(2) + '</div></div>'
         + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Projected by Dec 31</div><div class="tk-pto-stat-val">' + stats.projectedTotal.toFixed(2) + '</div></div>'
