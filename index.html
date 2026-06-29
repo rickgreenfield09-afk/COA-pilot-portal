@@ -3844,10 +3844,16 @@
         + '<label for="trav-self-book">I want to research and propose my own travel arrangements</label>'
         + '</div>'
         + '<div id="trav-proposed-wrap" style="display:none;margin-bottom:14px;">'
-        + '<div class="resume-section"><div class="resume-section-title">Flights</div><div id="trav-flight-rows"></div>'
-        + '<button type="button" class="btn-add-row" onclick="addTravelFlightRow()">+ Add flight</button></div>'
+        + '<div class="resume-section"><div class="resume-section-title">Flights</div><div id="trav-flight-rows"></div></div>'
         + '<div class="resume-section" id="trav-hotel-section"><div class="resume-section-title">Hotel</div></div>'
-        + '<div class="resume-section" id="trav-car-section"><div class="resume-section-title">Car Rental</div></div>'
+        + '<div class="resume-section" id="trav-car-section">'
+        + '<div class="resume-section-title">Car Rental</div>'
+        + '<div class="resume-row-checkbox" style="margin-bottom:10px;">'
+        + '<input type="checkbox" id="trav-rideshare" onchange="travelRideshareToggled()">'
+        + '<label for="trav-rideshare">I will use ride share services (no rental car needed)</label>'
+        + '</div>'
+        + '<div id="trav-car-fields-wrap"></div>'
+        + '</div>'
         + '<div class="tk-entry-card" style="margin-top:14px;margin-bottom:0;">'
         + '<div class="tk-pto-summary-row">'
         + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Flights</div><div class="tk-pto-stat-val" id="trav-total-flights">$0.00</div></div>'
@@ -3868,8 +3874,9 @@
         + (await travelRenderMyRequestsTable(session.user.id))
         + '</div>';
 
+      travelRenderFlightLegs();
       document.getElementById('trav-hotel-section').insertAdjacentHTML('beforeend', travelHotelSectionHtml());
-      document.getElementById('trav-car-section').insertAdjacentHTML('beforeend', travelCarSectionHtml());
+      document.getElementById('trav-car-fields-wrap').insertAdjacentHTML('beforeend', travelCarSectionHtml());
 
       travelPreferenceWasChecked = false;
     }catch(e){
@@ -3897,7 +3904,14 @@
   }
 
   function travelProposedHasData(){
-    if(document.querySelectorAll('#trav-flight-rows .trav-flight-row').length){ return true; }
+    var flightHasData = Array.prototype.some.call(document.querySelectorAll('#trav-flight-rows .trav-flight-row'), function(row){
+      return Array.prototype.some.call(row.querySelectorAll('[data-field]'), function(el){
+        if(el.dataset.field === 'cost'){ return (parseFloat(el.value) || 0) > 0; }
+        return el.value && el.value.trim();
+      });
+    });
+    if(flightHasData){ return true; }
+
     var hotelInputs = ['trav-hotel-city','trav-hotel-state','trav-hotel-chain','trav-hotel-checkin','trav-hotel-checkout'];
     var carInputs = ['trav-car-chain','trav-car-pickup-loc','trav-car-pickup-date','trav-car-dropoff-loc','trav-car-dropoff-date'];
     var anyFilled = hotelInputs.concat(carInputs).some(function(id){
@@ -3910,11 +3924,14 @@
   }
 
   function travelClearProposedForm(){
-    document.getElementById('trav-flight-rows').innerHTML = '';
+    document.getElementById('trav-rideshare').checked = false;
+    if(document.getElementById('trav-oneway')){ document.getElementById('trav-oneway').checked = false; }
+    travelRenderFlightLegs();
     document.getElementById('trav-hotel-section').innerHTML = '<div class="resume-section-title">Hotel</div>' + travelHotelSectionHtml();
-    document.getElementById('trav-car-section').innerHTML = '<div class="resume-section-title">Car Rental</div>' + travelCarSectionHtml();
+    document.getElementById('trav-car-fields-wrap').innerHTML = travelCarSectionHtml();
     recalcTravelTotals();
   }
+
 
   function travelPreferenceToggled(){
     var checkbox = document.getElementById('trav-self-book');
@@ -3948,8 +3965,20 @@
     return opts;
   }
 
-  function travelFlightRowHtml(){
-    return '<div class="resume-row trav-flight-row">'
+  function travelFlightRowHtml(leg){
+    var isDeparture = leg === 'departure';
+    var legLabel = isDeparture ? 'Departure Flight' : 'Return Flight';
+    var rowId = isDeparture ? 'trav-flight-departure' : 'trav-flight-return';
+
+    var onewayCheckbox = isDeparture
+      ? '<div class="resume-row-checkbox" style="margin-top:10px;">'
+        + '<input type="checkbox" id="trav-oneway" onchange="travelOnewayToggled()">'
+        + '<label for="trav-oneway">This is one-way travel (no return flight)</label>'
+        + '</div>'
+      : '';
+
+    return '<div class="resume-row trav-flight-row" id="' + rowId + '" data-leg="' + leg + '">'
+      + '<div class="resume-row-header">' + legLabel + '</div>'
       + '<div class="resume-row-grid">'
       + '<div class="field-mini-wrap"><span class="field-mini-label">Departure City</span><input class="info-edit-input" data-field="departure_city"></div>'
       + '<div class="field-mini-wrap"><span class="field-mini-label">Departure State</span><input class="info-edit-input" data-field="departure_state"></div>'
@@ -3962,12 +3991,80 @@
       + '<div class="field-mini-wrap"><span class="field-mini-label">Known Traveler Number</span><div class="info-val" style="padding:6px 8px;">' + (travelOwnKtn || '—') + '</div></div>'
       + '<div class="field-mini-wrap"><span class="field-mini-label">Airline Rewards</span><select class="info-edit-input" data-field="rewards_program">' + travelRewardsOptionsHtml('airline') + '</select></div>'
       + '</div>'
-      + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.trav-flight-row\').remove();recalcTravelTotals();">Remove</button>'
+      + onewayCheckbox
       + '</div>';
   }
 
-  function addTravelFlightRow(){
-    document.getElementById('trav-flight-rows').insertAdjacentHTML('beforeend', travelFlightRowHtml());
+  function travelRenderFlightLegs(){
+    document.getElementById('trav-flight-rows').innerHTML =
+      travelFlightRowHtml('departure') + travelFlightRowHtml('return');
+  }
+
+  function travelLegHasData(rowId){
+    var row = document.getElementById(rowId);
+    if(!row){ return false; }
+    var anyText = Array.prototype.some.call(row.querySelectorAll('input[data-field], select[data-field]'), function(el){
+      if(el.dataset.field === 'cost'){ return (parseFloat(el.value) || 0) > 0; }
+      return el.value && el.value.trim();
+    });
+    return anyText;
+  }
+
+  function travelOnewayToggled(){
+    var checkbox = document.getElementById('trav-oneway');
+    var returnRow = document.getElementById('trav-flight-return');
+
+    if(checkbox.checked){
+      if(travelLegHasData('trav-flight-return')){
+        var confirmed = confirm('Marking this as one-way will delete the Return Flight details you already entered. Continue?');
+        if(!confirmed){
+          checkbox.checked = false;
+          return;
+        }
+      }
+      if(returnRow){ returnRow.remove(); }
+      recalcTravelTotals();
+      return;
+    }
+
+    // Re-checking off one-way: restore an empty Return Flight card.
+    if(!document.getElementById('trav-flight-return')){
+      document.getElementById('trav-flight-rows').insertAdjacentHTML('beforeend', travelFlightRowHtml('return'));
+    }
+  }
+
+  function travelCarRowHasData(){
+    if(!document.getElementById('trav-car-row')){ return false; }
+    var fieldIds = ['trav-car-chain','trav-car-pickup-loc','trav-car-pickup-date','trav-car-dropoff-loc','trav-car-dropoff-date'];
+    var anyFilled = fieldIds.some(function(id){
+      var el = document.getElementById(id);
+      return el && el.value && el.value.trim();
+    });
+    var anyCost = (parseFloat((document.getElementById('trav-car-cost')||{}).value) || 0) > 0;
+    return anyFilled || anyCost;
+  }
+
+  function travelRideshareToggled(){
+    var checkbox = document.getElementById('trav-rideshare');
+    var fieldsWrap = document.getElementById('trav-car-fields-wrap');
+
+    if(checkbox.checked){
+      if(travelCarRowHasData()){
+        var confirmed = confirm('Choosing ride share will delete the rental car details you already entered. Continue?');
+        if(!confirmed){
+          checkbox.checked = false;
+          return;
+        }
+      }
+      fieldsWrap.innerHTML = '';
+      recalcTravelTotals();
+      return;
+    }
+
+    // Re-checking off ride share: restore empty rental car fields.
+    if(!document.getElementById('trav-car-row')){
+      fieldsWrap.innerHTML = travelCarSectionHtml();
+    }
   }
 
   function travelHotelSectionHtml(){
@@ -4017,7 +4114,7 @@
     var rows = document.querySelectorAll('#trav-flight-rows .trav-flight-row');
     var out = [];
     rows.forEach(function(row){
-      var obj = {};
+      var obj = { leg: row.dataset.leg };
       row.querySelectorAll('[data-field]').forEach(function(el){
         obj[el.dataset.field] = el.tagName === 'SELECT' ? el.value : (el.value || '');
       });
