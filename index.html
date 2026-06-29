@@ -350,15 +350,6 @@
           </div>
         </div>
         <div class="prof-subscreen" id="prof-resume">
-          <div class="resume-search-wrap" id="resume-search-wrap" style="display:none;">
-            <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract..." oninput="debounceSearchResumes()">
-            <div id="resume-search-results"></div>
-            <div class="resume-cart" style="width:100%;">
-              <div class="resume-cart-title">Resume Export Cart</div>
-              <div id="resume-cart-list"><div class="resume-cart-empty">No resumes added yet.</div></div>
-              <button class="btn-edit" id="print-cart-btn" onclick="printResumeCart()" disabled style="margin-top:8px;">Print Selected (0)</button>
-            </div>
-          </div>
           <div id="resume-viewing-banner"></div>
           <div id="resume-content">
             <div class="placeholder-card">
@@ -448,8 +439,18 @@
           <button class="subtab-btn" data-adminsubtab="assets" onclick="switchAdminSubtab('assets')">Assets</button>
         </div>
         <div class="admin-subscreen active" id="admin-resumes">
-          <div id="admin-resumes-content">
-            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          <div class="resume-search-wrap" id="resume-search-wrap">
+            <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract..." oninput="debounceSearchResumes()">
+            <div id="resume-search-results"></div>
+            <div class="resume-cart" style="width:100%;">
+              <div class="resume-cart-title">Resume Export Cart</div>
+              <div id="resume-cart-list"><div class="resume-cart-empty">No resumes added yet.</div></div>
+              <button class="btn-edit" id="print-cart-btn" onclick="printResumeCart()" disabled style="margin-top:8px;">Print Selected (0)</button>
+            </div>
+          </div>
+          <div id="admin-resume-viewing-banner"></div>
+          <div id="admin-resume-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Search for an employee above to view their resume.</div></div>
           </div>
         </div>
         <div class="admin-subscreen" id="admin-assets">
@@ -848,8 +849,10 @@
     return out;
   }
 
-  async function loadResume(ownerId){
-    var container = document.getElementById('resume-content');
+  async function loadResume(ownerId, containerId, bannerId){
+    containerId = containerId || 'resume-content';
+    bannerId = bannerId || 'resume-viewing-banner';
+    var container = document.getElementById(containerId);
     container.innerHTML = '<div class="placeholder-card"><div class="placeholder-sub">Loading resume...</div></div>';
     try{
       var rows = await dbRequest('resumes?id=eq.' + ownerId + '&select=*,profiles(full_name,job_title)');
@@ -861,26 +864,28 @@
       currentResumeOwner = rows[0].profiles || {};
       currentResumeOwner.id = ownerId;
       isEditingResume = false;
-      renderResumeBanner();
-      renderResume(currentResume, currentResumeOwner, false);
+      renderResumeBanner(bannerId);
+      renderResume(currentResume, currentResumeOwner, false, containerId);
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load resume</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
   }
 
-  function renderResumeBanner(){
-    var el = document.getElementById('resume-viewing-banner');
+  function renderResumeBanner(bannerId){
+    bannerId = bannerId || 'resume-viewing-banner';
+    var inAdminContext = bannerId === 'admin-resume-viewing-banner';
+    var el = document.getElementById(bannerId);
     var session = getSession();
     if(currentResumeOwner.id !== session.user.id){
-      el.innerHTML = '<div class="resume-viewing-banner">Viewing <strong>' + (currentResumeOwner.full_name || '—') + '</strong>\'s resume &nbsp;·&nbsp; <a href="#" onclick="requestViewResume(\'' + session.user.id + '\');return false;">Back to mine</a></div>';
+      el.innerHTML = '<div class="resume-viewing-banner">Viewing <strong>' + (currentResumeOwner.full_name || '—') + '</strong>\'s resume &nbsp;·&nbsp; <a href="#" onclick="requestViewResume(\'' + session.user.id + '\',' + inAdminContext + ');return false;">Back to mine</a></div>';
     }else{
       el.innerHTML = '';
     }
   }
 
-  function renderResume(r, owner, editMode){
-    var container = document.getElementById('resume-content');
+  function renderResume(r, owner, editMode, containerId){
+    var container = document.getElementById(containerId || 'resume-content');
     var editable = editMode && canEditResume();
 
     function listView(label, items, formatter){
@@ -1063,12 +1068,14 @@
   }
 
   function editResume(){
-    renderResume(currentResume, currentResumeOwner, true);
+    var inAdminContext = document.getElementById('screen-admin') && document.getElementById('screen-admin').classList.contains('active');
+    renderResume(currentResume, currentResumeOwner, true, inAdminContext ? 'admin-resume-content' : 'resume-content');
   }
 
   function requestCancelResumeEdit(){
     isEditingResume = false;
-    loadResume(currentResumeOwner.id);
+    var inAdminContext = document.getElementById('screen-admin') && document.getElementById('screen-admin').classList.contains('active');
+    loadResume(currentResumeOwner.id, inAdminContext ? 'admin-resume-content' : 'resume-content', inAdminContext ? 'admin-resume-viewing-banner' : 'resume-viewing-banner');
   }
 
   function validateRequiredRows(containerId, requiredFields, rowLabel){
@@ -1125,20 +1132,23 @@
       if(!res.ok){ throw new Error('Save failed'); }
       statusEl.textContent = 'Saved';
       isEditingResume = false;
-      setTimeout(function(){ loadResume(currentResumeOwner.id); }, 600);
+      var inAdminContext = document.getElementById('screen-admin') && document.getElementById('screen-admin').classList.contains('active');
+      setTimeout(function(){ loadResume(currentResumeOwner.id, inAdminContext ? 'admin-resume-content' : 'resume-content', inAdminContext ? 'admin-resume-viewing-banner' : 'resume-viewing-banner'); }, 600);
     }catch(e){
       statusEl.textContent = 'Save failed — try again';
       console.error(e);
     }
   }
 
-  function requestViewResume(ownerId){
+  function requestViewResume(ownerId, inAdminContext){
+    var containerId = inAdminContext ? 'admin-resume-content' : 'resume-content';
+    var bannerId = inAdminContext ? 'admin-resume-viewing-banner' : 'resume-viewing-banner';
     if(isEditingResume){
-      pendingNavTarget = function(){ loadResume(ownerId); };
+      pendingNavTarget = function(){ loadResume(ownerId, containerId, bannerId); };
       document.getElementById('unsaved-modal').classList.add('active');
       return;
     }
-    loadResume(ownerId);
+    loadResume(ownerId, containerId, bannerId);
   }
 
   var resumeSearchDebounce = null;
@@ -1171,7 +1181,7 @@
         var title = (r.profiles && r.profiles.job_title) || '';
         var inCart = resumeCart.indexOf(r.id) !== -1;
         return '<div class="search-result-row">'
-          + '<div onclick="requestViewResume(\'' + r.id + '\')" style="cursor:pointer;flex:1;"><div class="resume-view-row-title">' + name + (title ? ' · ' + title : '') + '</div></div>'
+          + '<div onclick="requestViewResume(\'' + r.id + '\',true)" style="cursor:pointer;flex:1;"><div class="resume-view-row-title">' + name + (title ? ' · ' + title : '') + '</div></div>'
           + '<button type="button" class="btn-cart-add" ' + (inCart ? 'disabled' : '') + ' onclick="event.stopPropagation();addToResumeCart(\'' + r.id + '\',\'' + escAttr(name).replace(/'/g, "\\'") + '\')">' + (inCart ? 'Added' : '+ Add to cart') + '</button>'
           + '</div>';
       }).join('');
@@ -1353,9 +1363,6 @@
     document.getElementById('prof-' + name).classList.add('active');
     if(name === 'overview'){ loadProfile(); }
     if(name === 'resume'){
-      document.getElementById('resume-search-wrap').style.display = isAdmin() ? 'block' : 'none';
-      document.getElementById('resume-search-input').value = '';
-      document.getElementById('resume-search-results').innerHTML = '';
       loadResume(getSession().user.id);
     }
     if(name === 'assets'){ loadProfileAssets(); }
@@ -1371,11 +1378,10 @@
   }
 
   function loadAdminResumes(){
-    var container = document.getElementById('admin-resumes-content');
-    container.innerHTML = '<div class="placeholder-card">'
-      + '<div class="placeholder-title">Browse Resumes</div>'
-      + '<div class="placeholder-sub">Resume search and viewing lives under Profile → Resume. <a href="#" onclick="requestSwitchScreen(\'profile\');setTimeout(function(){switchProfileSubtab(\'resume\');},0);return false;">Open Resume Search</a></div>'
-      + '</div>';
+    document.getElementById('resume-search-input').value = '';
+    document.getElementById('resume-search-results').innerHTML = '';
+    document.getElementById('admin-resume-viewing-banner').innerHTML = '';
+    document.getElementById('admin-resume-content').innerHTML = '<div class="placeholder-card"><div class="placeholder-sub">Search for an employee above to view their resume.</div></div>';
   }
 
   // ---------- Asset Tracker ----------
