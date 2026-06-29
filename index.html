@@ -222,9 +222,9 @@
   .dir-chart-toolbar-btn{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:8px 16px;font-size:12px;color:var(--sub);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
   .dir-chart-toolbar-btn:hover{border-color:var(--teal);color:var(--teal);}
   .dir-chart-scroll{overflow-x:auto;padding-bottom:20px;}
-  .dir-chart-root-wrap{display:flex;justify-content:flex-start;margin-bottom:0;padding-left:24px;}
-  .dir-chart-row{display:flex;justify-content:flex-start;position:relative;padding-left:24px;}
-  .dir-chart-row::before{content:'';position:absolute;top:0;left:48px;width:1px;height:24px;background:var(--border);}
+  .dir-chart-root-wrap{display:flex;justify-content:center;margin-bottom:0;}
+  .dir-chart-row{display:flex;justify-content:center;position:relative;}
+  .dir-chart-row::before{content:'';position:absolute;top:0;left:50%;width:1px;height:24px;background:var(--border);transform:translateX(-50%);}
   .dir-chart-branch{display:flex;flex-direction:column;align-items:center;padding-top:24px;position:relative;}
   /* Vertical stem from this branch's card up to the horizontal stub row */
   .dir-chart-branch::before{content:'';position:absolute;top:0;left:50%;width:1px;height:24px;background:var(--border);z-index:1;}
