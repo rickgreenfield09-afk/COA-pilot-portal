@@ -161,6 +161,8 @@
   .dash-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px 20px;}
   .dash-card-title{font-size:11px;font-family:'DM Mono',monospace;color:var(--teal);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;}
   .dash-card-empty{font-size:13px;color:var(--sub);padding:8px 0;}
+  .pending-group-header{font-size:10px;font-family:'DM Mono',monospace;color:var(--teal);letter-spacing:1.5px;text-transform:uppercase;margin-top:10px;}
+  .pending-group-header:first-child{margin-top:0;}
   .dash-card-badge{background:var(--raised);color:var(--muted);font-size:10px;font-family:'DM Mono',monospace;padding:2px 8px;border-radius:10px;}
   .dash-card-badge.soon{color:var(--amber);}
 
@@ -1326,14 +1328,41 @@
       var projectOptions = projectRows.map(function(pr){ return '<option value="' + pr.id + '">' + pr.name + '</option>'; }).join('');
 
       var pendingApprovalsHtml = '<div class="dash-card-empty">Nothing pending.</div>';
-      if(isAdmin()){
-        try{
-          var pendingCount = await dbRequest('time_entries?status=eq.submitted&select=id');
-          pendingApprovalsHtml = pendingCount.length
-            ? '<div class="dash-card-empty">' + pendingCount.length + ' time entr' + (pendingCount.length === 1 ? 'y' : 'ies') + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'timekeeping\');return false;">Review</a></div>'
-            : '<div class="dash-card-empty">Nothing pending.</div>';
-        }catch(e){ console.error(e); }
-      }
+      try{
+        var reportIds = [];
+        if(isAdmin()){
+          var allEmployees = await dbRequest('profiles?select=id');
+          reportIds = allEmployees.map(function(e){ return e.id; });
+        } else {
+          var reports = await dbRequest('profiles?manager_id=eq.' + session.user.id + '&select=id');
+          reportIds = reports.map(function(r){ return r.id; });
+        }
+
+        if(reportIds.length){
+          var idFilter = 'employee_id=in.(' + reportIds.join(',') + ')';
+          var pendingRows = await dbRequest('time_entries?' + idFilter + '&status=in.(submitted,pending)&select=id,earning_type,status');
+
+          var groups = { timecard: [], pto: [], training: [], travel: [], admin: [], award: [] };
+          pendingRows.forEach(function(r){
+            if(r.status === 'submitted'){ groups.timecard.push(r); }
+            else if(r.earning_type === 'pto'){ groups.pto.push(r); }
+            else if(r.earning_type === 'training'){ groups.training.push(r); }
+            else if(r.earning_type === 'travel'){ groups.travel.push(r); }
+            else if(r.earning_type === 'admin'){ groups.admin.push(r); }
+            else if(r.earning_type === 'award'){ groups.award.push(r); }
+          });
+
+          var groupLabels = { timecard:'Time Cards', pto:'PTO', training:'Training', travel:'Travel', admin:'Admin', award:'Award' };
+          var sectionsHtml = '';
+          Object.keys(groups).forEach(function(key){
+            if(!groups[key].length){ return; } // header only renders when that type is present
+            sectionsHtml += '<div class="pending-group-header">' + groupLabels[key] + '</div>'
+              + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'timekeeping\');return false;">Review</a></div>';
+          });
+
+          pendingApprovalsHtml = sectionsHtml || '<div class="dash-card-empty">Nothing pending.</div>';
+        }
+      }catch(e){ console.error(e); }
 
       container.innerHTML =
         '<div class="dash-header-strip">'
@@ -1386,9 +1415,12 @@
         + '<div class="shortcuts-label">Shortcuts</div>'
         + '<div class="shortcuts-grid">'
         + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'profile\')"><span class="shortcut-tile-icon">&#9788;</span>My Profile</div>'
-        + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'resume\')"><span class="shortcut-tile-icon">&#9776;</span>My Resume</div>'
         + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'directory\')"><span class="shortcut-tile-icon">&#9737;</span>Company Directory</div>'
+        + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'timekeeping\')"><span class="shortcut-tile-icon">&#128337;</span>Timekeeping</div>'
+        + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'resume\')"><span class="shortcut-tile-icon">&#9776;</span>My Resume</div>'
         + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'travel\')"><span class="shortcut-tile-icon">&#9992;</span>Travel</div>'
+        + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'training\')"><span class="shortcut-tile-icon">&#127891;</span>Training</div>'
+        + (isAdmin() ? '<div class="shortcut-tile" onclick="requestSwitchScreen(\'admin\')"><span class="shortcut-tile-icon">&#9881;</span>Admin</div>' : '')
         + '</div>'
 
         + '<div class="dash-grid">'
@@ -1526,7 +1558,12 @@
     var sMin = parseInt(sParts[0],10)*60 + parseInt(sParts[1],10);
     var eMin = parseInt(eParts[0],10)*60 + parseInt(eParts[1],10);
     if(eMin <= sMin){ return 'error'; }
-    return Math.round(((eMin - sMin) / 60) * 100) / 100;
+    var rawHours = Math.round(((eMin - sMin) / 60) * 100) / 100;
+    // Demo placeholder: flat 30-min lunch deduction on exactly an 8hr shift.
+    // Real lunch/break rules are unknown until client scope is confirmed —
+    // this is a stand-in, not a policy.
+    if(rawHours === 8){ return 7.5; }
+    return rawHours;
   }
 
   // ---- Shared period loader: editable=true for Current Period, false for History.
@@ -1624,7 +1661,7 @@
           : '<input type="time" class="tk-grid-input" id="tkg-end-' + iso + '" value="' + endVal + '" disabled>';
 
         html += '<tr class="' + rowClass + '" data-date="' + iso + '">'
-          + '<td>' + dayLabel + (isLockedType ? ' <span class="tk-status-pill pending" style="margin-left:6px;">PTO</span>' : '') + '</td>'
+          + '<td>' + dayLabel + (row && row.status === 'approved' ? ' <span class="tk-status-pill approved" style="margin-left:6px;">Approved</span>' : '') + '</td>'
           + '<td><div class="tk-time-cell">' + startCell + '</div></td>'
           + '<td><div class="tk-time-cell">' + endCell + '</div></td>'
           + '<td>' + projectSelect + '</td>'
@@ -1874,6 +1911,10 @@
         + '<button class="btn btn-primary" style="width:auto;padding:12px 20px;white-space:nowrap;" onclick="submitPtoRequest()">Submit Request</button>'
         + '</div>'
         + '<div class="login-error" id="pto-request-error"></div>'
+        + '</div>'
+        + '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">Pending &amp; Upcoming PTO</div>'
+        + (await tkRenderUpcomingPtoTable(session.user.id))
         + '</div>';
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load PTO request</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
@@ -1881,12 +1922,36 @@
     }
   }
 
-  async function submitPtoRequest(){
+  async function tkRenderUpcomingPtoTable(employeeId){
+    var todayISO = new Date().toISOString().slice(0,10);
+    var pendingRows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&earning_type=eq.pto&status=eq.pending&order=work_date.asc&select=work_date,hours,status');
+    var approvedUpcoming = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&earning_type=eq.pto&status=eq.approved&work_date=gte.' + todayISO + '&order=work_date.asc&select=work_date,hours,status');
+    var rows = pendingRows.concat(approvedUpcoming).sort(function(a,b){ return a.work_date < b.work_date ? -1 : 1; });
+
+    if(!rows.length){
+      return '<div class="tk-empty">No pending or upcoming approved PTO.</div>';
+    }
+    return '<table class="tk-grid-table"><thead><tr><th>Date</th><th>Hours</th><th>Status</th></tr></thead><tbody>'
+      + rows.map(function(r){
+          var pill = r.status === 'approved' ? tkStatusPill('approved') : '—';
+          return '<tr><td>' + formatDate(r.work_date) + '</td><td>' + r.hours + '</td><td>' + pill + '</td></tr>';
+        }).join('')
+      + '</tbody></table>';
+  }
+
+  async function tkGetTotalPendingPtoHours(excludeNew){
+    var session = getSession();
+    var rows = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&earning_type=eq.pto&status=eq.pending&select=hours');
+    return rows.reduce(function(sum,r){ return sum + (parseFloat(r.hours)||0); }, 0);
+  }
+
+  async function submitPtoRequest(skipNegativeCheck){
     var errorEl = document.getElementById('pto-request-error');
     var session = getSession();
     var startVal = document.getElementById('pto-start').value;
     var endVal = document.getElementById('pto-end').value;
     errorEl.textContent = '';
+    errorEl.innerHTML = '';
 
     if(!startVal || !endVal){
       errorEl.textContent = 'Enter a start and end date.';
@@ -1897,19 +1962,42 @@
       return;
     }
 
+    var d = new Date(startVal + 'T00:00:00');
+    var end = new Date(endVal + 'T00:00:00');
+    var requestedDays = 0;
+    while(d <= end){ requestedDays++; d = new Date(d.getTime() + TK_DAY_MS); }
+    var requestedHours = requestedDays * 8;
+
+    if(!skipNegativeCheck){
+      try{
+        var profRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=pto_balance_hours');
+        var currentBalance = profRows.length ? (parseFloat(profRows[0].pto_balance_hours) || 0) : 0;
+        var existingPending = await tkGetTotalPendingPtoHours();
+        var resultingBalance = currentBalance - existingPending - requestedHours;
+
+        if(resultingBalance < 0){
+          errorEl.style.color = 'var(--amber)';
+          errorEl.innerHTML = 'This request (' + requestedHours.toFixed(1) + ' hrs) would put your PTO balance at ' + resultingBalance.toFixed(1) + ' hrs — below zero.'
+            + ' <button class="tk-now-btn" type="button" onclick="submitPtoRequest(true)" style="margin-left:6px;">Submit Anyway</button>';
+          return;
+        }
+      }catch(e){
+        console.error(e); // if the check itself fails, fall through and let submission proceed
+      }
+    }
+
     try{
-      var d = new Date(startVal + 'T00:00:00');
-      var end = new Date(endVal + 'T00:00:00');
+      var d2 = new Date(startVal + 'T00:00:00');
       var inserts = [];
-      while(d <= end){
+      while(d2 <= end){
         inserts.push({
           employee_id: session.user.id,
-          work_date: tkDateToISO(d),
+          work_date: tkDateToISO(d2),
           hours: 8,
           earning_type: 'pto',
           status: 'pending'
         });
-        d = new Date(d.getTime() + TK_DAY_MS);
+        d2 = new Date(d2.getTime() + TK_DAY_MS);
       }
       for(var i=0;i<inserts.length;i++){
         await dbWrite('time_entries', 'POST', inserts[i]);
