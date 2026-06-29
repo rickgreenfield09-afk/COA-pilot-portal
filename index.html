@@ -378,7 +378,7 @@
     </header>
     <nav>
       <button class="nav-btn active" data-screen="home" onclick="requestSwitchScreen('home')">My Dashboard</button>
-      <button class="nav-btn" data-screen="profile" onclick="requestSwitchScreen('profile')">Profile</button>
+      <button class="nav-btn" data-screen="profile" onclick="requestSwitchScreen('profile')">My Profile</button>
       <button class="nav-btn" data-screen="directory" onclick="requestSwitchScreen('directory')">Directory</button>
       <button class="nav-btn" data-screen="timekeeping" onclick="requestSwitchScreen('timekeeping')">Timekeeping</button>
       <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel</button>
@@ -876,7 +876,11 @@
           ? '<button class="btn-save" onclick="saveProfile()">Save</button><button class="btn-cancel" onclick="requestCancelEdit()">Cancel</button><span class="save-status" id="save-status"></span>'
           : '<button class="btn-edit" onclick="editProfile()">Edit Profile</button>')
       + '</div>'
-      + '</div>';
+      + '</div>'
+      + '<div class="profile-card" id="travel-info-card"><div class="placeholder-sub">Loading travel info...</div></div>';
+
+    loadTravelInfo(p);
+
 
     // Track unsaved changes once fields render
     if(editMode){
@@ -894,6 +898,127 @@
   function requestCancelEdit(){
     isEditingProfile = false;
     loadProfile();
+  }
+
+  // ---------- Travel Info card (own table: employee_travel_programs; KTN stays on profiles) ----------
+  var isEditingTravelInfo = false;
+  var currentTravelPrograms = [];
+  var travelInfoProfileRef = null;
+
+  async function loadTravelInfo(p){
+    travelInfoProfileRef = p;
+    var card = document.getElementById('travel-info-card');
+    if(!card){ return; }
+    try{
+      var rows = await dbRequest('employee_travel_programs?employee_id=eq.' + p.id + '&select=id,program_type,provider_name,membership_number&order=created_at.asc');
+      currentTravelPrograms = rows;
+      renderTravelInfo(p, false);
+    }catch(e){
+      card.innerHTML = '<div class="placeholder-title">Couldn\'t load travel info</div><div class="placeholder-sub">Try refreshing the page.</div>';
+      console.error(e);
+    }
+  }
+
+  function travelProgramRowHtml(row){
+    row = row || {};
+    var type = row.program_type || 'airline';
+    return '<div class="resume-row">'
+      + '<div class="resume-row-grid">'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Program Type *</span>'
+      + '<select class="info-edit-input" data-field="program_type">'
+      + '<option value="airline"' + (type === 'airline' ? ' selected' : '') + '>Airline</option>'
+      + '<option value="hotel"' + (type === 'hotel' ? ' selected' : '') + '>Hotel</option>'
+      + '<option value="car_rental"' + (type === 'car_rental' ? ' selected' : '') + '>Car Rental</option>'
+      + '</select></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Provider *</span><input class="info-edit-input" placeholder="e.g. Delta, Marriott, Hertz" data-field="provider_name" value="' + escAttr(row.provider_name) + '"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Membership Number *</span><input class="info-edit-input" data-field="membership_number" value="' + escAttr(row.membership_number) + '"></div>'
+      + '</div>'
+      + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.resume-row\').remove()">Remove</button>'
+      + '</div>';
+  }
+
+  function addTravelProgramRow(){
+    document.getElementById('travel-program-rows').insertAdjacentHTML('beforeend', travelProgramRowHtml());
+  }
+
+  function renderTravelInfo(p, editMode){
+    var card = document.getElementById('travel-info-card');
+    if(!card){ return; }
+    var editable = isAdmin() ? adminEditableFields.indexOf('known_traveler_number') !== -1 : true;
+
+    var ktnBlock = (editMode && editable)
+      ? '<div class="info-box"><div class="info-label">Known Traveler Number</div><input class="info-edit-input" id="edit-travel-ktn" value="' + escAttr(p.known_traveler_number) + '"></div>'
+      : '<div class="info-box"><div class="info-label">Known Traveler Number</div><div class="info-val">' + (p.known_traveler_number || '—') + '</div></div>';
+
+    var programsBlock = editMode
+      ? '<div class="resume-section"><div class="resume-section-title">Loyalty Programs</div><div id="travel-program-rows">'
+        + currentTravelPrograms.map(travelProgramRowHtml).join('')
+        + '</div><button type="button" class="btn-add-row" onclick="addTravelProgramRow()">+ Add program</button></div>'
+      : '<div class="resume-section"><div class="resume-section-title">Loyalty Programs</div>'
+        + (currentTravelPrograms.length
+            ? currentTravelPrograms.map(function(t){
+                var typeLabel = t.program_type === 'car_rental' ? 'Car Rental' : (t.program_type.charAt(0).toUpperCase() + t.program_type.slice(1));
+                return '<div class="resume-view-row"><div class="resume-row-header">' + typeLabel + '</div><div class="resume-view-row-title">' + (t.provider_name || '—') + '</div><div class="resume-view-row-dates">' + (t.membership_number || '—') + '</div></div>';
+              }).join('')
+            : '<div class="info-val" style="color:var(--muted);">None added yet.</div>')
+        + '</div>';
+
+    card.innerHTML =
+      '<div class="resume-section-title" style="margin-bottom:14px;">Travel Info</div>'
+      + '<div class="profile-grid">' + ktnBlock + '</div>'
+      + programsBlock
+      + '<div class="profile-actions">'
+      + (editMode
+          ? '<button class="btn-save" onclick="saveTravelInfo()">Save</button><button class="btn-cancel" onclick="cancelTravelInfoEdit()">Cancel</button><span class="save-status" id="travel-info-save-status"></span>'
+          : '<button class="btn-edit" onclick="editTravelInfo()">Edit Travel Info</button>')
+      + '</div>';
+
+    if(editMode){
+      isEditingTravelInfo = true;
+      card.querySelectorAll('input, select').forEach(function(el){
+        el.addEventListener('input', function(){ isEditingTravelInfo = true; });
+        el.addEventListener('change', function(){ isEditingTravelInfo = true; });
+      });
+    }
+  }
+
+  function editTravelInfo(){
+    renderTravelInfo(travelInfoProfileRef, true);
+  }
+
+  function cancelTravelInfoEdit(){
+    isEditingTravelInfo = false;
+    loadTravelInfo(travelInfoProfileRef);
+  }
+
+  async function saveTravelInfo(){
+    var statusEl = document.getElementById('travel-info-save-status');
+    var p = travelInfoProfileRef;
+    try{
+      var ktnInput = document.getElementById('edit-travel-ktn');
+      if(ktnInput){
+        await dbWrite('profiles?id=eq.' + p.id, 'PATCH', { known_traveler_number: ktnInput.value.trim() });
+      }
+
+      var newRows = harvestRows('travel-program-rows', ['program_type', 'provider_name', 'membership_number']);
+      var existingIds = currentTravelPrograms.map(function(r){ return r.id; });
+
+      await dbWrite('employee_travel_programs?employee_id=eq.' + p.id, 'DELETE', {});
+
+      if(newRows.length){
+        var inserts = newRows.map(function(r){
+          return { employee_id: p.id, program_type: r.program_type, provider_name: r.provider_name, membership_number: r.membership_number };
+        });
+        await dbWrite('employee_travel_programs', 'POST', inserts);
+      }
+
+      isEditingTravelInfo = false;
+      if(statusEl){ statusEl.textContent = 'Saved'; }
+      loadTravelInfo(p);
+    }catch(e){
+      if(statusEl){ statusEl.textContent = 'Error saving'; }
+      console.error(e);
+    }
   }
 
   async function saveProfile(){
