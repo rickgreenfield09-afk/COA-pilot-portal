@@ -200,6 +200,40 @@
     .print-resume-page:last-child{page-break-after:auto;}
   }
 
+  /* ---------- Directory screen ---------- */
+  .dir-subscreen{display:none;}
+  .dir-subscreen.active{display:block;}
+  .dir-search-wrap{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
+  .dir-search-input{flex:1;min-width:220px;margin-bottom:0;}
+  .dir-dept-filter{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:12px 14px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;min-width:200px;}
+  .dir-dept-filter:focus{border-color:var(--teal);}
+  .dir-roster-row{display:flex;align-items:center;gap:12px;padding:10px 12px;}
+  .dir-roster-initials{width:36px;height:36px;border-radius:50%;background:var(--raised);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--teal);flex-shrink:0;}
+  .dir-roster-name{font-size:14px;color:var(--text);font-weight:500;}
+  .dir-roster-title{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;}
+  .dir-roster-dept{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.5px;text-transform:uppercase;}
+
+  /* Org chart tree */
+  .dir-chart-dept{margin-bottom:14px;}
+  .dir-chart-dept-header{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;cursor:pointer;transition:border-color .15s;}
+  .dir-chart-dept-header:hover{border-color:var(--teal);}
+  .dir-chart-caret{font-size:11px;color:var(--teal);transition:transform .15s;flex-shrink:0;}
+  .dir-chart-caret.open{transform:rotate(90deg);}
+  .dir-chart-dept-name{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.5px;}
+  .dir-chart-dept-head-name{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;margin-left:auto;}
+  .dir-chart-body{display:none;padding:10px 0 4px 28px;border-left:1px solid var(--border);margin-left:18px;}
+  .dir-chart-body.open{display:block;}
+  .dir-chart-node{margin-bottom:8px;}
+  .dir-chart-node-row{display:flex;align-items:center;gap:10px;background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:9px 12px;cursor:default;}
+  .dir-chart-node-row.has-children{cursor:pointer;transition:border-color .15s;}
+  .dir-chart-node-row.has-children:hover{border-color:var(--teal);}
+  .dir-chart-node-row.is-you{border-color:var(--teal);box-shadow:0 0 0 1px rgba(42,184,166,0.3);}
+  .dir-chart-node-name{font-size:13px;color:var(--text);font-weight:500;}
+  .dir-chart-node-title{font-size:11px;color:var(--sub);font-family:'DM Mono',monospace;}
+  .dir-chart-node-children{display:none;padding:8px 0 0 24px;border-left:1px solid var(--border);margin-left:14px;}
+  .dir-chart-node-children.open{display:block;}
+  .dir-chart-you-tag{font-size:10px;color:var(--teal);font-family:'DM Mono',monospace;letter-spacing:1px;text-transform:uppercase;margin-left:auto;}
+
   /* ---------- Timekeeping screen ---------- */
   .tk-subscreen{display:none;}
   .tk-subscreen.active{display:block;}
@@ -366,9 +400,15 @@
         </div>
       </div>
       <div class="screen" id="screen-directory">
-        <div class="placeholder-card">
-          <div class="placeholder-title">Directory</div>
-          <div class="placeholder-sub">Coming next session</div>
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-dirsubtab="roster" onclick="switchDirectorySubtab('roster')">Roster</button>
+          <button class="subtab-btn" data-dirsubtab="orgchart" onclick="switchDirectorySubtab('orgchart')">Org Chart</button>
+        </div>
+        <div class="dir-subscreen active" id="dir-roster">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="dir-subscreen" id="dir-orgchart">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
         </div>
       </div>
       <div class="screen" id="screen-timekeeping">
@@ -1383,6 +1423,9 @@
     }
     if(name === 'timekeeping'){
       switchTkSubtab('current');
+    }
+    if(name === 'directory'){
+      switchDirectorySubtab('roster');
     }
     if(name === 'admin'){
       switchAdminSubtab('dashboard');
@@ -2999,6 +3042,199 @@
       errorEl.textContent = 'Could not submit request — try again.';
       console.error(e);
     }
+  }
+
+  // ---------- Directory ----------
+  var dirAllProfiles = [];
+  var dirDeptMap = {};
+
+  function switchDirectorySubtab(name){
+    document.querySelectorAll('#screen-directory .dir-subscreen').forEach(function(s){ s.classList.remove('active'); });
+    document.querySelectorAll('#screen-directory [data-dirsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.dirsubtab === name); });
+    document.getElementById('dir-' + name).classList.add('active');
+    if(name === 'roster'){ loadDirectoryRoster(); }
+    if(name === 'orgchart'){ loadDirectoryOrgChart(); }
+  }
+
+  // Shared fetch: all profiles + their department name in one round trip via PostgREST embed
+  async function dirFetchAllProfiles(){
+    if(dirAllProfiles.length){ return dirAllProfiles; }
+    var rows = await dbRequest('profiles?select=id,full_name,job_title,manager_id,department_id,org_position,departments(name)&order=full_name.asc');
+    dirAllProfiles = rows;
+    return rows;
+  }
+
+  function dirInitials(name){ return getInitials(name); }
+
+  // ---- Roster subtab: flat searchable/filterable list ----
+  async function loadDirectoryRoster(){
+    var container = document.getElementById('dir-roster');
+    try{
+      var rows = await dirFetchAllProfiles();
+      var byId = {};
+      rows.forEach(function(r){ byId[r.id] = r; });
+
+      var deptNames = {};
+      rows.forEach(function(r){ if(r.departments && r.departments.name){ deptNames[r.departments.name] = true; } });
+      var deptOptions = '<option value="">All Departments</option>' + Object.keys(deptNames).sort().map(function(n){
+        return '<option value="' + n + '">' + n + '</option>';
+      }).join('');
+
+      container.innerHTML = '<div class="dir-search-wrap">'
+        + '<input class="field-input dir-search-input" id="dir-search-input" placeholder="Search by name or title..." oninput="dirRenderRosterList()">'
+        + '<select class="dir-dept-filter" id="dir-dept-filter" onchange="dirRenderRosterList()">' + deptOptions + '</select>'
+        + '</div>'
+        + '<div class="tk-entry-card" id="dir-roster-list"></div>';
+
+      dirRenderRosterList();
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load directory</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  function dirRenderRosterList(){
+    var listEl = document.getElementById('dir-roster-list');
+    if(!listEl){ return; }
+    var searchVal = (document.getElementById('dir-search-input').value || '').toLowerCase().trim();
+    var deptVal = document.getElementById('dir-dept-filter').value;
+
+    var byId = {};
+    dirAllProfiles.forEach(function(r){ byId[r.id] = r; });
+
+    var filtered = dirAllProfiles.filter(function(r){
+      var deptName = r.departments && r.departments.name ? r.departments.name : '';
+      if(deptVal && deptName !== deptVal){ return false; }
+      if(searchVal){
+        var hay = ((r.full_name||'') + ' ' + (r.job_title||'')).toLowerCase();
+        if(hay.indexOf(searchVal) === -1){ return false; }
+      }
+      return true;
+    });
+
+    if(!filtered.length){
+      listEl.innerHTML = '<div class="tk-empty">No employees match your search.</div>';
+      return;
+    }
+
+    listEl.innerHTML = filtered.map(function(r){
+      var deptName = r.departments && r.departments.name ? r.departments.name : '—';
+      var mgr = r.manager_id && byId[r.manager_id] ? byId[r.manager_id].full_name : '—';
+      return '<div class="dir-roster-row">'
+        + '<div class="dir-roster-initials">' + dirInitials(r.full_name) + '</div>'
+        + '<div style="flex:1;">'
+        + '<div class="dir-roster-name">' + (r.full_name||'—') + '</div>'
+        + '<div class="dir-roster-title">' + (r.job_title||'—') + ' · Reports to ' + mgr + '</div>'
+        + '</div>'
+        + '<div class="dir-roster-dept">' + deptName + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  // ---- Org Chart subtab: tree built client-side from manager_id ----
+  async function loadDirectoryOrgChart(){
+    var container = document.getElementById('dir-orgchart');
+    try{
+      var rows = await dirFetchAllProfiles();
+      var session = getSession();
+      var meId = session && session.user ? session.user.id : null;
+
+      var byId = {};
+      rows.forEach(function(r){ byId[r.id] = r; });
+      var childrenOf = {};
+      rows.forEach(function(r){
+        var key = r.manager_id || '__root__';
+        if(!childrenOf[key]){ childrenOf[key] = []; }
+        childrenOf[key].push(r);
+      });
+
+      // Departments in sort order, each keyed by its department_head
+      var deptRows = await dbRequest('departments?select=id,name,sort_order&order=sort_order.asc');
+
+      // Determine which node ids must be force-expanded:
+      // 1) the path from root down to the logged-in user, and
+      // 2) every descendant of the logged-in user (their own team).
+      var expandIds = {};
+      if(meId && byId[meId]){
+        var cursor = byId[meId];
+        while(cursor){
+          expandIds[cursor.id] = true;
+          cursor = cursor.manager_id ? byId[cursor.manager_id] : null;
+        }
+        var stack = (childrenOf[meId] || []).slice();
+        while(stack.length){
+          var node = stack.pop();
+          expandIds[node.id] = true;
+          (childrenOf[node.id] || []).forEach(function(c){ stack.push(c); });
+        }
+      }
+
+      function renderNode(person){
+        var kids = childrenOf[person.id] || [];
+        var hasKids = kids.length > 0;
+        var isYou = meId && person.id === meId;
+        var openClass = expandIds[person.id] ? ' open' : '';
+        var rowClass = 'dir-chart-node-row' + (hasKids ? ' has-children' : '') + (isYou ? ' is-you' : '');
+        var onclick = hasKids ? ' onclick="dirToggleNode(this)"' : '';
+        var caret = hasKids ? '<span class="dir-chart-caret' + (expandIds[person.id] ? ' open' : '') + '">&#9656;</span>' : '<span style="width:11px;display:inline-block;"></span>';
+        var html = '<div class="dir-chart-node">'
+          + '<div class="' + rowClass + '"' + onclick + '>'
+          + caret
+          + '<div><div class="dir-chart-node-name">' + person.full_name + '</div><div class="dir-chart-node-title">' + (person.job_title||'') + '</div></div>'
+          + (isYou ? '<span class="dir-chart-you-tag">You</span>' : '')
+          + '</div>';
+        if(hasKids){
+          html += '<div class="dir-chart-node-children' + openClass + '">'
+            + kids.map(renderNode).join('')
+            + '</div>';
+        }
+        html += '</div>';
+        return html;
+      }
+
+      var chartHtml = deptRows.map(function(dept){
+        var head = (childrenOf['__root__']||[]).concat(
+          Object.keys(childrenOf).reduce(function(acc,k){ return acc.concat(childrenOf[k]); }, [])
+        ).find(function(p){ return p.org_position === 'department_head' && p.department_id === dept.id; });
+
+        var bodyId = 'dir-dept-body-' + dept.id;
+        var deptOpen = head && expandIds[head.id];
+        var headName = head ? head.full_name : '— Unassigned —';
+        var bodyHtml = head ? renderNode(head) : '<div class="tk-empty">No department head assigned.</div>';
+
+        return '<div class="dir-chart-dept">'
+          + '<div class="dir-chart-dept-header" onclick="dirToggleDept(this)">'
+          + '<span class="dir-chart-caret' + (deptOpen ? ' open' : '') + '">&#9656;</span>'
+          + '<span class="dir-chart-dept-name">' + dept.name + '</span>'
+          + '<span class="dir-chart-dept-head-name">' + headName + '</span>'
+          + '</div>'
+          + '<div class="dir-chart-body' + (deptOpen ? ' open' : '') + '">' + bodyHtml + '</div>'
+          + '</div>';
+      }).join('');
+
+      var rootPerson = (childrenOf['__root__']||[])[0];
+      var rootHtml = rootPerson ? '<div class="tk-entry-card"><div class="tk-section-title">Principal</div>' + renderNode(rootPerson) + '</div>' : '';
+
+      container.innerHTML = rootHtml + chartHtml;
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load org chart</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  function dirToggleDept(headerEl){
+    var caret = headerEl.querySelector('.dir-chart-caret');
+    var body = headerEl.nextElementSibling;
+    caret.classList.toggle('open');
+    body.classList.toggle('open');
+  }
+
+  function dirToggleNode(rowEl){
+    var caret = rowEl.querySelector('.dir-chart-caret');
+    var children = rowEl.nextElementSibling;
+    if(!children || !children.classList.contains('dir-chart-node-children')){ return; }
+    caret.classList.toggle('open');
+    children.classList.toggle('open');
   }
 
   // ---- Shared PTO stat calculation, used by both PTO Request and PTO Balance ----
