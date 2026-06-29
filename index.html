@@ -217,26 +217,20 @@
   .dir-roster-title{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;}
   .dir-roster-dept{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.5px;text-transform:uppercase;}
 
-  /* Org chart — card/branch style with CSS-only connector lines */
+  /* Org chart — card/branch layout, connector lines drawn by JS (see
+     dirRecalcLines) into an SVG layer sized to the canvas. CSS handles
+     spacing/centering of cards only; it does not attempt to draw lines
+     itself, since that broke down once row width/depth became uneven. */
   .dir-chart-toolbar{display:flex;gap:10px;margin-bottom:24px;}
   .dir-chart-toolbar-btn{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:8px 16px;font-size:12px;color:var(--sub);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
   .dir-chart-toolbar-btn:hover{border-color:var(--teal);color:var(--teal);}
-  .dir-chart-scroll{overflow-x:auto;padding-bottom:20px;}
-  .dir-chart-root-wrap{display:flex;justify-content:center;margin-bottom:0;}
-  .dir-chart-row{display:flex;justify-content:center;position:relative;}
-  .dir-chart-row::before{content:'';position:absolute;top:0;left:50%;width:1px;height:24px;background:var(--border);transform:translateX(-50%);}
+  .dir-chart-scroll{overflow-x:auto;overflow-y:visible;padding-bottom:20px;}
+  .dir-chart-canvas{position:relative;display:inline-block;min-width:100%;}
+  .dir-chart-svg{position:absolute;top:0;left:0;pointer-events:none;z-index:0;}
+  .dir-chart-root-wrap{display:flex;justify-content:center;margin-bottom:0;position:relative;z-index:2;}
+  .dir-chart-row{display:flex;justify-content:center;position:relative;padding-top:24px;z-index:2;}
   .dir-chart-branch{display:flex;flex-direction:column;align-items:center;padding-top:24px;position:relative;}
-  /* Vertical stem from this branch's card up to the horizontal stub row */
-  .dir-chart-branch::before{content:'';position:absolute;top:0;left:50%;width:1px;height:24px;background:var(--border);z-index:1;}
   .dir-chart-siblings{display:flex;gap:32px;position:relative;}
-  /* Horizontal stub: each branch (except the first) draws a line from its
-     own stem leftward to the previous sibling's stem. Cards are a fixed
-     200px wide with a fixed 32px gap, so center-to-center distance is
-     always exactly 232px — drawn as a precise pixel width anchored to
-     this branch's own center, reaching left across the gap and half of
-     the previous card. A lone child has no siblings, so :not(:first-child)
-     never matches and no stub renders at all. */
-  .dir-chart-siblings > .dir-chart-branch:not(:first-child)::after{content:'';position:absolute;top:24px;right:50%;width:232px;height:1px;background:var(--border);z-index:0;}
   .dir-chart-card{width:200px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;cursor:default;transition:border-color .15s,box-shadow .15s;flex-shrink:0;position:relative;z-index:2;}
   .dir-chart-card.has-children{cursor:pointer;}
   .dir-chart-card.has-children:hover{border-color:var(--teal);}
@@ -3192,13 +3186,16 @@
         }
       }
 
+      // data-person-id lets the line-drawing pass find each card's real
+      // rendered position after layout. data-has-kids marks which cards
+      // need a connector drawn down to a children wrap.
       function cardHtml(person, extraClass){
         var kids = childrenOf[person.id] || [];
         var hasKids = kids.length > 0;
         var isYou = meId && person.id === meId;
         var cls = 'dir-chart-card' + (extraClass ? ' ' + extraClass : '') + (hasKids ? ' has-children' : '') + (isYou ? ' is-you' : '');
         var onclick = hasKids ? ' onclick="dirToggleCard(this)"' : '';
-        return '<div class="' + cls + '"' + onclick + '>'
+        return '<div class="' + cls + '" data-person-id="' + person.id + '"' + onclick + '>'
           + '<div class="dir-chart-avatar">' + dirInitials(person.full_name) + '</div>'
           + '<div class="dir-chart-card-name">' + person.full_name + '</div>'
           + '<div class="dir-chart-card-title">' + (person.job_title||'') + '</div>'
@@ -3208,15 +3205,16 @@
           + '</div>';
       }
 
-      // Recursive branch: a card plus, if it has children, a connector stem
-      // down to a sibling row containing each child's own branch.
+      // Recursive branch — no CSS-drawn lines here anymore. The wrapper
+      // just needs a stable id so dirRecalcLines() can find each parent
+      // card and its corresponding children-wrap by person id.
       function branchHtml(person, extraClass){
         var kids = childrenOf[person.id] || [];
         var hasKids = kids.length > 0;
         var openClass = expandIds[person.id] ? ' open' : '';
         var html = '<div class="dir-chart-branch">' + cardHtml(person, extraClass);
         if(hasKids){
-          html += '<div class="dir-chart-children-wrap' + openClass + '">'
+          html += '<div class="dir-chart-children-wrap' + openClass + '" data-parent-id="' + person.id + '">'
             + '<div class="dir-chart-siblings">'
             + kids.map(function(k){ return branchHtml(k); }).join('')
             + '</div></div>';
@@ -3225,15 +3223,11 @@
         return html;
       }
 
-      // Scott (or whoever has no manager) stands alone — no children
-      // nested under his card, per design: dept heads are their own row.
       var rootPerson = (childrenOf['__root__']||[])[0];
       var rootHtml = rootPerson
         ? '<div class="dir-chart-root-wrap">' + cardHtml(rootPerson, 'is-root') + '</div>'
         : '';
 
-      // Department head row: one branch per department, each head's
-      // own subtree (division managers, employees) nests beneath it.
       var deptBranches = deptRows.map(function(dept){
         var head = rows.find(function(p){ return p.org_position === 'department_head' && p.department_id === dept.id; });
         if(!head){
@@ -3242,18 +3236,114 @@
         return branchHtml(head);
       }).join('');
 
-      var deptRowHtml = '<div class="dir-chart-row"><div class="dir-chart-siblings">' + deptBranches + '</div></div>';
+      var deptRowHtml = '<div class="dir-chart-row" data-parent-id="' + (rootPerson?rootPerson.id:'') + '"><div class="dir-chart-siblings">' + deptBranches + '</div></div>';
 
       var toolbarHtml = '<div class="dir-chart-toolbar">'
         + '<button class="dir-chart-toolbar-btn" onclick="dirExpandAll()">Expand All</button>'
         + '<button class="dir-chart-toolbar-btn" onclick="dirCollapseAll()">Collapse All</button>'
         + '</div>';
 
-      container.innerHTML = toolbarHtml + '<div class="dir-chart-scroll">' + rootHtml + deptRowHtml + '</div>';
+      // SVG layer sits behind the cards (z-index below them via CSS) and
+      // gets repopulated by dirRecalcLines() after every layout change.
+      var svgLayer = '<svg id="dir-chart-svg" class="dir-chart-svg"></svg>';
+
+      container.innerHTML = toolbarHtml + '<div class="dir-chart-scroll" id="dir-chart-scroll">'
+        + '<div class="dir-chart-canvas" id="dir-chart-canvas">'
+        + svgLayer + rootHtml + deptRowHtml
+        + '</div></div>';
+
+      // Measure after the browser has actually painted the layout —
+      // rAF ensures we read real positions, not pre-layout zeros.
+      requestAnimationFrame(function(){ requestAnimationFrame(dirRecalcLines); });
+      dirAttachResizeListener();
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load org chart</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
+  }
+
+  // ---- JS-measured connector lines ----
+  // Replaces the old CSS pseudo-element approach, which broke down once
+  // branches had uneven width/depth (couldn't keep a child row centered
+  // under its specific parent card). This measures real rendered
+  // positions via getBoundingClientRect and draws an SVG bus-line
+  // (shared horizontal bar + vertical drops) matching the original
+  // visual style, but correct regardless of row width or nesting depth.
+
+  var dirResizeListenerAttached = false;
+  var dirResizeDebounce = null;
+
+  function dirAttachResizeListener(){
+    if(dirResizeListenerAttached){ return; }
+    dirResizeListenerAttached = true;
+    window.addEventListener('resize', function(){
+      clearTimeout(dirResizeDebounce);
+      dirResizeDebounce = setTimeout(dirRecalcLines, 150);
+    });
+  }
+
+  function dirRecalcLines(){
+    var canvas = document.getElementById('dir-chart-canvas');
+    var svg = document.getElementById('dir-chart-svg');
+    if(!canvas || !svg){ return; }
+
+    var canvasRect = canvas.getBoundingClientRect();
+    svg.setAttribute('width', canvas.scrollWidth);
+    svg.setAttribute('height', canvas.scrollHeight);
+    svg.innerHTML = '';
+
+    function pointFor(el, edge){
+      var r = el.getBoundingClientRect();
+      var x = r.left - canvasRect.left + r.width / 2;
+      var y = (edge === 'top') ? (r.top - canvasRect.top) : (r.bottom - canvasRect.top);
+      return { x: x, y: y };
+    }
+
+    function drawLine(x1, y1, x2, y2){
+      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+      line.setAttribute('stroke', '#2E3440');
+      line.setAttribute('stroke-width', '1');
+      svg.appendChild(line);
+    }
+
+    // For every children-wrap currently visible (open), draw a bus-line:
+    // one vertical drop from the parent card's bottom, a horizontal bar
+    // spanning the min-to-max child x-range, then a vertical drop from
+    // that bar down to each individual child card's top.
+    document.querySelectorAll('#dir-orgchart [data-parent-id]').forEach(function(wrap){
+      var parentId = wrap.getAttribute('data-parent-id');
+      if(!parentId){ return; }
+      var parentCard = document.querySelector('#dir-orgchart [data-person-id="' + parentId + '"]');
+      if(!parentCard){ return; }
+
+      // Skip if this wrap is a collapsed children-wrap (not visible) —
+      // the dept-head row itself has no .dir-chart-children-wrap class
+      // so it's always visible; nested wraps respect .open.
+      if(wrap.classList.contains('dir-chart-children-wrap') && !wrap.classList.contains('open')){ return; }
+
+      var childCards = wrap.querySelectorAll(':scope > .dir-chart-siblings > .dir-chart-branch > .dir-chart-card');
+      if(!childCards.length){ return; }
+
+      var parentPt = pointFor(parentCard, 'bottom');
+      var childPts = Array.prototype.map.call(childCards, function(c){ return pointFor(c, 'top'); });
+
+      var busY = parentPt.y + 24;
+      var minX = Math.min.apply(null, childPts.map(function(p){ return p.x; }));
+      var maxX = Math.max.apply(null, childPts.map(function(p){ return p.x; }));
+
+      // Parent drop
+      drawLine(parentPt.x, parentPt.y, parentPt.x, busY);
+      // Horizontal bus (only needed if more than one child)
+      if(childPts.length > 1){
+        drawLine(minX, busY, maxX, busY);
+      }
+      // Each child's drop from the bus down to its own card
+      childPts.forEach(function(p){
+        drawLine(p.x, busY, p.x, p.y);
+      });
+    });
   }
 
   function dirToggleCard(cardEl){
@@ -3262,14 +3352,17 @@
     var wrap = branch.querySelector('.dir-chart-children-wrap');
     if(!wrap){ return; }
     wrap.classList.toggle('open');
+    requestAnimationFrame(function(){ requestAnimationFrame(dirRecalcLines); });
   }
 
   function dirExpandAll(){
     document.querySelectorAll('#dir-orgchart .dir-chart-children-wrap').forEach(function(w){ w.classList.add('open'); });
+    requestAnimationFrame(function(){ requestAnimationFrame(dirRecalcLines); });
   }
 
   function dirCollapseAll(){
     document.querySelectorAll('#dir-orgchart .dir-chart-children-wrap').forEach(function(w){ w.classList.remove('open'); });
+    requestAnimationFrame(function(){ requestAnimationFrame(dirRecalcLines); });
   }
 
   // ---- Shared PTO stat calculation, used by both PTO Request and PTO Balance ----
