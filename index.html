@@ -267,6 +267,8 @@
   .tk-status-pill.pending{background:rgba(232,184,75,0.12);color:var(--amber);}
   .tk-status-pill.approved{background:rgba(42,184,166,0.12);color:var(--teal);}
   .tk-status-pill.rejected{background:rgba(224,82,82,0.12);color:var(--red);}
+  .tk-status-pill.denied{background:rgba(224,82,82,0.12);color:var(--red);}
+  .tk-status-pill.returned{background:rgba(191,95,255,0.12);color:var(--purple);}
   .tk-status-pill.cancelled_by_submitter{background:var(--raised);color:var(--muted);}
   .tk-empty{font-size:13px;color:var(--muted);padding:16px 0;}
 
@@ -510,9 +512,8 @@
         </div>
       </div>
       <div class="screen" id="screen-travel">
-        <div class="placeholder-card">
-          <div class="placeholder-title">Travel</div>
-          <div class="placeholder-sub">Coming next session</div>
+        <div id="travel-content">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading travel...</div></div>
         </div>
       </div>
       <div class="screen" id="screen-training">
@@ -1685,6 +1686,9 @@
     }
     if(name === 'myteam'){
       switchMyTeamSubtab('dashboard');
+    }
+    if(name === 'travel'){
+      loadTravelScreen();
     }
   }
 
@@ -3792,7 +3796,178 @@
     }
   }
 
-  // ---------- Session check on load ----------
+  // ---------- Travel screen (standalone travel_requests) ----------
+  var travelProjectsCache = [];
+  var travelContractsCache = [];
+  var travelPreferenceWasChecked = false;
+
+  async function loadTravelScreen(){
+    var container = document.getElementById('travel-content');
+    var session = getSession();
+    if(!session || !session.user){ return; }
+
+    try{
+      if(!travelProjectsCache.length){
+        travelProjectsCache = await dbRequest('projects?active=eq.true&select=id,name&order=name.asc');
+      }
+      if(!travelContractsCache.length){
+        travelContractsCache = await dbRequest('gov_contracts?select=id,contract_name&order=contract_name.asc');
+      }
+
+      container.innerHTML = '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">New Travel Request</div>'
+        + '<div class="tk-pto-form-grid" style="grid-template-columns:1fr 1fr;">'
+        + '<div><label class="field-label" for="trav-destination">Destination</label><input class="field-input" id="trav-destination" placeholder="City, State"></div>'
+        + '<div><label class="field-label" for="trav-purpose">Purpose</label><input class="field-input" id="trav-purpose" placeholder="Reason for travel"></div>'
+        + '<div><label class="field-label" for="trav-start">Travel Start Date</label><input type="date" class="field-input" id="trav-start"></div>'
+        + '<div><label class="field-label" for="trav-end">Travel End Date</label><input type="date" class="field-input" id="trav-end"></div>'
+        + '</div>'
+        + '<div class="field-label" style="margin-top:6px;">Cost Activity</div>'
+        + '<div class="tk-pto-form-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:18px;">'
+        + '<div><label class="field-label" for="trav-cost-mode">Bill To</label>'
+        + '<select class="field-input" id="trav-cost-mode" onchange="travelCostModeChanged()">'
+        + '<option value="">— None —</option>'
+        + '<option value="project">Project</option>'
+        + '<option value="gov_contract">Government Contract</option>'
+        + '<option value="training">Training</option>'
+        + '</select></div>'
+        + '<div id="trav-cost-detail-wrap" style="display:none;"><label class="field-label" for="trav-cost-detail">Select</label><select class="field-input" id="trav-cost-detail"></select></div>'
+        + '</div>'
+        + '<div class="resume-row-checkbox" style="margin-bottom:4px;">'
+        + '<input type="checkbox" id="trav-self-book" onchange="travelPreferenceToggled()">'
+        + '<label for="trav-self-book">I want to research and propose my own travel arrangements</label>'
+        + '</div>'
+        + '<div id="trav-proposed-wrap" style="display:none;margin-bottom:14px;">'
+        + '<label class="field-label" for="trav-proposed">Proposed Arrangements</label>'
+        + '<textarea class="info-edit-input" id="trav-proposed" rows="3" placeholder="Flight, hotel, or other preferences you found"></textarea>'
+        + '</div>'
+        + '<div style="display:flex;gap:10px;margin-top:10px;">'
+        + '<button class="btn btn-primary" style="width:auto;padding:12px 20px;" onclick="submitTravelRequest(\'submitted\')">Submit Request</button>'
+        + '<button class="btn-cancel" onclick="submitTravelRequest(\'draft\')">Save as Draft</button>'
+        + '<button class="btn-cancel" onclick="loadTravelScreen()">Cancel</button>'
+        + '</div>'
+        + '<div class="login-error" id="travel-request-error"></div>'
+        + '</div>'
+        + '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">My Travel Requests</div>'
+        + (await travelRenderMyRequestsTable(session.user.id))
+        + '</div>';
+
+      travelPreferenceWasChecked = false;
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load travel</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  function travelCostModeChanged(){
+    var mode = document.getElementById('trav-cost-mode').value;
+    var wrap = document.getElementById('trav-cost-detail-wrap');
+    var detail = document.getElementById('trav-cost-detail');
+    if(mode === 'project'){
+      detail.innerHTML = travelProjectsCache.map(function(p){ return '<option value="' + p.id + '">' + p.name + '</option>'; }).join('');
+      wrap.style.display = '';
+      document.querySelector('label[for="trav-cost-detail"]').textContent = 'Project';
+    }else if(mode === 'gov_contract'){
+      detail.innerHTML = travelContractsCache.map(function(c){ return '<option value="' + c.id + '">' + c.contract_name + '</option>'; }).join('');
+      wrap.style.display = '';
+      document.querySelector('label[for="trav-cost-detail"]').textContent = 'Government Contract';
+    }else{
+      wrap.style.display = 'none';
+      detail.innerHTML = '';
+    }
+  }
+
+  function travelPreferenceToggled(){
+    var checkbox = document.getElementById('trav-self-book');
+    var proposedWrap = document.getElementById('trav-proposed-wrap');
+    var proposedField = document.getElementById('trav-proposed');
+
+    if(checkbox.checked){
+      proposedWrap.style.display = '';
+      travelPreferenceWasChecked = true;
+      return;
+    }
+
+    // Unchecking after it was checked: warn before clearing self-booked proposal text.
+    if(travelPreferenceWasChecked && proposedField.value.trim()){
+      var confirmed = confirm('Switching to Travel Admin booking will clear what you entered in Proposed Arrangements. Continue?');
+      if(!confirmed){
+        checkbox.checked = true;
+        return;
+      }
+      proposedField.value = '';
+    }
+    proposedWrap.style.display = 'none';
+    travelPreferenceWasChecked = false;
+  }
+
+  async function travelRenderMyRequestsTable(employeeId){
+    var rows = await dbRequest('travel_requests?requester_id=eq.' + employeeId + '&order=created_at.desc&select=id,destination,travel_start_date,travel_end_date,current_status,manager_status,travel_status');
+    if(!rows.length){
+      return '<div class="tk-empty">No travel requests yet.</div>';
+    }
+    return '<table class="tk-grid-table"><thead><tr><th>Destination</th><th>Dates</th><th>Status</th><th>Manager</th><th>Travel Admin</th></tr></thead><tbody>'
+      + rows.map(function(r){
+          return '<tr><td>' + (r.destination || '—') + '</td>'
+            + '<td>' + formatDate(r.travel_start_date) + ' – ' + formatDate(r.travel_end_date) + '</td>'
+            + '<td>' + tkStatusPill(r.current_status) + '</td>'
+            + '<td>' + tkStatusPill(r.manager_status) + '</td>'
+            + '<td>' + tkStatusPill(r.travel_status) + '</td></tr>';
+        }).join('')
+      + '</tbody></table>';
+  }
+
+  async function submitTravelRequest(targetStatus){
+    var errorEl = document.getElementById('travel-request-error');
+    var session = getSession();
+    errorEl.textContent = '';
+
+    var destination = document.getElementById('trav-destination').value.trim();
+    var purpose = document.getElementById('trav-purpose').value.trim();
+    var startVal = document.getElementById('trav-start').value;
+    var endVal = document.getElementById('trav-end').value;
+    var costMode = document.getElementById('trav-cost-mode').value;
+    var costDetail = document.getElementById('trav-cost-detail') ? document.getElementById('trav-cost-detail').value : '';
+    var selfBook = document.getElementById('trav-self-book').checked;
+    var proposed = document.getElementById('trav-proposed').value.trim();
+
+    // Drafts can be saved with missing information — only submitted requests are validated.
+    if(targetStatus === 'submitted'){
+      if(!destination || !purpose || !startVal || !endVal){
+        errorEl.textContent = 'Destination, purpose, and both dates are required to submit.';
+        return;
+      }
+      if(new Date(endVal) < new Date(startVal)){
+        errorEl.textContent = 'Travel end date must be on or after start date.';
+        return;
+      }
+    }
+
+    var body = {
+      requester_id: session.user.id,
+      destination: destination || null,
+      purpose: purpose || null,
+      travel_start_date: startVal || null,
+      travel_end_date: endVal || null,
+      preference_mode: selfBook ? 'self_researched' : 'delegated',
+      proposed_arrangements: selfBook ? (proposed || null) : null,
+      project_id: costMode === 'project' ? costDetail : null,
+      gov_contract_id: costMode === 'gov_contract' ? costDetail : null,
+      cost_category: costMode === 'training' ? 'training' : null,
+      current_status: targetStatus
+    };
+
+    try{
+      await dbWrite('travel_requests', 'POST', [body]);
+      loadTravelScreen();
+    }catch(e){
+      errorEl.textContent = 'Couldn\'t save travel request. Try again.';
+      console.error(e);
+    }
+  }
+
+
   (function init(){
     var session = getSession();
     if(session && session.user){
