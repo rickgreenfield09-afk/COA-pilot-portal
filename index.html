@@ -475,14 +475,17 @@
           </div>
         </div>
         <div class="myteam-subscreen" id="myteam-assets">
-          <div class="tk-entry-card" id="myteam-assets-team-panel">
-            <div class="tk-section-title">My Team</div>
-            <div id="myteam-assets-employee-list"><div class="tk-empty">Loading...</div></div>
-          </div>
           <div class="tk-entry-card">
             <div class="tk-section-title">Search Team Equipment</div>
             <input type="text" id="myteam-asset-search-input" class="field-input" placeholder="Search by employee, asset name, type, serial, vendor, model, notes..." oninput="debounceSearchAssets(\'myteam\')" style="margin-bottom:12px;">
             <div id="myteam-asset-search-results"></div>
+          </div>
+          <div id="myteam-assets-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Select an employee below to view their equipment.</div></div>
+          </div>
+          <div class="tk-entry-card" id="myteam-assets-team-panel">
+            <div class="tk-section-title">My Team</div>
+            <div id="myteam-assets-employee-list"><div class="tk-empty">Loading...</div></div>
           </div>
           <div class="tk-entry-card">
             <div class="tk-section-title">Export to CSV</div>
@@ -493,9 +496,6 @@
             </div>
             <button class="btn-edit" style="margin-top:10px;" onclick="exportAssetsToCsv(\'myteam\')">Export CSV</button>
             <div class="login-error" id="myteam-asset-export-message"></div>
-          </div>
-          <div id="myteam-assets-content">
-            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
           </div>
         </div>
       </div>
@@ -549,11 +549,6 @@
           </div>
         </div>
         <div class="admin-subscreen" id="admin-resumes">
-          <div class="tk-entry-card" id="admin-resumes-team-panel">
-            <div class="tk-section-title">My Team</div>
-            <div id="admin-resumes-dept-filter-wrap"></div>
-            <div id="admin-resumes-employee-list"><div class="tk-empty">Loading...</div></div>
-          </div>
           <div class="resume-search-wrap" id="resume-search-wrap">
             <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract..." oninput="debounceSearchResumes()">
             <div id="resume-search-results"></div>
@@ -563,21 +558,29 @@
               <button class="btn-edit" id="print-cart-btn" onclick="printResumeCart()" disabled style="margin-top:8px;">Print Selected (0)</button>
             </div>
           </div>
+          <div class="tk-entry-card" id="admin-resumes-team-panel">
+            <div class="tk-section-title">All Employees</div>
+            <div id="admin-resumes-dept-filter-wrap"></div>
+            <div id="admin-resumes-employee-list"><div class="tk-empty">Loading...</div></div>
+          </div>
           <div id="admin-resume-viewing-banner"></div>
           <div id="admin-resume-content">
             <div class="placeholder-card"><div class="placeholder-sub">Search for an employee above to view their resume.</div></div>
           </div>
         </div>
         <div class="admin-subscreen" id="admin-assets">
-          <div class="tk-entry-card" id="admin-assets-team-panel">
-            <div class="tk-section-title">My Team</div>
-            <div id="admin-assets-dept-filter-wrap"></div>
-            <div id="admin-assets-employee-list"><div class="tk-empty">Loading...</div></div>
-          </div>
           <div class="tk-entry-card">
             <div class="tk-section-title">Search All Equipment</div>
             <input type="text" id="asset-search-input" class="field-input" placeholder="Search by employee, asset name, type, serial, vendor, model, notes..." oninput="debounceSearchAssets('admin')" style="margin-bottom:12px;">
             <div id="asset-search-results"></div>
+          </div>
+          <div id="admin-assets-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Select an employee below to view their equipment.</div></div>
+          </div>
+          <div class="tk-entry-card" id="admin-assets-team-panel">
+            <div class="tk-section-title">All Employees</div>
+            <div id="admin-assets-dept-filter-wrap"></div>
+            <div id="admin-assets-employee-list"><div class="tk-empty">Loading...</div></div>
           </div>
           <div class="tk-entry-card">
             <div class="tk-section-title">Export to CSV</div>
@@ -588,9 +591,6 @@
             </div>
             <button class="btn-edit" style="margin-top:10px;" onclick="exportAssetsToCsv('admin')">Export CSV</button>
             <div class="login-error" id="asset-export-message"></div>
-          </div>
-          <div id="admin-assets-content">
-            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
           </div>
         </div>
       </div>
@@ -1687,8 +1687,7 @@
       }
 
       container.innerHTML = '<div class="dash-top-row">'
-        + '<div class="dash-card"><div class="dash-card-title">Team Headcount</div><div class="dash-card-empty">' + reportIds.length + ' employee' + (reportIds.length===1?'':'s') + '</div></div>'
-        + '<div class="alert-stack">'
+        + '<div class="alert-stack" style="width:100%;">'
         + '<div class="dash-card"><div class="dash-card-title">Pending Approvals</div>' + pendingHtml + '</div>'
         + '<div class="dash-card" style="margin-top:16px;"><div class="dash-card-title">Pending Equipment Requests</div>' + pendingEquipHtml + '</div>'
         + '</div>'
@@ -1846,9 +1845,11 @@
 
   async function loadTeamAssets(scope){
     var ids = assetScopeIds(scope);
-    var container = document.getElementById(ids.contentId);
     var session = getSession();
     if(!session || !session.user){ return; }
+
+    var teamPanel = document.getElementById(ids.teamPanelId);
+    var container = document.getElementById(ids.contentId);
 
     try{
       var employeeIds = scope === 'admin'
@@ -1863,67 +1864,76 @@
       document.getElementById(ids.searchInputId).value = '';
       document.getElementById(ids.searchResultsId).innerHTML = '';
 
-      if(!assetTeamReports[scope].length){
-        container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No direct reports</div><div class="placeholder-sub">Nobody is currently assigned to you.</div></div>';
-        return;
-      }
-      if(assetTeamIndex[scope] >= assetTeamReports[scope].length){ assetTeamIndex[scope] = 0; }
+      // No employee pre-selected on load — roster stays visible until
+      // someone is clicked; card area shows pending requests (if any)
+      // plus a prompt rather than auto-loading the first employee.
+      assetTeamIndex[scope] = -1;
+      teamPanel.style.display = '';
 
-      // Pending equipment requests across the team, shown above the per-employee view
-      var reportIds = assetTeamReports[scope].map(function(r){ return r.id; });
-      var pendingRequests = await dbRequest('asset_requests?requested_by=in.(' + reportIds.join(',') + ')&status=eq.pending&select=*,profiles!asset_requests_requested_by_fkey(full_name)');
-
-      var pendingHtml = pendingRequests.length
-        ? pendingRequests.map(function(r){
-            return '<div class="tk-entry-card">'
-              + '<div class="myteam-employee-header"><div class="myteam-employee-name">' + (r.profiles ? r.profiles.full_name : 'Unknown') + '</div>'
-              + '<div class="myteam-employee-title">Requested: ' + r.asset_name + '</div></div>'
-              + '<div class="asset-grid">'
-              + assetFieldRow('Type', r.asset_type)
-              + assetFieldRow('Serial Number', r.serial_number)
-              + assetFieldRow('Vendor', r.vendor)
-              + assetFieldRow('Issued By', r.issued_by_external)
-              + assetFieldRow('Purchased From', r.purchased_from)
-              + assetFieldRow('Purchase Price', r.purchase_price ? '$' + r.purchase_price : '—')
-              + '</div>'
-              + '<div class="tk-grid-actions">'
-              + '<button class="btn-logout" style="width:auto;" onclick="reviewAssetRequest(\'' + r.id + '\',\'rejected\',\'' + scope + '\')">Reject</button>'
-              + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="reviewAssetRequest(\'' + r.id + '\',\'approved\',\'' + scope + '\')">Approve &amp; Add to Assets</button>'
-              + '</div>'
-              + '</div>';
-          }).join('')
-        : '';
-
-      var navHtml = '<div class="myteam-nav-row">'
-        + '<button class="tk-period-nav-btn" ' + (assetTeamIndex[scope] === 0 ? 'disabled' : '') + ' onclick="assetTeamNavEmployee(\'' + scope + '\',-1)">&larr; Prev</button>'
-        + '<div class="myteam-nav-count">Employee ' + (assetTeamIndex[scope]+1) + ' of ' + assetTeamReports[scope].length + '</div>'
-        + '<button class="tk-period-nav-btn" ' + (assetTeamIndex[scope] === assetTeamReports[scope].length-1 ? 'disabled' : '') + ' onclick="assetTeamNavEmployee(\'' + scope + '\',1)">Next &rarr;</button>'
-        + '</div>';
-
-      container.innerHTML = (pendingHtml ? '<div class="tk-section-title">Pending Equipment Requests</div>' + pendingHtml : '')
-        + navHtml + '<div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>';
-
-      var cardHtml = await assetTeamRenderEmployeeCard(assetTeamReports[scope][assetTeamIndex[scope]], scope);
-      container.innerHTML = (pendingHtml ? '<div class="tk-section-title">Pending Equipment Requests</div>' + pendingHtml : '')
-        + navHtml + cardHtml;
+      var pendingHtml = await renderPendingAssetRequests(scope);
+      container.innerHTML = pendingHtml + '<div class="placeholder-card"><div class="placeholder-sub">Select an employee below to view their equipment.</div></div>';
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load assets</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
   }
 
-  function assetTeamNavEmployee(scope, dir){
-    assetTeamIndex[scope] += dir;
-    if(assetTeamIndex[scope] < 0){ assetTeamIndex[scope] = 0; }
-    if(assetTeamIndex[scope] >= assetTeamReports[scope].length){ assetTeamIndex[scope] = assetTeamReports[scope].length - 1; }
-    loadTeamAssets(scope);
+  // Pending equipment requests are team-wide, not tied to whichever
+  // employee card is open, so they're rendered separately and stay
+  // visible whether or not a card is showing.
+  async function renderPendingAssetRequests(scope){
+    var reportIds = assetTeamReports[scope].map(function(r){ return r.id; });
+    if(!reportIds.length){ return ''; }
+    var pendingRequests = await dbRequest('asset_requests?requested_by=in.(' + reportIds.join(',') + ')&status=eq.pending&select=*,profiles!asset_requests_requested_by_fkey(full_name)');
+    if(!pendingRequests.length){ return ''; }
+    return '<div class="tk-section-title">Pending Equipment Requests</div>' + pendingRequests.map(function(r){
+      return '<div class="tk-entry-card">'
+        + '<div class="myteam-employee-header"><div class="myteam-employee-name">' + (r.profiles ? r.profiles.full_name : 'Unknown') + '</div>'
+        + '<div class="myteam-employee-title">Requested: ' + r.asset_name + '</div></div>'
+        + '<div class="asset-grid">'
+        + assetFieldRow('Type', r.asset_type)
+        + assetFieldRow('Serial Number', r.serial_number)
+        + assetFieldRow('Vendor', r.vendor)
+        + assetFieldRow('Issued By', r.issued_by_external)
+        + assetFieldRow('Purchased From', r.purchased_from)
+        + assetFieldRow('Purchase Price', r.purchase_price ? '$' + r.purchase_price : '—')
+        + '</div>'
+        + '<div class="tk-grid-actions">'
+        + '<button class="btn-logout" style="width:auto;" onclick="reviewAssetRequest(\'' + r.id + '\',\'rejected\',\'' + scope + '\')">Reject</button>'
+        + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="reviewAssetRequest(\'' + r.id + '\',\'approved\',\'' + scope + '\')">Approve &amp; Add to Assets</button>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  async function showTeamEmployeeAssets(scope, employeeId){
+    var ids = assetScopeIds(scope);
+    var idx = assetTeamReports[scope].findIndex(function(r){ return r.id === employeeId; });
+    if(idx === -1){ return; } // employee isn't in the current set
+    assetTeamIndex[scope] = idx;
+
+    var teamPanel = document.getElementById(ids.teamPanelId);
+    var container = document.getElementById(ids.contentId);
+    teamPanel.style.display = 'none';
+
+    var pendingHtml = await renderPendingAssetRequests(scope);
+    container.innerHTML = pendingHtml + '<div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>';
+
+    var cardHtml = await assetTeamRenderEmployeeCard(assetTeamReports[scope][idx], scope);
+    container.innerHTML = pendingHtml + cardHtml;
+  }
+
+  function cancelTeamEmployeeAssets(scope){
+    var ids = assetScopeIds(scope);
+    assetTeamIndex[scope] = -1;
+    document.getElementById(ids.teamPanelId).style.display = '';
+    renderPendingAssetRequests(scope).then(function(pendingHtml){
+      document.getElementById(ids.contentId).innerHTML = pendingHtml + '<div class="placeholder-card"><div class="placeholder-sub">Select an employee below to view their equipment.</div></div>';
+    });
   }
 
   function teamViewEmployeeAssets(scope, employeeId){
-    var idx = assetTeamReports[scope].findIndex(function(r){ return r.id === employeeId; });
-    if(idx === -1){ return; } // employee isn't in the current nav set
-    assetTeamIndex[scope] = idx;
-    loadTeamAssets(scope);
+    showTeamEmployeeAssets(scope, employeeId);
   }
 
   async function populateAssetExportDropdowns(scope){
@@ -2091,9 +2101,51 @@
       + '<div class="myteam-employee-header"><div class="myteam-employee-name">' + (employee.full_name || 'Unknown') + '</div>'
       + '<div class="myteam-employee-title">' + (employee.job_title || '—') + '</div></div>'
       + rowsHtml
-      + '<button class="btn-edit" style="margin-top:10px;" onclick="showIssueAssetForm(\'' + employee.id + '\',\'' + scope + '\')">Issue New Equipment</button>'
+      + '<div class="tk-grid-actions" style="margin-top:10px;">'
+      + '<button class="btn-logout" style="width:auto;" onclick="cancelTeamEmployeeAssets(\'' + scope + '\')">Cancel</button>'
+      + '<button class="btn-edit" style="width:auto;" onclick="exportEmployeeAssetsToCsv(\'' + employee.id + '\',\'' + (employee.full_name||'Unknown').replace(/'/g, "\\'") + '\')">Export to CSV</button>'
+      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="showIssueAssetForm(\'' + employee.id + '\',\'' + scope + '\')">Issue New Equipment</button>'
+      + '</div>'
       + '<div id="issue-asset-form-wrap"></div>'
       + '</div>';
+  }
+
+  async function exportEmployeeAssetsToCsv(employeeId, employeeName){
+    try{
+      var rows = await dbRequest('assets?assigned_to=eq.' + employeeId + '&order=issued_date.desc&select=*');
+      if(!rows.length){ return; }
+      var headers = ['Asset Name','Asset Type','Serial Number','Vendor','Model','Condition','Issued Date','Returned Date','Purchase Date','Warranty Expiry','Purchased From','Purchase Price','Notes'];
+      var lines = [headers.join(',')];
+      rows.forEach(function(a){
+        lines.push([
+          csvEscape(a.asset_name),
+          csvEscape(a.asset_type),
+          csvEscape(a.serial_number),
+          csvEscape(a.vendor),
+          csvEscape(a.model),
+          csvEscape(ASSET_CONDITION_LABELS[a.condition] || a.condition),
+          csvEscape(a.issued_date),
+          csvEscape(a.returned_date),
+          csvEscape(a.purchase_date),
+          csvEscape(a.warranty_expiry),
+          csvEscape(a.purchased_from),
+          csvEscape(a.purchase_price),
+          csvEscape(a.notes)
+        ].join(','));
+      });
+      var csvContent = lines.join('\n');
+      var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = (employeeName || 'employee').replace(/\s+/g, '_') + '_equipment_' + new Date().toISOString().slice(0,10) + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }catch(e){
+      console.error(e);
+    }
   }
 
   function showIssueAssetForm(employeeId, scope){
@@ -2147,7 +2199,7 @@
         photo_url: document.getElementById('ia-photo').value || null,
         notes: document.getElementById('ia-notes').value || null
       });
-      loadTeamAssets(scope);
+      showTeamEmployeeAssets(scope, employeeId);
     }catch(e){
       errorEl.textContent = 'Could not issue equipment — try again.';
       console.error(e);
