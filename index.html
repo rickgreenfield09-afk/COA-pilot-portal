@@ -213,26 +213,32 @@
   .dir-roster-title{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;}
   .dir-roster-dept{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.5px;text-transform:uppercase;}
 
-  /* Org chart tree */
-  .dir-chart-dept{margin-bottom:14px;}
-  .dir-chart-dept-header{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;cursor:pointer;transition:border-color .15s;}
-  .dir-chart-dept-header:hover{border-color:var(--teal);}
-  .dir-chart-caret{font-size:11px;color:var(--teal);transition:transform .15s;flex-shrink:0;}
-  .dir-chart-caret.open{transform:rotate(90deg);}
-  .dir-chart-dept-name{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.5px;}
-  .dir-chart-dept-head-name{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;margin-left:auto;}
-  .dir-chart-body{display:none;padding:10px 0 4px 28px;border-left:1px solid var(--border);margin-left:18px;}
-  .dir-chart-body.open{display:block;}
-  .dir-chart-node{margin-bottom:8px;}
-  .dir-chart-node-row{display:flex;align-items:center;gap:10px;background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:9px 12px;cursor:default;}
-  .dir-chart-node-row.has-children{cursor:pointer;transition:border-color .15s;}
-  .dir-chart-node-row.has-children:hover{border-color:var(--teal);}
-  .dir-chart-node-row.is-you{border-color:var(--teal);box-shadow:0 0 0 1px rgba(42,184,166,0.3);}
-  .dir-chart-node-name{font-size:13px;color:var(--text);font-weight:500;}
-  .dir-chart-node-title{font-size:11px;color:var(--sub);font-family:'DM Mono',monospace;}
-  .dir-chart-node-children{display:none;padding:8px 0 0 24px;border-left:1px solid var(--border);margin-left:14px;}
-  .dir-chart-node-children.open{display:block;}
-  .dir-chart-you-tag{font-size:10px;color:var(--teal);font-family:'DM Mono',monospace;letter-spacing:1px;text-transform:uppercase;margin-left:auto;}
+  /* Org chart — card/branch style with CSS-only connector lines */
+  .dir-chart-toolbar{display:flex;gap:10px;margin-bottom:24px;}
+  .dir-chart-toolbar-btn{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:8px 16px;font-size:12px;color:var(--sub);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
+  .dir-chart-toolbar-btn:hover{border-color:var(--teal);color:var(--teal);}
+  .dir-chart-scroll{overflow-x:auto;padding-bottom:20px;}
+  .dir-chart-root-wrap{display:flex;justify-content:center;margin-bottom:0;}
+  .dir-chart-row{display:flex;justify-content:center;position:relative;}
+  .dir-chart-row::before{content:'';position:absolute;top:0;left:50%;width:1px;height:24px;background:var(--border);transform:translateX(-50%);}
+  .dir-chart-branch{display:flex;flex-direction:column;align-items:center;padding-top:24px;position:relative;}
+  .dir-chart-branch::before{content:'';position:absolute;top:0;left:50%;width:1px;height:24px;background:var(--border);}
+  .dir-chart-siblings{display:flex;gap:32px;position:relative;padding-top:1px;}
+  .dir-chart-siblings::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:var(--border);}
+  .dir-chart-siblings > .dir-chart-branch:only-child::before{display:none;}
+  .dir-chart-card{width:180px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;cursor:default;transition:border-color .15s,box-shadow .15s;flex-shrink:0;}
+  .dir-chart-card.has-children{cursor:pointer;}
+  .dir-chart-card.has-children:hover{border-color:var(--teal);}
+  .dir-chart-card.is-you{border-color:var(--teal);box-shadow:0 0 0 1px rgba(42,184,166,0.3);}
+  .dir-chart-card.is-root{width:200px;}
+  .dir-chart-avatar{width:48px;height:48px;border-radius:50%;background:var(--raised);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--teal);margin:0 auto 10px;}
+  .dir-chart-card-name{font-size:13px;color:var(--text);font-weight:600;margin-bottom:2px;}
+  .dir-chart-card-title{font-size:11px;color:var(--sub);font-family:'DM Mono',monospace;line-height:1.3;margin-bottom:6px;}
+  .dir-chart-card-contact{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;line-height:1.5;word-break:break-word;}
+  .dir-chart-you-tag{display:inline-block;font-size:9px;color:var(--teal);font-family:'DM Mono',monospace;letter-spacing:1px;text-transform:uppercase;margin-top:6px;}
+  .dir-chart-caret-toggle{font-size:10px;color:var(--teal);margin-top:6px;}
+  .dir-chart-children-wrap{display:none;}
+  .dir-chart-children-wrap.open{display:block;}
 
   /* ---------- Timekeeping screen ---------- */
   .tk-subscreen{display:none;}
@@ -3059,7 +3065,7 @@
   // Shared fetch: all profiles + their department name in one round trip via PostgREST embed
   async function dirFetchAllProfiles(){
     if(dirAllProfiles.length){ return dirAllProfiles; }
-    var rows = await dbRequest('profiles?select=id,full_name,job_title,manager_id,department_id,org_position,departments(name)&order=full_name.asc');
+    var rows = await dbRequest('profiles?select=id,full_name,job_title,manager_id,department_id,org_position,email,phone,departments(name)&order=full_name.asc');
     dirAllProfiles = rows;
     return rows;
   }
@@ -3148,12 +3154,9 @@
         childrenOf[key].push(r);
       });
 
-      // Departments in sort order, each keyed by its department_head
       var deptRows = await dbRequest('departments?select=id,name,sort_order&order=sort_order.asc');
 
-      // Determine which node ids must be force-expanded:
-      // 1) the path from root down to the logged-in user, and
-      // 2) every descendant of the logged-in user (their own team).
+      // Force-expand: path from root to logged-in user, plus their full subtree.
       var expandIds = {};
       if(meId && byId[meId]){
         var cursor = byId[meId];
@@ -3169,72 +3172,84 @@
         }
       }
 
-      function renderNode(person){
+      function cardHtml(person, extraClass){
         var kids = childrenOf[person.id] || [];
         var hasKids = kids.length > 0;
         var isYou = meId && person.id === meId;
-        var openClass = expandIds[person.id] ? ' open' : '';
-        var rowClass = 'dir-chart-node-row' + (hasKids ? ' has-children' : '') + (isYou ? ' is-you' : '');
-        var onclick = hasKids ? ' onclick="dirToggleNode(this)"' : '';
-        var caret = hasKids ? '<span class="dir-chart-caret' + (expandIds[person.id] ? ' open' : '') + '">&#9656;</span>' : '<span style="width:11px;display:inline-block;"></span>';
-        var html = '<div class="dir-chart-node">'
-          + '<div class="' + rowClass + '"' + onclick + '>'
-          + caret
-          + '<div><div class="dir-chart-node-name">' + person.full_name + '</div><div class="dir-chart-node-title">' + (person.job_title||'') + '</div></div>'
-          + (isYou ? '<span class="dir-chart-you-tag">You</span>' : '')
+        var cls = 'dir-chart-card' + (extraClass ? ' ' + extraClass : '') + (hasKids ? ' has-children' : '') + (isYou ? ' is-you' : '');
+        var onclick = hasKids ? ' onclick="dirToggleCard(this)"' : '';
+        return '<div class="' + cls + '"' + onclick + '>'
+          + '<div class="dir-chart-avatar">' + dirInitials(person.full_name) + '</div>'
+          + '<div class="dir-chart-card-name">' + person.full_name + '</div>'
+          + '<div class="dir-chart-card-title">' + (person.job_title||'') + '</div>'
+          + '<div class="dir-chart-card-contact">' + (person.email||'') + (person.phone ? '<br>' + person.phone : '') + '</div>'
+          + (isYou ? '<div class="dir-chart-you-tag">You</div>' : '')
+          + (hasKids ? '<div class="dir-chart-caret-toggle">&#9656; ' + kids.length + (kids.length===1?' report':' reports') + '</div>' : '')
           + '</div>';
+      }
+
+      // Recursive branch: a card plus, if it has children, a connector stem
+      // down to a sibling row containing each child's own branch.
+      function branchHtml(person, extraClass){
+        var kids = childrenOf[person.id] || [];
+        var hasKids = kids.length > 0;
+        var openClass = expandIds[person.id] ? ' open' : '';
+        var html = '<div class="dir-chart-branch">' + cardHtml(person, extraClass);
         if(hasKids){
-          html += '<div class="dir-chart-node-children' + openClass + '">'
-            + kids.map(renderNode).join('')
-            + '</div>';
+          html += '<div class="dir-chart-children-wrap' + openClass + '">'
+            + '<div class="dir-chart-siblings">'
+            + kids.map(function(k){ return branchHtml(k); }).join('')
+            + '</div></div>';
         }
         html += '</div>';
         return html;
       }
 
-      var chartHtml = deptRows.map(function(dept){
-        var head = (childrenOf['__root__']||[]).concat(
-          Object.keys(childrenOf).reduce(function(acc,k){ return acc.concat(childrenOf[k]); }, [])
-        ).find(function(p){ return p.org_position === 'department_head' && p.department_id === dept.id; });
+      // Scott (or whoever has no manager) stands alone — no children
+      // nested under his card, per design: dept heads are their own row.
+      var rootPerson = (childrenOf['__root__']||[])[0];
+      var rootHtml = rootPerson
+        ? '<div class="dir-chart-root-wrap">' + cardHtml(rootPerson, 'is-root') + '</div>'
+        : '';
 
-        var bodyId = 'dir-dept-body-' + dept.id;
-        var deptOpen = head && expandIds[head.id];
-        var headName = head ? head.full_name : '— Unassigned —';
-        var bodyHtml = head ? renderNode(head) : '<div class="tk-empty">No department head assigned.</div>';
-
-        return '<div class="dir-chart-dept">'
-          + '<div class="dir-chart-dept-header" onclick="dirToggleDept(this)">'
-          + '<span class="dir-chart-caret' + (deptOpen ? ' open' : '') + '">&#9656;</span>'
-          + '<span class="dir-chart-dept-name">' + dept.name + '</span>'
-          + '<span class="dir-chart-dept-head-name">' + headName + '</span>'
-          + '</div>'
-          + '<div class="dir-chart-body' + (deptOpen ? ' open' : '') + '">' + bodyHtml + '</div>'
-          + '</div>';
+      // Department head row: one branch per department, each head's
+      // own subtree (division managers, employees) nests beneath it.
+      var deptBranches = deptRows.map(function(dept){
+        var head = rows.find(function(p){ return p.org_position === 'department_head' && p.department_id === dept.id; });
+        if(!head){
+          return '<div class="dir-chart-branch"><div class="dir-chart-card"><div class="dir-chart-card-name">' + dept.name + '</div><div class="dir-chart-card-title">Unassigned</div></div></div>';
+        }
+        return branchHtml(head);
       }).join('');
 
-      var rootPerson = (childrenOf['__root__']||[])[0];
-      var rootHtml = rootPerson ? '<div class="tk-entry-card"><div class="tk-section-title">Principal</div>' + renderNode(rootPerson) + '</div>' : '';
+      var deptRowHtml = '<div class="dir-chart-row"><div class="dir-chart-siblings">' + deptBranches + '</div></div>';
 
-      container.innerHTML = rootHtml + chartHtml;
+      var toolbarHtml = '<div class="dir-chart-toolbar">'
+        + '<button class="dir-chart-toolbar-btn" onclick="dirExpandAll()">Expand All</button>'
+        + '<button class="dir-chart-toolbar-btn" onclick="dirCollapseAll()">Collapse All</button>'
+        + '</div>';
+
+      container.innerHTML = toolbarHtml + '<div class="dir-chart-scroll">' + rootHtml + deptRowHtml + '</div>';
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load org chart</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
   }
 
-  function dirToggleDept(headerEl){
-    var caret = headerEl.querySelector('.dir-chart-caret');
-    var body = headerEl.nextElementSibling;
-    caret.classList.toggle('open');
-    body.classList.toggle('open');
+  function dirToggleCard(cardEl){
+    var branch = cardEl.closest('.dir-chart-branch');
+    if(!branch){ return; }
+    var wrap = branch.querySelector('.dir-chart-children-wrap');
+    if(!wrap){ return; }
+    wrap.classList.toggle('open');
   }
 
-  function dirToggleNode(rowEl){
-    var caret = rowEl.querySelector('.dir-chart-caret');
-    var children = rowEl.nextElementSibling;
-    if(!children || !children.classList.contains('dir-chart-node-children')){ return; }
-    caret.classList.toggle('open');
-    children.classList.toggle('open');
+  function dirExpandAll(){
+    document.querySelectorAll('#dir-orgchart .dir-chart-children-wrap').forEach(function(w){ w.classList.add('open'); });
+  }
+
+  function dirCollapseAll(){
+    document.querySelectorAll('#dir-orgchart .dir-chart-children-wrap').forEach(function(w){ w.classList.remove('open'); });
   }
 
   // ---- Shared PTO stat calculation, used by both PTO Request and PTO Balance ----
