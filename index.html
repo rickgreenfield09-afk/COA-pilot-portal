@@ -2465,18 +2465,15 @@
   var myTeamEndISO = '';
 
   async function loadMyTeam(){
-    var container = document.getElementById('myteam-content');
+    var container = document.getElementById('myteam-timekeeping-content');
     var session = getSession();
     if(!session || !session.user){ return; }
 
     try{
-      var roleRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
-      var role = roleRows.length ? roleRows[0].role : null;
-      if(role === 'admin'){
-        myTeamReports = await dbRequest('profiles?id=neq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
-      } else {
-        myTeamReports = await dbRequest('profiles?manager_id=eq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
-      }
+      var ids = await getRecursiveReportIds(session.user.id);
+      myTeamReports = ids.length
+        ? await dbRequest('profiles?id=in.(' + ids.join(',') + ')&select=id,full_name,job_title&order=full_name.asc')
+        : [];
 
       if(!myTeamReports.length){
         container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No direct reports</div><div class="placeholder-sub">Nobody is currently assigned to you for review.</div></div>';
@@ -2497,7 +2494,7 @@
   }
 
   async function myTeamRenderCurrentCard(){
-    var container = document.getElementById('myteam-content');
+    var container = document.getElementById('myteam-timekeeping-content');
     var bounds = tkPeriodBounds(tkOffsetForToday());
     var employee = myTeamReports[myTeamIndex];
 
