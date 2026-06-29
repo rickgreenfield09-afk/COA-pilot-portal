@@ -203,6 +203,10 @@
   /* ---------- Timekeeping screen ---------- */
   .tk-subscreen{display:none;}
   .tk-subscreen.active{display:block;}
+  .prof-subscreen{display:none;}
+  .prof-subscreen.active{display:block;}
+  .admin-subscreen{display:none;}
+  .admin-subscreen.active{display:block;}
   .tk-entry-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:24px;}
   .tk-section-title{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;}
   .tk-status-pill{font-size:11px;font-family:'DM Mono',monospace;padding:3px 9px;border-radius:10px;display:inline-block;}
@@ -211,6 +215,7 @@
   .tk-status-pill.pending{background:rgba(232,184,75,0.12);color:var(--amber);}
   .tk-status-pill.approved{background:rgba(42,184,166,0.12);color:var(--teal);}
   .tk-status-pill.rejected{background:rgba(224,82,82,0.12);color:var(--red);}
+  .tk-status-pill.cancelled_by_submitter{background:var(--raised);color:var(--muted);}
   .tk-empty{font-size:13px;color:var(--muted);padding:16px 0;}
 
   /* Period header */
@@ -247,6 +252,17 @@
   .myteam-employee-name{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--text);}
   .myteam-employee-title{font-size:12px;color:var(--sub);margin-top:2px;}
   .myteam-return-box{background:var(--raised);border-radius:6px;padding:14px;margin-top:14px;}
+  .myteam-nav-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  .myteam-nav-count{font-size:12px;font-family:'DM Mono',monospace;color:var(--sub);}
+
+  /* Asset tracker */
+  .asset-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .asset-field-label{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;}
+  .asset-field-val{font-size:13px;color:var(--text);}
+  .asset-photo{max-width:160px;border-radius:6px;margin-bottom:14px;display:block;}
+  .asset-form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+  @media (max-width:800px){.asset-grid{grid-template-columns:repeat(2,1fr);}.asset-form-grid{grid-template-columns:1fr 1fr;}}
+  @media (max-width:500px){.asset-grid{grid-template-columns:1fr;}.asset-form-grid{grid-template-columns:1fr;}}
   .tk-time-cell{display:flex;gap:6px;align-items:center;}
   .tk-time-cell input.tk-grid-input{flex:1;min-width:0;}
   .tk-now-btn{background:var(--raised);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:11px;color:var(--teal);cursor:pointer;white-space:nowrap;flex-shrink:0;}
@@ -308,10 +324,8 @@
       <button class="nav-btn" data-screen="profile" onclick="requestSwitchScreen('profile')">Profile</button>
       <button class="nav-btn" data-screen="directory" onclick="requestSwitchScreen('directory')">Directory</button>
       <button class="nav-btn" data-screen="timekeeping" onclick="requestSwitchScreen('timekeeping')">Timekeeping</button>
-      <button class="nav-btn" data-screen="resume" onclick="requestSwitchScreen('resume')">Resume</button>
       <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel</button>
       <button class="nav-btn" data-screen="training" onclick="requestSwitchScreen('training')">Training</button>
-      <button class="nav-btn" id="nav-myteam" data-screen="myteam" onclick="requestSwitchScreen('myteam')" style="display:none;">My Team</button>
       <button class="nav-btn" data-screen="admin" onclick="requestSwitchScreen('admin')">Admin</button>
     </nav>
     <main>
@@ -323,9 +337,38 @@
         </div>
       </div>
       <div class="screen" id="screen-profile">
-        <div id="profile-content">
-          <div class="placeholder-card">
-            <div class="placeholder-sub">Loading profile...</div>
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-profsubtab="overview" onclick="switchProfileSubtab('overview')">Overview</button>
+          <button class="subtab-btn" data-profsubtab="resume" onclick="switchProfileSubtab('resume')">Resume</button>
+          <button class="subtab-btn" data-profsubtab="assets" onclick="switchProfileSubtab('assets')">Assets</button>
+        </div>
+        <div class="prof-subscreen active" id="prof-overview">
+          <div id="profile-content">
+            <div class="placeholder-card">
+              <div class="placeholder-sub">Loading profile...</div>
+            </div>
+          </div>
+        </div>
+        <div class="prof-subscreen" id="prof-resume">
+          <div class="resume-search-wrap" id="resume-search-wrap" style="display:none;">
+            <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract..." oninput="debounceSearchResumes()">
+            <div id="resume-search-results"></div>
+            <div class="resume-cart" style="width:100%;">
+              <div class="resume-cart-title">Resume Export Cart</div>
+              <div id="resume-cart-list"><div class="resume-cart-empty">No resumes added yet.</div></div>
+              <button class="btn-edit" id="print-cart-btn" onclick="printResumeCart()" disabled style="margin-top:8px;">Print Selected (0)</button>
+            </div>
+          </div>
+          <div id="resume-viewing-banner"></div>
+          <div id="resume-content">
+            <div class="placeholder-card">
+              <div class="placeholder-sub">Loading resume...</div>
+            </div>
+          </div>
+        </div>
+        <div class="prof-subscreen" id="prof-assets">
+          <div id="profile-assets-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
           </div>
         </div>
       </div>
@@ -341,6 +384,7 @@
           <button class="subtab-btn" data-tksubtab="history" onclick="switchTkSubtab('history')">History</button>
           <button class="subtab-btn" data-tksubtab="ptorequest" onclick="switchTkSubtab('ptorequest')">Request PTO</button>
           <button class="subtab-btn" data-tksubtab="ptobalance" onclick="switchTkSubtab('ptobalance')">PTO Balance</button>
+          <button class="subtab-btn" id="tk-subtab-btn-myteam" data-tksubtab="myteam" onclick="switchTkSubtab('myteam')" style="display:none;">My Team</button>
         </div>
         <div class="tk-subscreen active" id="tk-current">
           <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
@@ -354,21 +398,9 @@
         <div class="tk-subscreen" id="tk-ptobalance">
           <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
         </div>
-      </div>
-      <div class="screen" id="screen-resume">
-        <div class="resume-search-wrap" id="resume-search-wrap" style="display:none;">
-          <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract..." oninput="debounceSearchResumes()">
-          <div id="resume-search-results"></div>
-          <div class="resume-cart" style="width:100%;">
-            <div class="resume-cart-title">Resume Export Cart</div>
-            <div id="resume-cart-list"><div class="resume-cart-empty">No resumes added yet.</div></div>
-            <button class="btn-edit" id="print-cart-btn" onclick="printResumeCart()" disabled style="margin-top:8px;">Print Selected (0)</button>
-          </div>
-        </div>
-        <div id="resume-viewing-banner"></div>
-        <div id="resume-content">
-          <div class="placeholder-card">
-            <div class="placeholder-sub">Loading resume...</div>
+        <div class="tk-subscreen" id="tk-myteam">
+          <div id="myteam-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
           </div>
         </div>
       </div>
@@ -410,15 +442,20 @@
           </div>
         </div>
       </div>
-      <div class="screen" id="screen-myteam">
-        <div id="myteam-content">
-          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
-        </div>
-      </div>
       <div class="screen" id="screen-admin">
-        <div class="placeholder-card">
-          <div class="placeholder-title">Admin</div>
-          <div class="placeholder-sub">Survey builder and employee management coming next session</div>
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-adminsubtab="resumes" onclick="switchAdminSubtab('resumes')">Resumes</button>
+          <button class="subtab-btn" data-adminsubtab="assets" onclick="switchAdminSubtab('assets')">Assets</button>
+        </div>
+        <div class="admin-subscreen active" id="admin-resumes">
+          <div id="admin-resumes-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+        <div class="admin-subscreen" id="admin-assets">
+          <div id="admin-assets-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
         </div>
       </div>
     </main>
@@ -1278,7 +1315,7 @@
   async function checkMyTeamNavVisibility(){
     var session = getSession();
     if(!session || !session.user){ return; }
-    var btn = document.getElementById('nav-myteam');
+    var btn = document.getElementById('tk-subtab-btn-myteam');
     try{
       var profRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
       var role = profRows.length ? profRows[0].role : null;
@@ -1299,19 +1336,384 @@
       loadDashboard();
     }
     if(name === 'profile'){
-      loadProfile();
+      switchProfileSubtab('overview');
     }
     if(name === 'timekeeping'){
       switchTkSubtab('current');
     }
-    if(name === 'myteam'){
-      loadMyTeam();
+    if(name === 'admin'){
+      switchAdminSubtab('resumes');
     }
+  }
+
+  // ---------- Profile subtabs ----------
+  function switchProfileSubtab(name){
+    document.querySelectorAll('#screen-profile .prof-subscreen').forEach(function(s){ s.classList.remove('active'); });
+    document.querySelectorAll('#screen-profile [data-profsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.profsubtab === name); });
+    document.getElementById('prof-' + name).classList.add('active');
+    if(name === 'overview'){ loadProfile(); }
     if(name === 'resume'){
       document.getElementById('resume-search-wrap').style.display = isAdmin() ? 'block' : 'none';
       document.getElementById('resume-search-input').value = '';
       document.getElementById('resume-search-results').innerHTML = '';
       loadResume(getSession().user.id);
+    }
+    if(name === 'assets'){ loadProfileAssets(); }
+  }
+
+  // ---------- Admin subtabs ----------
+  function switchAdminSubtab(name){
+    document.querySelectorAll('#screen-admin .admin-subscreen').forEach(function(s){ s.classList.remove('active'); });
+    document.querySelectorAll('#screen-admin [data-adminsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.adminsubtab === name); });
+    document.getElementById('admin-' + name).classList.add('active');
+    if(name === 'resumes'){ loadAdminResumes(); }
+    if(name === 'assets'){ loadAdminAssets(); }
+  }
+
+  function loadAdminResumes(){
+    var container = document.getElementById('admin-resumes-content');
+    container.innerHTML = '<div class="placeholder-card">'
+      + '<div class="placeholder-title">Browse Resumes</div>'
+      + '<div class="placeholder-sub">Resume search and viewing lives under Profile → Resume. <a href="#" onclick="requestSwitchScreen(\'profile\');setTimeout(function(){switchProfileSubtab(\'resume\');},0);return false;">Open Resume Search</a></div>'
+      + '</div>';
+  }
+
+  // ---------- Asset Tracker ----------
+  var ASSET_CONDITIONS = ['excellent','good','fair','needs_repair','poor'];
+  var ASSET_CONDITION_LABELS = { excellent:'Excellent', good:'Good', fair:'Fair', needs_repair:'Needs Repair', poor:'Poor' };
+
+  function assetFieldRow(label, value){
+    return '<div class="asset-field"><div class="asset-field-label">' + label + '</div><div class="asset-field-val">' + (value || '—') + '</div></div>';
+  }
+
+  // ---- Profile → Assets (employee, read-only) ----
+  async function loadProfileAssets(){
+    var container = document.getElementById('profile-assets-content');
+    var session = getSession();
+    if(!session || !session.user){ return; }
+
+    try{
+      var rows = await dbRequest('assets?assigned_to=eq.' + session.user.id + '&order=issued_date.desc&select=*');
+      var assetsHtml = rows.length
+        ? rows.map(function(a){
+            return '<div class="tk-entry-card">'
+              + (a.photo_url ? '<img src="' + a.photo_url + '" class="asset-photo" alt="">' : '')
+              + '<div class="asset-grid">'
+              + assetFieldRow('Asset Name', a.asset_name)
+              + assetFieldRow('Type', a.asset_type)
+              + assetFieldRow('Serial Number', a.serial_number)
+              + assetFieldRow('Vendor', a.vendor)
+              + assetFieldRow('Model', a.model)
+              + assetFieldRow('Condition', ASSET_CONDITION_LABELS[a.condition] || a.condition)
+              + assetFieldRow('Issued Date', a.issued_date ? formatDate(a.issued_date) : '—')
+              + assetFieldRow('Returned Date', a.returned_date ? formatDate(a.returned_date) : '—')
+              + assetFieldRow('Notes', a.notes)
+              + '</div>'
+              + '</div>';
+          }).join('')
+        : '<div class="tk-empty">No equipment currently assigned to you.</div>';
+
+      var requestRows = await dbRequest('asset_requests?requested_by=eq.' + session.user.id + '&order=created_at.desc&select=id,asset_name,status,created_at');
+      var requestLogHtml = requestRows.length
+        ? '<table class="tk-grid-table"><thead><tr><th>Submitted</th><th>Asset</th><th>Status</th></tr></thead><tbody>'
+          + requestRows.map(function(r){
+              return '<tr><td>' + formatDate(r.created_at.slice(0,10)) + '</td><td>' + r.asset_name + '</td><td>' + tkStatusPill(r.status) + '</td></tr>';
+            }).join('')
+          + '</tbody></table>'
+        : '<div class="tk-empty">No equipment requests submitted.</div>';
+
+      container.innerHTML = '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">My Equipment</div>'
+        + '</div>'
+        + assetsHtml
+        + '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">Request Equipment</div>'
+        + '<div class="placeholder-sub" style="margin-bottom:12px;">Use this if you were issued equipment by an outside party, or were approved to purchase your own — enter the details below for manager approval.</div>'
+        + '<button class="btn-edit" onclick="showAssetRequestForm()">New Equipment Request</button>'
+        + '<div id="asset-request-form-wrap"></div>'
+        + '</div>'
+        + '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">My Equipment Requests</div>'
+        + requestLogHtml
+        + '</div>';
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load assets</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  function showAssetRequestForm(){
+    var wrap = document.getElementById('asset-request-form-wrap');
+    wrap.innerHTML = '<div class="myteam-return-box" style="margin-top:14px;">'
+      + '<div class="asset-form-grid">'
+      + '<div><label class="field-label">Asset Name</label><input type="text" id="ar-name" class="field-input"></div>'
+      + '<div><label class="field-label">Asset Type</label><input type="text" id="ar-type" class="field-input"></div>'
+      + '<div><label class="field-label">Serial Number</label><input type="text" id="ar-serial" class="field-input"></div>'
+      + '<div><label class="field-label">Vendor</label><input type="text" id="ar-vendor" class="field-input"></div>'
+      + '<div><label class="field-label">Model</label><input type="text" id="ar-model" class="field-input"></div>'
+      + '<div><label class="field-label">Condition</label><select id="ar-condition" class="field-input">'
+      + ASSET_CONDITIONS.map(function(c){ return '<option value="' + c + '">' + ASSET_CONDITION_LABELS[c] + '</option>'; }).join('')
+      + '</select></div>'
+      + '<div><label class="field-label">Issued By (external party)</label><input type="text" id="ar-issuedby" class="field-input" placeholder="e.g. agency, vendor, government office"></div>'
+      + '<div><label class="field-label">Issued Date</label><input type="date" id="ar-issueddate" class="field-input"></div>'
+      + '<div><label class="field-label">Purchased From</label><input type="text" id="ar-purchasedfrom" class="field-input"></div>'
+      + '<div><label class="field-label">Purchase Price</label><input type="text" inputmode="decimal" id="ar-price" class="field-input"></div>'
+      + '<div><label class="field-label">Purchase Date</label><input type="date" id="ar-purchasedate" class="field-input"></div>'
+      + '<div><label class="field-label">Warranty Expiry</label><input type="date" id="ar-warranty" class="field-input"></div>'
+      + '<div><label class="field-label">Photo URL</label><input type="text" id="ar-photo" class="field-input" placeholder="Link to a photo (upload coming soon)"></div>'
+      + '</div>'
+      + '<div style="margin-top:10px;"><label class="field-label">Notes</label><input type="text" id="ar-notes" class="field-input"></div>'
+      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;margin-top:10px;" onclick="submitAssetRequest()">Submit Request</button>'
+      + '<div class="login-error" id="asset-request-error"></div>'
+      + '</div>';
+  }
+
+  async function submitAssetRequest(){
+    var errorEl = document.getElementById('asset-request-error');
+    var session = getSession();
+    var name = document.getElementById('ar-name').value;
+    if(!name){
+      errorEl.textContent = 'Asset name is required.';
+      return;
+    }
+    try{
+      await dbWrite('asset_requests', 'POST', {
+        requested_by: session.user.id,
+        asset_name: name,
+        asset_type: document.getElementById('ar-type').value || null,
+        serial_number: document.getElementById('ar-serial').value || null,
+        vendor: document.getElementById('ar-vendor').value || null,
+        model: document.getElementById('ar-model').value || null,
+        condition: document.getElementById('ar-condition').value,
+        issued_by_external: document.getElementById('ar-issuedby').value || null,
+        issued_date: document.getElementById('ar-issueddate').value || null,
+        purchased_from: document.getElementById('ar-purchasedfrom').value || null,
+        purchase_price: document.getElementById('ar-price').value ? parseFloat(document.getElementById('ar-price').value) : null,
+        purchase_date: document.getElementById('ar-purchasedate').value || null,
+        warranty_expiry: document.getElementById('ar-warranty').value || null,
+        photo_url: document.getElementById('ar-photo').value || null,
+        notes: document.getElementById('ar-notes').value || null,
+        status: 'pending'
+      });
+      loadProfileAssets();
+    }catch(e){
+      errorEl.textContent = 'Could not submit request — try again.';
+      console.error(e);
+    }
+  }
+
+  // ---- Admin → Assets (manager issue/edit, employee-navigable like My Team) ----
+  var assetAdminReports = [];
+  var assetAdminIndex = 0;
+
+  async function loadAdminAssets(){
+    var container = document.getElementById('admin-assets-content');
+    var session = getSession();
+    if(!session || !session.user){ return; }
+
+    try{
+      var roleRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
+      var role = roleRows.length ? roleRows[0].role : null;
+      if(role === 'admin'){
+        assetAdminReports = await dbRequest('profiles?id=neq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
+      } else {
+        assetAdminReports = await dbRequest('profiles?manager_id=eq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
+      }
+
+      if(!assetAdminReports.length){
+        container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No direct reports</div><div class="placeholder-sub">Nobody is currently assigned to you.</div></div>';
+        return;
+      }
+      if(assetAdminIndex >= assetAdminReports.length){ assetAdminIndex = 0; }
+
+      // Pending equipment requests across the team, shown above the per-employee view
+      var reportIds = assetAdminReports.map(function(r){ return r.id; });
+      var pendingRequests = await dbRequest('asset_requests?requested_by=in.(' + reportIds.join(',') + ')&status=eq.pending&select=*,profiles!asset_requests_requested_by_fkey(full_name)');
+
+      var pendingHtml = pendingRequests.length
+        ? pendingRequests.map(function(r){
+            return '<div class="tk-entry-card">'
+              + '<div class="myteam-employee-header"><div class="myteam-employee-name">' + (r.profiles ? r.profiles.full_name : 'Unknown') + '</div>'
+              + '<div class="myteam-employee-title">Requested: ' + r.asset_name + '</div></div>'
+              + '<div class="asset-grid">'
+              + assetFieldRow('Type', r.asset_type)
+              + assetFieldRow('Serial Number', r.serial_number)
+              + assetFieldRow('Vendor', r.vendor)
+              + assetFieldRow('Issued By', r.issued_by_external)
+              + assetFieldRow('Purchased From', r.purchased_from)
+              + assetFieldRow('Purchase Price', r.purchase_price ? '$' + r.purchase_price : '—')
+              + '</div>'
+              + '<div class="tk-grid-actions">'
+              + '<button class="btn-logout" style="width:auto;" onclick="reviewAssetRequest(\'' + r.id + '\',\'rejected\')">Reject</button>'
+              + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="reviewAssetRequest(\'' + r.id + '\',\'approved\')">Approve &amp; Add to Assets</button>'
+              + '</div>'
+              + '</div>';
+          }).join('')
+        : '';
+
+      var navHtml = '<div class="myteam-nav-row">'
+        + '<button class="tk-period-nav-btn" ' + (assetAdminIndex === 0 ? 'disabled' : '') + ' onclick="assetAdminNavEmployee(-1)">&larr; Prev</button>'
+        + '<div class="myteam-nav-count">Employee ' + (assetAdminIndex+1) + ' of ' + assetAdminReports.length + '</div>'
+        + '<button class="tk-period-nav-btn" ' + (assetAdminIndex === assetAdminReports.length-1 ? 'disabled' : '') + ' onclick="assetAdminNavEmployee(1)">Next &rarr;</button>'
+        + '</div>';
+
+      container.innerHTML = (pendingHtml ? '<div class="tk-section-title">Pending Equipment Requests</div>' + pendingHtml : '')
+        + navHtml + '<div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>';
+
+      var cardHtml = await assetAdminRenderEmployeeCard(assetAdminReports[assetAdminIndex]);
+      container.innerHTML = (pendingHtml ? '<div class="tk-section-title">Pending Equipment Requests</div>' + pendingHtml : '')
+        + navHtml + cardHtml;
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load assets</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  function assetAdminNavEmployee(dir){
+    assetAdminIndex += dir;
+    if(assetAdminIndex < 0){ assetAdminIndex = 0; }
+    if(assetAdminIndex >= assetAdminReports.length){ assetAdminIndex = assetAdminReports.length - 1; }
+    loadAdminAssets();
+  }
+
+  async function assetAdminRenderEmployeeCard(employee){
+    var rows = await dbRequest('assets?assigned_to=eq.' + employee.id + '&order=issued_date.desc&select=*');
+    var rowsHtml = rows.length
+      ? rows.map(function(a){
+          return '<div class="tk-entry-card" style="margin-bottom:14px;">'
+            + (a.photo_url ? '<img src="' + a.photo_url + '" class="asset-photo" alt="">' : '')
+            + '<div class="asset-grid">'
+            + assetFieldRow('Asset Name', a.asset_name)
+            + assetFieldRow('Type', a.asset_type)
+            + assetFieldRow('Serial Number', a.serial_number)
+            + assetFieldRow('Vendor', a.vendor)
+            + assetFieldRow('Model', a.model)
+            + assetFieldRow('Purchase Date', a.purchase_date ? formatDate(a.purchase_date) : '—')
+            + assetFieldRow('Warranty Expiry', a.warranty_expiry ? formatDate(a.warranty_expiry) : '—')
+            + assetFieldRow('Purchased From', a.purchased_from)
+            + assetFieldRow('Purchase Price', a.purchase_price ? '$' + a.purchase_price : '—')
+            + assetFieldRow('Issued By', '—')
+            + assetFieldRow('Issued Date', a.issued_date ? formatDate(a.issued_date) : '—')
+            + assetFieldRow('Returned Date', a.returned_date ? formatDate(a.returned_date) : '—')
+            + assetFieldRow('Notes', a.notes)
+            + '<div><div class="asset-field-label">Condition</div><select class="field-input" id="asset-cond-' + a.id + '" onchange="updateAssetField(\'' + a.id + '\',\'condition\',this.value)">'
+            + ASSET_CONDITIONS.map(function(c){ return '<option value="' + c + '"' + (c===a.condition?' selected':'') + '>' + ASSET_CONDITION_LABELS[c] + '</option>'; }).join('')
+            + '</select></div>'
+            + '</div>'
+            + '</div>';
+        }).join('')
+      : '<div class="tk-empty">No equipment currently assigned.</div>';
+
+    return '<div class="tk-entry-card">'
+      + '<div class="myteam-employee-header"><div class="myteam-employee-name">' + (employee.full_name || 'Unknown') + '</div>'
+      + '<div class="myteam-employee-title">' + (employee.job_title || '—') + '</div></div>'
+      + rowsHtml
+      + '<button class="btn-edit" style="margin-top:10px;" onclick="showIssueAssetForm(\'' + employee.id + '\')">Issue New Equipment</button>'
+      + '<div id="issue-asset-form-wrap"></div>'
+      + '</div>';
+  }
+
+  function showIssueAssetForm(employeeId){
+    var wrap = document.getElementById('issue-asset-form-wrap');
+    wrap.innerHTML = '<div class="myteam-return-box" style="margin-top:14px;">'
+      + '<div class="asset-form-grid">'
+      + '<div><label class="field-label">Asset Name</label><input type="text" id="ia-name" class="field-input"></div>'
+      + '<div><label class="field-label">Asset Type</label><input type="text" id="ia-type" class="field-input"></div>'
+      + '<div><label class="field-label">Serial Number</label><input type="text" id="ia-serial" class="field-input"></div>'
+      + '<div><label class="field-label">Vendor</label><input type="text" id="ia-vendor" class="field-input"></div>'
+      + '<div><label class="field-label">Model</label><input type="text" id="ia-model" class="field-input"></div>'
+      + '<div><label class="field-label">Condition</label><select id="ia-condition" class="field-input">'
+      + ASSET_CONDITIONS.map(function(c){ return '<option value="' + c + '">' + ASSET_CONDITION_LABELS[c] + '</option>'; }).join('')
+      + '</select></div>'
+      + '<div><label class="field-label">Issued Date</label><input type="date" id="ia-issueddate" class="field-input"></div>'
+      + '<div><label class="field-label">Purchased From</label><input type="text" id="ia-purchasedfrom" class="field-input"></div>'
+      + '<div><label class="field-label">Purchase Price</label><input type="text" inputmode="decimal" id="ia-price" class="field-input"></div>'
+      + '<div><label class="field-label">Purchase Date</label><input type="date" id="ia-purchasedate" class="field-input"></div>'
+      + '<div><label class="field-label">Warranty Expiry</label><input type="date" id="ia-warranty" class="field-input"></div>'
+      + '<div><label class="field-label">Photo URL</label><input type="text" id="ia-photo" class="field-input" placeholder="Link to a photo (upload coming soon)"></div>'
+      + '</div>'
+      + '<div style="margin-top:10px;"><label class="field-label">Notes</label><input type="text" id="ia-notes" class="field-input"></div>'
+      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;margin-top:10px;" onclick="submitIssueAsset(\'' + employeeId + '\')">Issue Equipment</button>'
+      + '<div class="login-error" id="issue-asset-error"></div>'
+      + '</div>';
+  }
+
+  async function submitIssueAsset(employeeId){
+    var errorEl = document.getElementById('issue-asset-error');
+    var session = getSession();
+    var name = document.getElementById('ia-name').value;
+    if(!name){
+      errorEl.textContent = 'Asset name is required.';
+      return;
+    }
+    try{
+      await dbWrite('assets', 'POST', {
+        assigned_to: employeeId,
+        asset_name: name,
+        asset_type: document.getElementById('ia-type').value || null,
+        serial_number: document.getElementById('ia-serial').value || null,
+        vendor: document.getElementById('ia-vendor').value || null,
+        model: document.getElementById('ia-model').value || null,
+        condition: document.getElementById('ia-condition').value,
+        issued_by: session.user.id,
+        issued_date: document.getElementById('ia-issueddate').value || null,
+        purchased_from: document.getElementById('ia-purchasedfrom').value || null,
+        purchase_price: document.getElementById('ia-price').value ? parseFloat(document.getElementById('ia-price').value) : null,
+        purchase_date: document.getElementById('ia-purchasedate').value || null,
+        warranty_expiry: document.getElementById('ia-warranty').value || null,
+        photo_url: document.getElementById('ia-photo').value || null,
+        notes: document.getElementById('ia-notes').value || null
+      });
+      loadAdminAssets();
+    }catch(e){
+      errorEl.textContent = 'Could not issue equipment — try again.';
+      console.error(e);
+    }
+  }
+
+  async function updateAssetField(assetId, field, value){
+    try{
+      var body = {};
+      body[field] = value;
+      await dbWrite('assets?id=eq.' + assetId, 'PATCH', body);
+    }catch(e){ console.error(e); }
+  }
+
+  async function reviewAssetRequest(requestId, decision){
+    var session = getSession();
+    try{
+      var rows = await dbRequest('asset_requests?id=eq.' + requestId + '&select=*');
+      if(!rows.length){ return; }
+      var r = rows[0];
+
+      if(decision === 'approved'){
+        await dbWrite('assets', 'POST', {
+          assigned_to: r.requested_by,
+          asset_name: r.asset_name,
+          asset_type: r.asset_type,
+          serial_number: r.serial_number,
+          vendor: r.vendor,
+          model: r.model,
+          condition: r.condition,
+          issued_by: session.user.id,
+          issued_date: r.issued_date,
+          purchased_from: r.purchased_from,
+          purchase_price: r.purchase_price,
+          purchase_date: r.purchase_date,
+          warranty_expiry: r.warranty_expiry,
+          photo_url: r.photo_url,
+          notes: r.notes
+        });
+      }
+
+      await dbWrite('asset_requests?id=eq.' + requestId, 'PATCH', {
+        status: decision,
+        reviewed_by: session.user.id,
+        reviewed_at: new Date().toISOString()
+      });
+      loadAdminAssets();
+    }catch(e){
+      console.error(e);
     }
   }
 
@@ -1388,7 +1790,7 @@
           Object.keys(groups).forEach(function(key){
             if(!groups[key].length){ return; } // header only renders when that type is present
             sectionsHtml += '<div class="pending-group-header">' + groupLabels[key] + '</div>'
-              + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'myteam\');return false;">Review</a></div>';
+              + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'timekeeping\');setTimeout(function(){switchTkSubtab(\'myteam\');},0);return false;">Review</a></div>';
           });
 
           pendingApprovalsHtml = sectionsHtml || '<div class="dash-card-empty">Nothing pending.</div>';
@@ -1453,7 +1855,7 @@
         + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'travel\')"><span class="shortcut-tile-icon">&#9992;</span>Travel</div>'
         + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'training\')"><span class="shortcut-tile-icon">&#127891;</span>Training</div>'
         + (isAdmin() ? '<div class="shortcut-tile" onclick="requestSwitchScreen(\'admin\')"><span class="shortcut-tile-icon">&#9881;</span>Admin</div>' : '')
-        + ((document.getElementById('nav-myteam') && document.getElementById('nav-myteam').style.display !== 'none') ? '<div class="shortcut-tile" onclick="requestSwitchScreen(\'myteam\')"><span class="shortcut-tile-icon">&#128101;</span>My Team</div>' : '')
+        + ((document.getElementById('tk-subtab-btn-myteam') && document.getElementById('tk-subtab-btn-myteam').style.display !== 'none') ? '<div class="shortcut-tile" onclick="requestSwitchScreen(\'timekeeping\');setTimeout(function(){switchTkSubtab(\'myteam\');},0)"><span class="shortcut-tile-icon">&#128101;</span>My Team</div>' : '')
         + '</div>'
 
         + '<div class="dash-grid">'
@@ -1537,6 +1939,7 @@
     if(name === 'history'){ initTkHistory(); }
     if(name === 'ptorequest'){ loadPtoRequest(); }
     if(name === 'ptobalance'){ loadPtoBalance(); }
+    if(name === 'myteam'){ loadMyTeam(); }
   }
 
   // ---- Period math: TK_ANCHOR (6/21/2026) is offset 0; Period numbering
@@ -1580,43 +1983,66 @@
   // ---------- My Team (manager/admin review) ----------
   var myTeamFlagged = {}; // { employeeId: Set of dates flagged for return }
 
+  var myTeamReports = [];
+  var myTeamIndex = 0;
+  var myTeamStartISO = '';
+  var myTeamEndISO = '';
+
   async function loadMyTeam(){
     var container = document.getElementById('myteam-content');
     var session = getSession();
     if(!session || !session.user){ return; }
 
     try{
-      var reports;
       var roleRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
       var role = roleRows.length ? roleRows[0].role : null;
       if(role === 'admin'){
-        reports = await dbRequest('profiles?id=neq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
+        myTeamReports = await dbRequest('profiles?id=neq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
       } else {
-        reports = await dbRequest('profiles?manager_id=eq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
+        myTeamReports = await dbRequest('profiles?manager_id=eq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
       }
 
-      if(!reports.length){
+      if(!myTeamReports.length){
         container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No direct reports</div><div class="placeholder-sub">Nobody is currently assigned to you for review.</div></div>';
         return;
       }
 
       var todayOffset = tkOffsetForToday();
       var bounds = tkPeriodBounds(todayOffset);
-      var startISO = tkDateToISO(bounds.start);
-      var endISO = tkDateToISO(bounds.end);
+      myTeamStartISO = tkDateToISO(bounds.start);
+      myTeamEndISO = tkDateToISO(bounds.end);
+      if(myTeamIndex >= myTeamReports.length){ myTeamIndex = 0; }
 
-      var cardsHtml = '<div class="tk-period-label" style="margin-bottom:4px;">Pay Period ' + tkPeriodNumber(todayOffset) + '</div>'
-        + '<div class="tk-period-dates" style="margin-bottom:20px;">' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div>';
-
-      for(var i=0;i<reports.length;i++){
-        cardsHtml += await myTeamRenderCard(reports[i], startISO, endISO);
-      }
-
-      container.innerHTML = cardsHtml;
+      await myTeamRenderCurrentCard();
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load My Team</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
+  }
+
+  async function myTeamRenderCurrentCard(){
+    var container = document.getElementById('myteam-content');
+    var bounds = tkPeriodBounds(tkOffsetForToday());
+    var employee = myTeamReports[myTeamIndex];
+
+    var navHtml = '<div class="myteam-nav-row">'
+      + '<button class="tk-period-nav-btn" ' + (myTeamIndex === 0 ? 'disabled' : '') + ' onclick="myTeamNavEmployee(-1)">&larr; Prev</button>'
+      + '<div class="myteam-nav-count">Employee ' + (myTeamIndex+1) + ' of ' + myTeamReports.length + '</div>'
+      + '<button class="tk-period-nav-btn" ' + (myTeamIndex === myTeamReports.length-1 ? 'disabled' : '') + ' onclick="myTeamNavEmployee(1)">Next &rarr;</button>'
+      + '</div>'
+      + '<div class="tk-period-label" style="margin-bottom:4px;">Pay Period ' + tkPeriodNumber(tkOffsetForToday()) + '</div>'
+      + '<div class="tk-period-dates" style="margin-bottom:20px;">' + formatDate(myTeamStartISO) + ' – ' + formatDate(myTeamEndISO) + '</div>';
+
+    container.innerHTML = navHtml + '<div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>';
+    var cardHtml = await myTeamRenderCard(employee, myTeamStartISO, myTeamEndISO);
+    container.innerHTML = navHtml + cardHtml;
+  }
+
+  function myTeamNavEmployee(dir){
+    myTeamIndex += dir;
+    if(myTeamIndex < 0){ myTeamIndex = 0; }
+    if(myTeamIndex >= myTeamReports.length){ myTeamIndex = myTeamReports.length - 1; }
+    myTeamRenderCurrentCard();
   }
 
   async function myTeamRenderCard(employee, startISO, endISO){
@@ -1688,7 +2114,7 @@
   function myTeamToggleFlag(employeeId, iso){
     if(!myTeamFlagged[employeeId]){ myTeamFlagged[employeeId] = {}; }
     myTeamFlagged[employeeId][iso] = !myTeamFlagged[employeeId][iso];
-    loadMyTeam(); // simplest correct re-render; team lists are small in this demo
+    myTeamRenderCurrentCard();
   }
 
   async function myTeamApproveAll(employeeId, startISO, endISO){
@@ -1707,7 +2133,7 @@
       // Accrue PTO once per employee per approved period, not per-row
       try{ await dbRpc('accrue_pto', { p_employee_id: employeeId }); }catch(e){ console.error(e); }
       delete myTeamFlagged[employeeId];
-      loadMyTeam();
+      myTeamRenderCurrentCard();
     }catch(e){
       errorEl.textContent = 'Could not approve — try again.';
       console.error(e);
@@ -1772,7 +2198,7 @@
         }
       }
       delete myTeamFlagged[employeeId];
-      loadMyTeam();
+      myTeamRenderCurrentCard();
     }catch(e){
       errorEl.textContent = 'Could not submit return — try again.';
       console.error(e);
@@ -2173,18 +2599,30 @@
 
   async function tkRenderUpcomingPtoTable(employeeId){
     var todayISO = new Date().toISOString().slice(0,10);
-    var pendingRows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&earning_type=eq.pto&status=eq.pending&order=work_date.asc&select=work_date,hours,status');
-    var approvedUpcoming = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&earning_type=eq.pto&status=eq.approved&work_date=gte.' + todayISO + '&order=work_date.asc&select=work_date,hours,status');
+    var pendingRows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&earning_type=eq.pto&status=eq.pending&order=work_date.asc&select=id,work_date,hours,status');
+    var approvedUpcoming = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&earning_type=eq.pto&status=eq.approved&work_date=gte.' + todayISO + '&order=work_date.asc&select=id,work_date,hours,status');
     var rows = pendingRows.concat(approvedUpcoming).sort(function(a,b){ return a.work_date < b.work_date ? -1 : 1; });
 
     if(!rows.length){
       return '<div class="tk-empty">No pending or upcoming approved PTO.</div>';
     }
-    return '<table class="tk-grid-table"><thead><tr><th>Date</th><th>Hours</th><th>Status</th></tr></thead><tbody>'
+    return '<table class="tk-grid-table"><thead><tr><th>Date</th><th>Hours</th><th>Status</th><th></th></tr></thead><tbody>'
       + rows.map(function(r){
-          return '<tr><td>' + formatDate(r.work_date) + '</td><td>' + r.hours + '</td><td>' + tkStatusPill(r.status) + '</td></tr>';
+          var action = r.status === 'pending'
+            ? '<button class="tk-now-btn" type="button" onclick="cancelPtoRequest(\'' + r.id + '\')">Cancel</button>'
+            : '';
+          return '<tr><td>' + formatDate(r.work_date) + '</td><td>' + r.hours + '</td><td>' + tkStatusPill(r.status) + '</td><td>' + action + '</td></tr>';
         }).join('')
       + '</tbody></table>';
+  }
+
+  async function cancelPtoRequest(rowId){
+    try{
+      await dbWrite('time_entries?id=eq.' + rowId, 'PATCH', { status: 'cancelled_by_submitter' });
+      loadPtoRequest();
+    }catch(e){
+      console.error(e);
+    }
   }
 
   async function tkGetTotalPendingPtoHours(excludeNew){
