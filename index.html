@@ -252,6 +252,8 @@
   .prof-subscreen.active{display:block;}
   .admin-subscreen{display:none;}
   .admin-subscreen.active{display:block;}
+  .myteam-subscreen{display:none;}
+  .myteam-subscreen.active{display:block;}
   .tk-entry-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:24px;}
   .tk-section-title{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;}
   .tk-status-pill{font-size:11px;font-family:'DM Mono',monospace;padding:3px 9px;border-radius:10px;display:inline-block;}
@@ -373,6 +375,7 @@
       <button class="nav-btn" data-screen="timekeeping" onclick="requestSwitchScreen('timekeeping')">Timekeeping</button>
       <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel</button>
       <button class="nav-btn" data-screen="training" onclick="requestSwitchScreen('training')">Training</button>
+      <button class="nav-btn" id="nav-btn-myteam" data-screen="myteam" onclick="requestSwitchScreen('myteam')" style="display:none;">My Team</button>
       <button class="nav-btn" data-screen="admin" onclick="requestSwitchScreen('admin')">Admin</button>
     </nav>
     <main>
@@ -428,7 +431,6 @@
           <button class="subtab-btn" data-tksubtab="history" onclick="switchTkSubtab('history')">History</button>
           <button class="subtab-btn" data-tksubtab="ptorequest" onclick="switchTkSubtab('ptorequest')">Request PTO</button>
           <button class="subtab-btn" data-tksubtab="ptobalance" onclick="switchTkSubtab('ptobalance')">PTO Balance</button>
-          <button class="subtab-btn" id="tk-subtab-btn-myteam" data-tksubtab="myteam" onclick="switchTkSubtab('myteam')" style="display:none;">My Team</button>
         </div>
         <div class="tk-subscreen active" id="tk-current">
           <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
@@ -442,8 +444,57 @@
         <div class="tk-subscreen" id="tk-ptobalance">
           <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
         </div>
-        <div class="tk-subscreen" id="tk-myteam">
-          <div id="myteam-content">
+      </div>
+      <div class="screen" id="screen-myteam">
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-myteamsubtab="timekeeping" onclick="switchMyTeamSubtab('timekeeping')">Timekeeping</button>
+          <button class="subtab-btn" data-myteamsubtab="travel" onclick="switchMyTeamSubtab('travel')">Travel</button>
+          <button class="subtab-btn" data-myteamsubtab="training" onclick="switchMyTeamSubtab('training')">Training</button>
+          <button class="subtab-btn" data-myteamsubtab="resumes" onclick="switchMyTeamSubtab('resumes')">Resumes</button>
+          <button class="subtab-btn" data-myteamsubtab="assets" onclick="switchMyTeamSubtab('assets')">Assets</button>
+        </div>
+        <div class="myteam-subscreen active" id="myteam-timekeeping">
+          <div id="myteam-timekeeping-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+        <div class="myteam-subscreen" id="myteam-travel">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="myteam-subscreen" id="myteam-training">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="myteam-subscreen" id="myteam-resumes">
+          <div class="tk-entry-card" id="myteam-resumes-team-panel">
+            <div class="tk-section-title">My Team</div>
+            <div id="myteam-resumes-employee-list"><div class="tk-empty">Loading...</div></div>
+          </div>
+          <div id="myteam-resume-viewing-banner"></div>
+          <div id="myteam-resume-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Select an employee above to view their resume.</div></div>
+          </div>
+        </div>
+        <div class="myteam-subscreen" id="myteam-assets">
+          <div class="tk-entry-card" id="myteam-assets-team-panel">
+            <div class="tk-section-title">My Team</div>
+            <div id="myteam-assets-employee-list"><div class="tk-empty">Loading...</div></div>
+          </div>
+          <div class="tk-entry-card">
+            <div class="tk-section-title">Search Team Equipment</div>
+            <input type="text" id="myteam-asset-search-input" class="field-input" placeholder="Search by employee, asset name, type, serial, vendor, model, notes..." oninput="debounceSearchAssets(\'myteam\')" style="margin-bottom:12px;">
+            <div id="myteam-asset-search-results"></div>
+          </div>
+          <div class="tk-entry-card">
+            <div class="tk-section-title">Export to CSV</div>
+            <div class="placeholder-sub" style="margin-bottom:10px;">Select one or more employees and one or more asset types, then export matching equipment records.</div>
+            <div class="asset-export-grid">
+              <div><label class="field-label">Employees</label><select id="myteam-asset-export-employees" class="field-input" multiple size="6"></select></div>
+              <div><label class="field-label">Asset Types</label><select id="myteam-asset-export-types" class="field-input" multiple size="6"></select></div>
+            </div>
+            <button class="btn-edit" style="margin-top:10px;" onclick="exportAssetsToCsv(\'myteam\')">Export CSV</button>
+            <div class="login-error" id="myteam-asset-export-message"></div>
+          </div>
+          <div id="myteam-assets-content">
             <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
           </div>
         </div>
@@ -525,7 +576,7 @@
           </div>
           <div class="tk-entry-card">
             <div class="tk-section-title">Search All Equipment</div>
-            <input type="text" id="asset-search-input" class="field-input" placeholder="Search by employee, asset name, type, serial, vendor, model, notes..." oninput="debounceSearchAssets()" style="margin-bottom:12px;">
+            <input type="text" id="asset-search-input" class="field-input" placeholder="Search by employee, asset name, type, serial, vendor, model, notes..." oninput="debounceSearchAssets('admin')" style="margin-bottom:12px;">
             <div id="asset-search-results"></div>
           </div>
           <div class="tk-entry-card">
@@ -535,7 +586,7 @@
               <div><label class="field-label">Employees</label><select id="asset-export-employees" class="field-input" multiple size="6"></select></div>
               <div><label class="field-label">Asset Types</label><select id="asset-export-types" class="field-input" multiple size="6"></select></div>
             </div>
-            <button class="btn-edit" style="margin-top:10px;" onclick="exportAssetsToCsv()">Export CSV</button>
+            <button class="btn-edit" style="margin-top:10px;" onclick="exportAssetsToCsv('admin')">Export CSV</button>
             <div class="login-error" id="asset-export-message"></div>
           </div>
           <div id="admin-assets-content">
@@ -993,11 +1044,10 @@
 
   function renderResumeBanner(bannerId){
     bannerId = bannerId || 'resume-viewing-banner';
-    var inAdminContext = bannerId === 'admin-resume-viewing-banner';
     var el = document.getElementById(bannerId);
     var session = getSession();
     if(currentResumeOwner.id !== session.user.id){
-      el.innerHTML = '<div class="resume-viewing-banner">Viewing <strong>' + (currentResumeOwner.full_name || '—') + '</strong>\'s resume &nbsp;·&nbsp; <a href="#" onclick="requestViewResume(\'' + session.user.id + '\',' + inAdminContext + ');return false;">Back to mine</a></div>';
+      el.innerHTML = '<div class="resume-viewing-banner">Viewing <strong>' + (currentResumeOwner.full_name || '—') + '</strong>\'s resume &nbsp;·&nbsp; <a href="#" onclick="requestViewResume(\'' + session.user.id + '\');return false;">Back to mine</a></div>';
     }else{
       el.innerHTML = '';
     }
@@ -1186,15 +1236,25 @@
     renderSkillDropdownList(document.getElementById('skill-bank-filter').value);
   }
 
+  function getActiveResumeContext(){
+    if(document.getElementById('screen-admin') && document.getElementById('screen-admin').classList.contains('active')){
+      return { containerId: 'admin-resume-content', bannerId: 'admin-resume-viewing-banner' };
+    }
+    if(document.getElementById('screen-myteam') && document.getElementById('screen-myteam').classList.contains('active')){
+      return { containerId: 'myteam-resume-content', bannerId: 'myteam-resume-viewing-banner' };
+    }
+    return { containerId: 'resume-content', bannerId: 'resume-viewing-banner' };
+  }
+
   function editResume(){
-    var inAdminContext = document.getElementById('screen-admin') && document.getElementById('screen-admin').classList.contains('active');
-    renderResume(currentResume, currentResumeOwner, true, inAdminContext ? 'admin-resume-content' : 'resume-content');
+    var ctx = getActiveResumeContext();
+    renderResume(currentResume, currentResumeOwner, true, ctx.containerId);
   }
 
   function requestCancelResumeEdit(){
     isEditingResume = false;
-    var inAdminContext = document.getElementById('screen-admin') && document.getElementById('screen-admin').classList.contains('active');
-    loadResume(currentResumeOwner.id, inAdminContext ? 'admin-resume-content' : 'resume-content', inAdminContext ? 'admin-resume-viewing-banner' : 'resume-viewing-banner');
+    var ctx = getActiveResumeContext();
+    loadResume(currentResumeOwner.id, ctx.containerId, ctx.bannerId);
   }
 
   function validateRequiredRows(containerId, requiredFields, rowLabel){
@@ -1251,23 +1311,22 @@
       if(!res.ok){ throw new Error('Save failed'); }
       statusEl.textContent = 'Saved';
       isEditingResume = false;
-      var inAdminContext = document.getElementById('screen-admin') && document.getElementById('screen-admin').classList.contains('active');
-      setTimeout(function(){ loadResume(currentResumeOwner.id, inAdminContext ? 'admin-resume-content' : 'resume-content', inAdminContext ? 'admin-resume-viewing-banner' : 'resume-viewing-banner'); }, 600);
+      var ctx = getActiveResumeContext();
+      setTimeout(function(){ loadResume(currentResumeOwner.id, ctx.containerId, ctx.bannerId); }, 600);
     }catch(e){
       statusEl.textContent = 'Save failed — try again';
       console.error(e);
     }
   }
 
-  function requestViewResume(ownerId, inAdminContext){
-    var containerId = inAdminContext ? 'admin-resume-content' : 'resume-content';
-    var bannerId = inAdminContext ? 'admin-resume-viewing-banner' : 'resume-viewing-banner';
+  function requestViewResume(ownerId){
+    var ctx = getActiveResumeContext();
     if(isEditingResume){
-      pendingNavTarget = function(){ loadResume(ownerId, containerId, bannerId); };
+      pendingNavTarget = function(){ loadResume(ownerId, ctx.containerId, ctx.bannerId); };
       document.getElementById('unsaved-modal').classList.add('active');
       return;
     }
-    loadResume(ownerId, containerId, bannerId);
+    loadResume(ownerId, ctx.containerId, ctx.bannerId);
   }
 
   var resumeSearchDebounce = null;
@@ -1300,7 +1359,7 @@
         var title = (r.profiles && r.profiles.job_title) || '';
         var inCart = resumeCart.indexOf(r.id) !== -1;
         return '<div class="search-result-row">'
-          + '<div onclick="requestViewResume(\'' + r.id + '\',true)" style="cursor:pointer;flex:1;"><div class="resume-view-row-title">' + name + (title ? ' · ' + title : '') + '</div></div>'
+          + '<div onclick="requestViewResume(\'' + r.id + '\')" style="cursor:pointer;flex:1;"><div class="resume-view-row-title">' + name + (title ? ' · ' + title : '') + '</div></div>'
           + '<button type="button" class="btn-cart-add" ' + (inCart ? 'disabled' : '') + ' onclick="event.stopPropagation();addToResumeCart(\'' + r.id + '\',\'' + escAttr(name).replace(/'/g, "\\'") + '\')">' + (inCart ? 'Added' : '+ Add to cart') + '</button>'
           + '</div>';
       }).join('');
@@ -1444,13 +1503,10 @@
   async function checkMyTeamNavVisibility(){
     var session = getSession();
     if(!session || !session.user){ return; }
-    var btn = document.getElementById('tk-subtab-btn-myteam');
+    var btn = document.getElementById('nav-btn-myteam');
     try{
-      var profRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
-      var role = profRows.length ? profRows[0].role : null;
-      if(role === 'admin'){ btn.style.display = ''; return; }
-      var reports = await dbRequest('profiles?manager_id=eq.' + session.user.id + '&select=id');
-      btn.style.display = reports.length ? '' : 'none';
+      var ids = await getRecursiveReportIds(session.user.id);
+      btn.style.display = ids.length ? '' : 'none';
     }catch(e){
       console.error(e);
       btn.style.display = 'none';
@@ -1476,9 +1532,20 @@
     if(name === 'admin'){
       switchAdminSubtab('dashboard');
     }
+    if(name === 'myteam'){
+      switchMyTeamSubtab('timekeeping');
+    }
   }
 
-  // ---------- Profile subtabs ----------
+  // ---------- My Team subtabs ----------
+  function switchMyTeamSubtab(name){
+    document.querySelectorAll('#screen-myteam .myteam-subscreen').forEach(function(s){ s.classList.remove('active'); });
+    document.querySelectorAll('#screen-myteam [data-myteamsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.myteamsubtab === name); });
+    document.getElementById('myteam-' + name).classList.add('active');
+    if(name === 'timekeeping'){ loadMyTeam(); }
+    if(name === 'resumes'){ loadTeamResumes('myteam'); }
+    if(name === 'assets'){ loadTeamAssets('myteam'); }
+  }
   function switchProfileSubtab(name){
     document.querySelectorAll('#screen-profile .prof-subscreen').forEach(function(s){ s.classList.remove('active'); });
     document.querySelectorAll('#screen-profile [data-profsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.profsubtab === name); });
@@ -1496,53 +1563,82 @@
     document.querySelectorAll('#screen-admin [data-adminsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.adminsubtab === name); });
     document.getElementById('admin-' + name).classList.add('active');
     if(name === 'dashboard'){ loadAdminDashboard(); }
-    if(name === 'resumes'){ loadAdminResumes(); }
-    if(name === 'assets'){ loadAdminAssets(); }
+    if(name === 'resumes'){ loadTeamResumes('admin'); }
+    if(name === 'assets'){ loadTeamAssets('admin'); }
   }
 
-  var adminResumesDeptFilter = '';
+  var teamDeptFilter = { admin: '' };
 
-  async function loadAdminResumes(){
-    document.getElementById('resume-search-input').value = '';
-    document.getElementById('resume-search-results').innerHTML = '';
-    document.getElementById('admin-resume-viewing-banner').innerHTML = '';
-    document.getElementById('admin-resume-content').innerHTML = '<div class="placeholder-card"><div class="placeholder-sub">Search for an employee above to view their resume.</div></div>';
-    await renderAdminTeamPanel('resumes');
+  function resumeScopeIds(scope){
+    return {
+      searchInputId: scope === 'admin' ? 'resume-search-input' : null,
+      searchResultsId: scope === 'admin' ? 'resume-search-results' : null,
+      bannerId: scope + '-resume-viewing-banner',
+      contentId: scope + '-resume-content'
+    };
   }
 
-  // Shared team-panel renderer: employee list + department filter (admin only),
-  // used by Admin>Resumes and Admin>Assets so both stay consistent.
-  async function renderAdminTeamPanel(context){
+  async function loadTeamResumes(scope){
+    var ids = resumeScopeIds(scope);
+    if(scope === 'admin'){
+      document.getElementById(ids.searchInputId).value = '';
+      document.getElementById(ids.searchResultsId).innerHTML = '';
+    }
+    document.getElementById(ids.bannerId).innerHTML = '';
+    document.getElementById(ids.contentId).innerHTML = '<div class="placeholder-card"><div class="placeholder-sub">Select an employee above to view their resume.</div></div>';
+    await renderTeamPanel('resumes', scope);
+  }
+
+  // Shared team-panel renderer: employee list (+ department filter, admin
+  // scope only) used by My Team / Admin > Resumes and Assets, so both stay
+  // consistent. scope is 'myteam' (recursive reports) or 'admin' (all
+  // employees company-wide).
+  async function renderTeamPanel(context, scope){
     var session = getSession();
-    var filterWrapId = context === 'resumes' ? 'admin-resumes-dept-filter-wrap' : 'admin-assets-dept-filter-wrap';
-    var listId = context === 'resumes' ? 'admin-resumes-employee-list' : 'admin-assets-employee-list';
-    var filterWrap = document.getElementById(filterWrapId);
+    var filterWrapId = scope + '-' + context + '-dept-filter-wrap';
+    var listId = scope + '-' + context + '-employee-list';
     var listEl = document.getElementById(listId);
+    var filterWrap = document.getElementById(filterWrapId);
 
-    filterWrap.innerHTML = '';
-
-    var employees = [];
-    var ids = await getRecursiveReportIds(session.user.id);
-    if(ids.length){
-      employees = await dbRequest('profiles?id=in.(' + ids.join(',') + ')&select=id,full_name,job_title&order=full_name.asc');
+    var employeeIds;
+    if(scope === 'admin'){
+      if(filterWrap){
+        var depts = await dbRequest('departments?order=sort_order.asc&select=id,name');
+        filterWrap.innerHTML = '<select class="field-input" id="' + filterWrapId + '-select" onchange="teamDeptFilterChanged(\'' + context + '\',this.value)" style="margin-bottom:12px;">'
+          + '<option value="">All Divisions</option>'
+          + depts.map(function(d){ return '<option value="' + d.id + '">' + d.name + '</option>'; }).join('')
+          + '</select>';
+      }
+      var query = 'profiles?id=neq.' + session.user.id + (teamDeptFilter.admin ? '&department_id=eq.' + teamDeptFilter.admin : '') + '&select=id,full_name,job_title&order=full_name.asc';
+      var employees = await dbRequest(query);
+      renderTeamPanelList(listEl, employees, context, scope);
+      return;
     }
 
+    if(filterWrap){ filterWrap.innerHTML = ''; }
+    employeeIds = await getRecursiveReportIds(session.user.id);
+    var teamEmployees = employeeIds.length
+      ? await dbRequest('profiles?id=in.(' + employeeIds.join(',') + ')&select=id,full_name,job_title&order=full_name.asc')
+      : [];
+    renderTeamPanelList(listEl, teamEmployees, context, scope);
+  }
+
+  function renderTeamPanelList(listEl, employees, context, scope){
     if(!employees.length){
       listEl.innerHTML = '<div class="tk-empty">No employees found.</div>';
       return;
     }
     listEl.innerHTML = employees.map(function(e){
       var action = context === 'resumes'
-        ? 'requestViewResume(\'' + e.id + '\',true)'
-        : 'adminAssetsViewEmployee(\'' + e.id + '\')';
+        ? 'requestViewResume(\'' + e.id + '\')'
+        : 'teamViewEmployeeAssets(\'' + scope + '\',\'' + e.id + '\')';
       return '<div class="news-item" onclick="' + action + '"><div class="news-item-title">' + (e.full_name||'Unknown') + '</div><div class="news-item-date">' + (e.job_title||'—') + '</div></div>';
     }).join('');
   }
 
-  function adminTeamDeptFilterChanged(context, deptId){
-    adminResumesDeptFilter = deptId;
-    if(context === 'resumes'){ renderAdminTeamPanel('resumes'); }
-    else { renderAdminTeamPanel('assets'); }
+  function teamDeptFilterChanged(context, deptId){
+    teamDeptFilter.admin = deptId;
+    renderTeamPanel(context, 'admin');
   }
 
   // ---------- Admin Dashboard (team overview) ----------
@@ -1572,7 +1668,7 @@
         Object.keys(groups).forEach(function(key){
           if(!groups[key].length){ return; }
           sectionsHtml += '<div class="pending-group-header">' + groupLabels[key] + '</div>'
-            + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'timekeeping\');setTimeout(function(){switchTkSubtab(\'myteam\');},0);return false;">Review</a></div>';
+            + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'myteam\');setTimeout(function(){switchMyTeamSubtab(\'timekeeping\');},0);return false;">Review</a></div>';
         });
         pendingHtml = sectionsHtml || pendingHtml;
 
@@ -1732,36 +1828,49 @@
   }
 
   // ---- Admin → Assets (manager issue/edit, employee-navigable like My Team) ----
-  var assetAdminReports = [];
-  var assetAdminIndex = 0;
+  var assetTeamReports = { admin: [], myteam: [] };
+  var assetTeamIndex = { admin: 0, myteam: 0 };
 
-  async function loadAdminAssets(){
-    var container = document.getElementById('admin-assets-content');
+  function assetScopeIds(scope){
+    return {
+      contentId: scope + '-assets-content',
+      teamPanelId: scope + '-assets-team-panel',
+      listId: scope + '-assets-employee-list',
+      searchInputId: (scope === 'admin' ? 'asset-search-input' : 'myteam-asset-search-input'),
+      searchResultsId: (scope === 'admin' ? 'asset-search-results' : 'myteam-asset-search-results'),
+      exportEmpId: (scope === 'admin' ? 'asset-export-employees' : 'myteam-asset-export-employees'),
+      exportTypeId: (scope === 'admin' ? 'asset-export-types' : 'myteam-asset-export-types'),
+      exportMsgId: (scope === 'admin' ? 'asset-export-message' : 'myteam-asset-export-message')
+    };
+  }
+
+  async function loadTeamAssets(scope){
+    var ids = assetScopeIds(scope);
+    var container = document.getElementById(ids.contentId);
     var session = getSession();
     if(!session || !session.user){ return; }
 
     try{
-      var roleRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
-      var role = roleRows.length ? roleRows[0].role : null;
-      if(role === 'admin'){
-        assetAdminReports = await dbRequest('profiles?id=neq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
-      } else {
-        assetAdminReports = await dbRequest('profiles?manager_id=eq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
-      }
+      var employeeIds = scope === 'admin'
+        ? (await dbRequest('profiles?id=neq.' + session.user.id + '&select=id')).map(function(r){ return r.id; })
+        : await getRecursiveReportIds(session.user.id);
+      assetTeamReports[scope] = employeeIds.length
+        ? await dbRequest('profiles?id=in.(' + employeeIds.join(',') + ')&select=id,full_name,job_title&order=full_name.asc')
+        : [];
 
-      await renderAdminTeamPanel('assets');
-      await populateAssetExportDropdowns();
-      document.getElementById('asset-search-input').value = '';
-      document.getElementById('asset-search-results').innerHTML = '';
+      await renderTeamPanel('assets', scope);
+      await populateAssetExportDropdowns(scope);
+      document.getElementById(ids.searchInputId).value = '';
+      document.getElementById(ids.searchResultsId).innerHTML = '';
 
-      if(!assetAdminReports.length){
+      if(!assetTeamReports[scope].length){
         container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No direct reports</div><div class="placeholder-sub">Nobody is currently assigned to you.</div></div>';
         return;
       }
-      if(assetAdminIndex >= assetAdminReports.length){ assetAdminIndex = 0; }
+      if(assetTeamIndex[scope] >= assetTeamReports[scope].length){ assetTeamIndex[scope] = 0; }
 
       // Pending equipment requests across the team, shown above the per-employee view
-      var reportIds = assetAdminReports.map(function(r){ return r.id; });
+      var reportIds = assetTeamReports[scope].map(function(r){ return r.id; });
       var pendingRequests = await dbRequest('asset_requests?requested_by=in.(' + reportIds.join(',') + ')&status=eq.pending&select=*,profiles!asset_requests_requested_by_fkey(full_name)');
 
       var pendingHtml = pendingRequests.length
@@ -1778,23 +1887,23 @@
               + assetFieldRow('Purchase Price', r.purchase_price ? '$' + r.purchase_price : '—')
               + '</div>'
               + '<div class="tk-grid-actions">'
-              + '<button class="btn-logout" style="width:auto;" onclick="reviewAssetRequest(\'' + r.id + '\',\'rejected\')">Reject</button>'
-              + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="reviewAssetRequest(\'' + r.id + '\',\'approved\')">Approve &amp; Add to Assets</button>'
+              + '<button class="btn-logout" style="width:auto;" onclick="reviewAssetRequest(\'' + r.id + '\',\'rejected\',\'' + scope + '\')">Reject</button>'
+              + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="reviewAssetRequest(\'' + r.id + '\',\'approved\',\'' + scope + '\')">Approve &amp; Add to Assets</button>'
               + '</div>'
               + '</div>';
           }).join('')
         : '';
 
       var navHtml = '<div class="myteam-nav-row">'
-        + '<button class="tk-period-nav-btn" ' + (assetAdminIndex === 0 ? 'disabled' : '') + ' onclick="assetAdminNavEmployee(-1)">&larr; Prev</button>'
-        + '<div class="myteam-nav-count">Employee ' + (assetAdminIndex+1) + ' of ' + assetAdminReports.length + '</div>'
-        + '<button class="tk-period-nav-btn" ' + (assetAdminIndex === assetAdminReports.length-1 ? 'disabled' : '') + ' onclick="assetAdminNavEmployee(1)">Next &rarr;</button>'
+        + '<button class="tk-period-nav-btn" ' + (assetTeamIndex[scope] === 0 ? 'disabled' : '') + ' onclick="assetTeamNavEmployee(\'' + scope + '\',-1)">&larr; Prev</button>'
+        + '<div class="myteam-nav-count">Employee ' + (assetTeamIndex[scope]+1) + ' of ' + assetTeamReports[scope].length + '</div>'
+        + '<button class="tk-period-nav-btn" ' + (assetTeamIndex[scope] === assetTeamReports[scope].length-1 ? 'disabled' : '') + ' onclick="assetTeamNavEmployee(\'' + scope + '\',1)">Next &rarr;</button>'
         + '</div>';
 
       container.innerHTML = (pendingHtml ? '<div class="tk-section-title">Pending Equipment Requests</div>' + pendingHtml : '')
         + navHtml + '<div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>';
 
-      var cardHtml = await assetAdminRenderEmployeeCard(assetAdminReports[assetAdminIndex]);
+      var cardHtml = await assetTeamRenderEmployeeCard(assetTeamReports[scope][assetTeamIndex[scope]], scope);
       container.innerHTML = (pendingHtml ? '<div class="tk-section-title">Pending Equipment Requests</div>' + pendingHtml : '')
         + navHtml + cardHtml;
     }catch(e){
@@ -1803,26 +1912,27 @@
     }
   }
 
-  function assetAdminNavEmployee(dir){
-    assetAdminIndex += dir;
-    if(assetAdminIndex < 0){ assetAdminIndex = 0; }
-    if(assetAdminIndex >= assetAdminReports.length){ assetAdminIndex = assetAdminReports.length - 1; }
-    loadAdminAssets();
+  function assetTeamNavEmployee(scope, dir){
+    assetTeamIndex[scope] += dir;
+    if(assetTeamIndex[scope] < 0){ assetTeamIndex[scope] = 0; }
+    if(assetTeamIndex[scope] >= assetTeamReports[scope].length){ assetTeamIndex[scope] = assetTeamReports[scope].length - 1; }
+    loadTeamAssets(scope);
   }
 
-  function adminAssetsViewEmployee(employeeId){
-    var idx = assetAdminReports.findIndex(function(r){ return r.id === employeeId; });
-    if(idx === -1){ return; } // employee isn't in the current nav set (e.g. department filter excluded them from reports but matched via department list)
-    assetAdminIndex = idx;
-    loadAdminAssets();
+  function teamViewEmployeeAssets(scope, employeeId){
+    var idx = assetTeamReports[scope].findIndex(function(r){ return r.id === employeeId; });
+    if(idx === -1){ return; } // employee isn't in the current nav set
+    assetTeamIndex[scope] = idx;
+    loadTeamAssets(scope);
   }
 
-  async function populateAssetExportDropdowns(){
-    var empSelect = document.getElementById('asset-export-employees');
-    var typeSelect = document.getElementById('asset-export-types');
-    empSelect.innerHTML = assetAdminReports.map(function(r){ return '<option value="' + r.id + '">' + (r.full_name||'Unknown') + '</option>'; }).join('');
+  async function populateAssetExportDropdowns(scope){
+    var ids = assetScopeIds(scope);
+    var empSelect = document.getElementById(ids.exportEmpId);
+    var typeSelect = document.getElementById(ids.exportTypeId);
+    empSelect.innerHTML = assetTeamReports[scope].map(function(r){ return '<option value="' + r.id + '">' + (r.full_name||'Unknown') + '</option>'; }).join('');
 
-    var reportIds = assetAdminReports.map(function(r){ return r.id; });
+    var reportIds = assetTeamReports[scope].map(function(r){ return r.id; });
     var typesHtml = '<div class="tk-empty">No equipment on file.</div>';
     if(reportIds.length){
       var assetRows = await dbRequest('assets?assigned_to=in.(' + reportIds.join(',') + ')&select=asset_type');
@@ -1834,22 +1944,23 @@
   }
 
   var assetSearchDebounce = null;
-  function debounceSearchAssets(){
+  function debounceSearchAssets(scope){
     clearTimeout(assetSearchDebounce);
-    assetSearchDebounce = setTimeout(searchAssets, 250);
+    assetSearchDebounce = setTimeout(function(){ searchAssets(scope); }, 250);
   }
 
-  async function searchAssets(){
-    var q = document.getElementById('asset-search-input').value.trim().toLowerCase();
-    var resultsEl = document.getElementById('asset-search-results');
+  async function searchAssets(scope){
+    var ids = assetScopeIds(scope);
+    var q = document.getElementById(ids.searchInputId).value.trim().toLowerCase();
+    var resultsEl = document.getElementById(ids.searchResultsId);
     if(!q){ resultsEl.innerHTML = ''; return; }
     resultsEl.innerHTML = '<div class="tk-empty">Searching...</div>';
     try{
-      var reportIds = assetAdminReports.map(function(r){ return r.id; });
+      var reportIds = assetTeamReports[scope].map(function(r){ return r.id; });
       if(!reportIds.length){ resultsEl.innerHTML = '<div class="tk-empty">No employees in your team.</div>'; return; }
       var rows = await dbRequest('assets?assigned_to=in.(' + reportIds.join(',') + ')&select=*,profiles!assets_assigned_to_fkey(full_name)');
       var nameById = {};
-      assetAdminReports.forEach(function(r){ nameById[r.id] = r.full_name; });
+      assetTeamReports[scope].forEach(function(r){ nameById[r.id] = r.full_name; });
 
       var matches = rows.filter(function(a){
         var haystack = [
@@ -1882,12 +1993,13 @@
     return s;
   }
 
-  async function exportAssetsToCsv(){
-    var empSelect = document.getElementById('asset-export-employees');
-    var typeSelect = document.getElementById('asset-export-types');
+  async function exportAssetsToCsv(scope){
+    var ids = assetScopeIds(scope);
+    var empSelect = document.getElementById(ids.exportEmpId);
+    var typeSelect = document.getElementById(ids.exportTypeId);
     var selectedEmployees = Array.from(empSelect.selectedOptions).map(function(o){ return o.value; });
     var selectedTypes = Array.from(typeSelect.selectedOptions).map(function(o){ return o.value; });
-    var msgEl = document.getElementById('asset-export-message');
+    var msgEl = document.getElementById(ids.exportMsgId);
 
     if(!selectedEmployees.length){
       msgEl.textContent = 'Select at least one employee.';
@@ -1947,7 +2059,7 @@
     }
   }
 
-  async function assetAdminRenderEmployeeCard(employee){
+  async function assetTeamRenderEmployeeCard(employee, scope){
     var rows = await dbRequest('assets?assigned_to=eq.' + employee.id + '&order=issued_date.desc&select=*');
     var rowsHtml = rows.length
       ? rows.map(function(a){
@@ -1979,12 +2091,12 @@
       + '<div class="myteam-employee-header"><div class="myteam-employee-name">' + (employee.full_name || 'Unknown') + '</div>'
       + '<div class="myteam-employee-title">' + (employee.job_title || '—') + '</div></div>'
       + rowsHtml
-      + '<button class="btn-edit" style="margin-top:10px;" onclick="showIssueAssetForm(\'' + employee.id + '\')">Issue New Equipment</button>'
+      + '<button class="btn-edit" style="margin-top:10px;" onclick="showIssueAssetForm(\'' + employee.id + '\',\'' + scope + '\')">Issue New Equipment</button>'
       + '<div id="issue-asset-form-wrap"></div>'
       + '</div>';
   }
 
-  function showIssueAssetForm(employeeId){
+  function showIssueAssetForm(employeeId, scope){
     var wrap = document.getElementById('issue-asset-form-wrap');
     wrap.innerHTML = '<div class="myteam-return-box" style="margin-top:14px;">'
       + '<div class="asset-form-grid">'
@@ -2004,12 +2116,12 @@
       + '<div><label class="field-label">Photo URL</label><input type="text" id="ia-photo" class="field-input" placeholder="Link to a photo (upload coming soon)"></div>'
       + '</div>'
       + '<div style="margin-top:10px;"><label class="field-label">Notes</label><input type="text" id="ia-notes" class="field-input"></div>'
-      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;margin-top:10px;" onclick="submitIssueAsset(\'' + employeeId + '\')">Issue Equipment</button>'
+      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;margin-top:10px;" onclick="submitIssueAsset(\'' + employeeId + '\',\'' + scope + '\')">Issue Equipment</button>'
       + '<div class="login-error" id="issue-asset-error"></div>'
       + '</div>';
   }
 
-  async function submitIssueAsset(employeeId){
+  async function submitIssueAsset(employeeId, scope){
     var errorEl = document.getElementById('issue-asset-error');
     var session = getSession();
     var name = document.getElementById('ia-name').value;
@@ -2035,7 +2147,7 @@
         photo_url: document.getElementById('ia-photo').value || null,
         notes: document.getElementById('ia-notes').value || null
       });
-      loadAdminAssets();
+      loadTeamAssets(scope);
     }catch(e){
       errorEl.textContent = 'Could not issue equipment — try again.';
       console.error(e);
@@ -2050,7 +2162,7 @@
     }catch(e){ console.error(e); }
   }
 
-  async function reviewAssetRequest(requestId, decision){
+  async function reviewAssetRequest(requestId, decision, scope){
     var session = getSession();
     try{
       var rows = await dbRequest('asset_requests?id=eq.' + requestId + '&select=*');
@@ -2082,7 +2194,7 @@
         reviewed_by: session.user.id,
         reviewed_at: new Date().toISOString()
       });
-      loadAdminAssets();
+      loadTeamAssets(scope);
     }catch(e){
       console.error(e);
     }
@@ -2154,7 +2266,7 @@
           Object.keys(groups).forEach(function(key){
             if(!groups[key].length){ return; } // header only renders when that type is present
             sectionsHtml += '<div class="pending-group-header">' + groupLabels[key] + '</div>'
-              + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'timekeeping\');setTimeout(function(){switchTkSubtab(\'myteam\');},0);return false;">Review</a></div>';
+              + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'myteam\');setTimeout(function(){switchMyTeamSubtab(\'timekeeping\');},0);return false;">Review</a></div>';
           });
 
           pendingApprovalsHtml = sectionsHtml || '<div class="dash-card-empty">Nothing pending.</div>';
@@ -2219,7 +2331,7 @@
         + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'travel\')"><span class="shortcut-tile-icon">&#9992;</span>Travel</div>'
         + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'training\')"><span class="shortcut-tile-icon">&#127891;</span>Training</div>'
         + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'profile\');setTimeout(function(){switchProfileSubtab(\'assets\');},0)"><span class="shortcut-tile-icon">&#128230;</span>Assets</div>'
-        + ((document.getElementById('tk-subtab-btn-myteam') && document.getElementById('tk-subtab-btn-myteam').style.display !== 'none') ? '<div class="shortcut-tile" onclick="requestSwitchScreen(\'timekeeping\');setTimeout(function(){switchTkSubtab(\'myteam\');},0)"><span class="shortcut-tile-icon">&#128101;</span>My Team</div>' : '')
+        + ((document.getElementById('nav-btn-myteam') && document.getElementById('nav-btn-myteam').style.display !== 'none') ? '<div class="shortcut-tile" onclick="requestSwitchScreen(\'myteam\');setTimeout(function(){switchMyTeamSubtab(\'timekeeping\');},0)"><span class="shortcut-tile-icon">&#128101;</span>My Team</div>' : '')
         + '</div>'
 
         + '<div class="dash-grid">'
