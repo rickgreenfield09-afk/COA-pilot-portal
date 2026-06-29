@@ -242,6 +242,11 @@
   .tk-grid-footer-item span{color:var(--text);font-weight:600;}
   .tk-grid-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;}
   .tk-day-pto{background:rgba(191,95,255,0.08);}
+  .tk-day-flagged{background:rgba(224,82,82,0.10);}
+  .myteam-employee-header{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+  .myteam-employee-name{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--text);}
+  .myteam-employee-title{font-size:12px;color:var(--sub);margin-top:2px;}
+  .myteam-return-box{background:var(--raised);border-radius:6px;padding:14px;margin-top:14px;}
   .tk-time-cell{display:flex;gap:6px;align-items:center;}
   .tk-time-cell input.tk-grid-input{flex:1;min-width:0;}
   .tk-now-btn{background:var(--raised);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:11px;color:var(--teal);cursor:pointer;white-space:nowrap;flex-shrink:0;}
@@ -306,6 +311,7 @@
       <button class="nav-btn" data-screen="resume" onclick="requestSwitchScreen('resume')">Resume</button>
       <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel</button>
       <button class="nav-btn" data-screen="training" onclick="requestSwitchScreen('training')">Training</button>
+      <button class="nav-btn" id="nav-myteam" data-screen="myteam" onclick="requestSwitchScreen('myteam')" style="display:none;">My Team</button>
       <button class="nav-btn" data-screen="admin" onclick="requestSwitchScreen('admin')">Admin</button>
     </nav>
     <main>
@@ -402,6 +408,11 @@
             <div class="placeholder-title">Request Training</div>
             <div class="placeholder-sub">Coming next session</div>
           </div>
+        </div>
+      </div>
+      <div class="screen" id="screen-myteam">
+        <div id="myteam-content">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
         </div>
       </div>
       <div class="screen" id="screen-admin">
@@ -1261,6 +1272,23 @@
     document.getElementById('app-shell').classList.add('active');
     document.getElementById('user-email-display').textContent = email;
     loadDashboard();
+    checkMyTeamNavVisibility();
+  }
+
+  async function checkMyTeamNavVisibility(){
+    var session = getSession();
+    if(!session || !session.user){ return; }
+    var btn = document.getElementById('nav-myteam');
+    try{
+      var profRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
+      var role = profRows.length ? profRows[0].role : null;
+      if(role === 'admin'){ btn.style.display = ''; return; }
+      var reports = await dbRequest('profiles?manager_id=eq.' + session.user.id + '&select=id');
+      btn.style.display = reports.length ? '' : 'none';
+    }catch(e){
+      console.error(e);
+      btn.style.display = 'none';
+    }
   }
 
   function switchScreen(name){
@@ -1275,6 +1303,9 @@
     }
     if(name === 'timekeeping'){
       switchTkSubtab('current');
+    }
+    if(name === 'myteam'){
+      loadMyTeam();
     }
     if(name === 'resume'){
       document.getElementById('resume-search-wrap').style.display = isAdmin() ? 'block' : 'none';
@@ -1357,7 +1388,7 @@
           Object.keys(groups).forEach(function(key){
             if(!groups[key].length){ return; } // header only renders when that type is present
             sectionsHtml += '<div class="pending-group-header">' + groupLabels[key] + '</div>'
-              + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'timekeeping\');return false;">Review</a></div>';
+              + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'myteam\');return false;">Review</a></div>';
           });
 
           pendingApprovalsHtml = sectionsHtml || '<div class="dash-card-empty">Nothing pending.</div>';
@@ -1375,12 +1406,6 @@
         + '</div>'
         + '</div>'
 
-        + '<div class="dash-top-row">'
-        + '<div class="dash-card">'
-        + '<div class="dash-card-title">News &amp; Notes</div>'
-        + renderNewsItems()
-        + '</div>'
-        + '<div class="alert-stack">'
         + '<div class="danger-box">'
         + '<div class="danger-box-icon">&#9888;</div>'
         + '<div><div class="danger-box-title">Action needed within 30 days</div>'
@@ -1391,6 +1416,13 @@
         + '<div><div class="warning-box-title">Action Needed: Training Survey</div>'
         + '<div class="warning-box-text">Completed training is awaiting your feedback. <a href="#">Fill out survey</a><span class="demo-tag">Example — not live</span></div></div>'
         + '</div>'
+
+        + '<div class="dash-top-row">'
+        + '<div class="dash-card">'
+        + '<div class="dash-card-title">News &amp; Notes</div>'
+        + renderNewsItems()
+        + '</div>'
+        + '<div class="alert-stack">'
         + '<div class="dash-card">'
         + '<div class="dash-card-title">Pending Approvals</div>'
         + pendingApprovalsHtml
@@ -1421,6 +1453,7 @@
         + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'travel\')"><span class="shortcut-tile-icon">&#9992;</span>Travel</div>'
         + '<div class="shortcut-tile" onclick="requestSwitchScreen(\'training\')"><span class="shortcut-tile-icon">&#127891;</span>Training</div>'
         + (isAdmin() ? '<div class="shortcut-tile" onclick="requestSwitchScreen(\'admin\')"><span class="shortcut-tile-icon">&#9881;</span>Admin</div>' : '')
+        + ((document.getElementById('nav-myteam') && document.getElementById('nav-myteam').style.display !== 'none') ? '<div class="shortcut-tile" onclick="requestSwitchScreen(\'myteam\')"><span class="shortcut-tile-icon">&#128101;</span>My Team</div>' : '')
         + '</div>'
 
         + '<div class="dash-grid">'
@@ -1542,6 +1575,222 @@
     }
     console.table(rows);
     return rows;
+  }
+
+  // ---------- My Team (manager/admin review) ----------
+  var myTeamFlagged = {}; // { employeeId: Set of dates flagged for return }
+
+  async function loadMyTeam(){
+    var container = document.getElementById('myteam-content');
+    var session = getSession();
+    if(!session || !session.user){ return; }
+
+    try{
+      var reports;
+      var roleRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
+      var role = roleRows.length ? roleRows[0].role : null;
+      if(role === 'admin'){
+        reports = await dbRequest('profiles?id=neq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
+      } else {
+        reports = await dbRequest('profiles?manager_id=eq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc');
+      }
+
+      if(!reports.length){
+        container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No direct reports</div><div class="placeholder-sub">Nobody is currently assigned to you for review.</div></div>';
+        return;
+      }
+
+      var todayOffset = tkOffsetForToday();
+      var bounds = tkPeriodBounds(todayOffset);
+      var startISO = tkDateToISO(bounds.start);
+      var endISO = tkDateToISO(bounds.end);
+
+      var cardsHtml = '<div class="tk-period-label" style="margin-bottom:4px;">Pay Period ' + tkPeriodNumber(todayOffset) + '</div>'
+        + '<div class="tk-period-dates" style="margin-bottom:20px;">' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div>';
+
+      for(var i=0;i<reports.length;i++){
+        cardsHtml += await myTeamRenderCard(reports[i], startISO, endISO);
+      }
+
+      container.innerHTML = cardsHtml;
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load My Team</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  async function myTeamRenderCard(employee, startISO, endISO){
+    var projects = await tkGetProjects();
+    var rows = await dbRequest('time_entries?employee_id=eq.' + employee.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
+    var byDate = {};
+    rows.forEach(function(r){ byDate[r.work_date] = r; });
+
+    var days = [];
+    var startDate = new Date(startISO + 'T00:00:00');
+    for(var i=0;i<14;i++){
+      days.push(new Date(startDate.getTime() + i*TK_DAY_MS));
+    }
+
+    if(!myTeamFlagged[employee.id]){ myTeamFlagged[employee.id] = {}; }
+    var flaggedForThis = myTeamFlagged[employee.id];
+
+    var weekTotals = [0,0];
+    var rowsHtml = '';
+    days.forEach(function(d, idx){
+      var iso = tkDateToISO(d);
+      var row = byDate[iso];
+      var weekIdx = idx < 7 ? 0 : 1;
+      var dayLabel = d.toLocaleDateString('en-US', { weekday:'long' }) + ', ' + formatDate(iso);
+      var earningType = row && row.earning_type ? row.earning_type : null;
+      var hours = row && row.hours != null ? row.hours : 0;
+      weekTotals[weekIdx] += hours;
+      var isFlagged = !!flaggedForThis[iso];
+      var rowClass = (idx === 6) ? 'tk-week-divider' : '';
+      if(isFlagged){ rowClass += ' tk-day-flagged'; }
+      var hasEntry = !!row;
+
+      rowsHtml += '<tr class="' + rowClass + '" data-date="' + iso + '" data-emp="' + employee.id + '">'
+        + '<td>' + dayLabel + '</td>'
+        + '<td>' + (row && row.day_start ? row.day_start.slice(0,5) : '—') + '</td>'
+        + '<td>' + (row && row.day_end ? row.day_end.slice(0,5) : '—') + '</td>'
+        + '<td>' + (row && row.project_id ? (projects.find(function(p){ return p.id === row.project_id; }) || {}).name || '—' : '—') + '</td>'
+        + '<td>' + (earningType ? TK_TYPE_LABELS[earningType] : '—') + '</td>'
+        + '<td>' + (hours || '—') + '</td>'
+        + '<td>' + (hasEntry ? '<button class="tk-now-btn" type="button" onclick="myTeamToggleFlag(\'' + employee.id + '\',\'' + iso + '\')">' + (isFlagged ? 'Unflag' : 'Flag') + '</button>' : '—') + '</td>'
+        + '</tr>';
+    });
+
+    var anyFlagged = Object.keys(flaggedForThis).some(function(k){ return flaggedForThis[k]; });
+    var cardId = 'myteam-card-' + employee.id;
+
+    return '<div class="tk-entry-card" id="' + cardId + '">'
+      + '<div class="myteam-employee-header">'
+      + '<div class="myteam-employee-name">' + (employee.full_name || 'Unknown') + '</div>'
+      + '<div class="myteam-employee-title">' + (employee.job_title || '—') + '</div>'
+      + '</div>'
+      + '<table class="tk-grid-table"><thead><tr>'
+      + '<th>Day / Date</th><th>Start</th><th>Stop</th><th>Project</th><th>Status</th><th>Hours</th><th>Flag</th>'
+      + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>'
+      + '<div class="tk-grid-footer">'
+      + '<div class="tk-grid-footer-item">Week 1: <span>' + weekTotals[0].toFixed(2) + ' hrs</span></div>'
+      + '<div class="tk-grid-footer-item">Week 2: <span>' + weekTotals[1].toFixed(2) + ' hrs</span></div>'
+      + '<div class="tk-grid-footer-item">Total: <span>' + (weekTotals[0]+weekTotals[1]).toFixed(2) + ' hrs</span></div>'
+      + '</div>'
+      + '<div id="myteam-return-panel-' + employee.id + '"></div>'
+      + '<div class="tk-grid-actions">'
+      + '<div class="login-error" id="myteam-error-' + employee.id + '" style="margin-top:0;flex:1;"></div>'
+      + '<button class="btn-logout" style="width:auto;" onclick="myTeamOpenReturnPanel(\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Return</button>'
+      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" ' + (anyFlagged ? 'disabled' : '') + ' onclick="myTeamApproveAll(\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Approve All</button>'
+      + '</div>'
+      + '</div>';
+  }
+
+  function myTeamToggleFlag(employeeId, iso){
+    if(!myTeamFlagged[employeeId]){ myTeamFlagged[employeeId] = {}; }
+    myTeamFlagged[employeeId][iso] = !myTeamFlagged[employeeId][iso];
+    loadMyTeam(); // simplest correct re-render; team lists are small in this demo
+  }
+
+  async function myTeamApproveAll(employeeId, startISO, endISO){
+    var errorEl = document.getElementById('myteam-error-' + employeeId);
+    errorEl.textContent = '';
+    try{
+      var rows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=id,earning_type');
+      var session = getSession();
+      for(var i=0;i<rows.length;i++){
+        await dbWrite('time_entries?id=eq.' + rows[i].id, 'PATCH', {
+          status: 'approved',
+          approved_by: session.user.id,
+          approved_at: new Date().toISOString()
+        });
+      }
+      // Accrue PTO once per employee per approved period, not per-row
+      try{ await dbRpc('accrue_pto', { p_employee_id: employeeId }); }catch(e){ console.error(e); }
+      delete myTeamFlagged[employeeId];
+      loadMyTeam();
+    }catch(e){
+      errorEl.textContent = 'Could not approve — try again.';
+      console.error(e);
+    }
+  }
+
+  function myTeamOpenReturnPanel(employeeId, startISO, endISO){
+    var panel = document.getElementById('myteam-return-panel-' + employeeId);
+    var flaggedDates = Object.keys(myTeamFlagged[employeeId] || {}).filter(function(k){ return myTeamFlagged[employeeId][k]; });
+
+    var fieldsHtml;
+    if(flaggedDates.length){
+      fieldsHtml = flaggedDates.map(function(iso){
+        return '<div style="margin-bottom:10px;"><label class="field-label">' + formatDate(iso) + '</label>'
+          + '<input type="text" class="field-input" id="myteam-note-' + employeeId + '-' + iso + '" placeholder="Reason for returning this entry"></div>';
+      }).join('');
+    } else {
+      fieldsHtml = '<div style="margin-bottom:10px;"><label class="field-label">Note for this submission</label>'
+        + '<input type="text" class="field-input" id="myteam-note-' + employeeId + '-general" placeholder="Reason for returning this period"></div>';
+    }
+
+    panel.innerHTML = '<div class="myteam-return-box">'
+      + '<div class="tk-section-title">Return Reason</div>'
+      + fieldsHtml
+      + '<button class="btn btn-primary" style="width:auto;padding:9px 16px;" onclick="myTeamSubmitReturn(\'' + employeeId + '\',\'' + startISO + '\',\'' + endISO + '\')">Submit Return</button>'
+      + '</div>';
+  }
+
+  async function myTeamSubmitReturn(employeeId, startISO, endISO){
+    var errorEl = document.getElementById('myteam-error-' + employeeId);
+    errorEl.textContent = '';
+    var session = getSession();
+    var flaggedDates = Object.keys(myTeamFlagged[employeeId] || {}).filter(function(k){ return myTeamFlagged[employeeId][k]; });
+
+    try{
+      if(flaggedDates.length){
+        for(var i=0;i<flaggedDates.length;i++){
+          var iso = flaggedDates[i];
+          var noteEl = document.getElementById('myteam-note-' + employeeId + '-' + iso);
+          var note = noteEl ? noteEl.value : '';
+          var existing = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=eq.' + iso + '&select=id');
+          if(existing.length){
+            await dbWrite('time_entries?id=eq.' + existing[0].id, 'PATCH', {
+              status: 'rejected',
+              notes: formatDate(iso) + ': ' + note,
+              approved_by: session.user.id,
+              approved_at: new Date().toISOString()
+            });
+          }
+        }
+      } else {
+        var noteEl2 = document.getElementById('myteam-note-' + employeeId + '-general');
+        var note2 = noteEl2 ? noteEl2.value : '';
+        var rows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=id');
+        for(var j=0;j<rows.length;j++){
+          await dbWrite('time_entries?id=eq.' + rows[j].id, 'PATCH', {
+            status: 'rejected',
+            notes: note2,
+            approved_by: session.user.id,
+            approved_at: new Date().toISOString()
+          });
+        }
+      }
+      delete myTeamFlagged[employeeId];
+      loadMyTeam();
+    }catch(e){
+      errorEl.textContent = 'Could not submit return — try again.';
+      console.error(e);
+    }
+  }
+
+  async function dbRpc(fnName, params){
+    var session = getSession();
+    var res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fnName, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + (session ? session.access_token : SUPABASE_ANON_KEY),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(params)
+    });
+    if(!res.ok){ throw new Error('RPC failed: ' + res.status); }
   }
 
   async function tkGetProjects(){
@@ -1933,8 +2182,7 @@
     }
     return '<table class="tk-grid-table"><thead><tr><th>Date</th><th>Hours</th><th>Status</th></tr></thead><tbody>'
       + rows.map(function(r){
-          var pill = r.status === 'approved' ? tkStatusPill('approved') : '—';
-          return '<tr><td>' + formatDate(r.work_date) + '</td><td>' + r.hours + '</td><td>' + pill + '</td></tr>';
+          return '<tr><td>' + formatDate(r.work_date) + '</td><td>' + r.hours + '</td><td>' + tkStatusPill(r.status) + '</td></tr>';
         }).join('')
       + '</tbody></table>';
   }
