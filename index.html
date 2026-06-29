@@ -665,6 +665,41 @@
     return currentProfile && currentProfile.role === 'admin';
   }
 
+  // Returns all direct + indirect report IDs for userId, regardless of role.
+  // Manager-ness is derived from manager_id chains, not from the role column.
+  // Pulls id+manager_id for the whole org once (cheap at this headcount) and
+  // walks the tree in JS rather than issuing a recursive SQL CTE.
+  var allProfilesCache = null;
+  async function getRecursiveReportIds(userId){
+    if(!allProfilesCache){
+      allProfilesCache = await dbRequest('profiles?select=id,manager_id');
+    }
+    var byManager = {};
+    allProfilesCache.forEach(function(p){
+      if(!p.manager_id){ return; }
+      if(!byManager[p.manager_id]){ byManager[p.manager_id] = []; }
+      byManager[p.manager_id].push(p.id);
+    });
+    var result = [];
+    var queue = (byManager[userId] || []).slice();
+    while(queue.length){
+      var id = queue.shift();
+      if(result.indexOf(id) !== -1){ continue; }
+      result.push(id);
+      if(byManager[id]){ queue = queue.concat(byManager[id]); }
+    }
+    return result;
+  }
+
+  // Same traversal as getRecursiveReportIds, but returns full profile rows
+  // (id, full_name, department_id) for call sites that render employee info,
+  // not just ids.
+  async function getRecursiveReportIdsAsRows(userId){
+    var ids = await getRecursiveReportIds(userId);
+    if(!ids.length){ return []; }
+    return dbRequest('profiles?id=in.(' + ids.join(',') + ')&select=id,full_name,department_id');
+  }
+
   async function loadProfile(){
     var container = document.getElementById('profile-content');
     var session = getSession();
@@ -1484,26 +1519,13 @@
     var filterWrap = document.getElementById(filterWrapId);
     var listEl = document.getElementById(listId);
 
-    var roleRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
-    var role = roleRows.length ? roleRows[0].role : null;
+    filterWrap.innerHTML = '';
 
-    if(role === 'admin'){
-      var depts = await dbRequest('departments?order=sort_order.asc&select=id,name');
-      filterWrap.innerHTML = '<select class="field-input" id="' + filterWrapId + '-select" onchange="adminTeamDeptFilterChanged(\'' + context + '\',this.value)" style="margin-bottom:12px;">'
-        + '<option value="">All Divisions</option>'
-        + depts.map(function(d){ return '<option value="' + d.id + '">' + d.name + '</option>'; }).join('')
-        + '</select>';
-    } else {
-      filterWrap.innerHTML = '';
+    var employees = [];
+    var ids = await getRecursiveReportIds(session.user.id);
+    if(ids.length){
+      employees = await dbRequest('profiles?id=in.(' + ids.join(',') + ')&select=id,full_name,job_title&order=full_name.asc');
     }
-
-    var query;
-    if(role === 'admin'){
-      query = 'profiles?id=neq.' + session.user.id + (adminResumesDeptFilter ? '&department_id=eq.' + adminResumesDeptFilter : '') + '&select=id,full_name,job_title&order=full_name.asc';
-    } else {
-      query = 'profiles?manager_id=eq.' + session.user.id + '&select=id,full_name,job_title&order=full_name.asc';
-    }
-    var employees = await dbRequest(query);
 
     if(!employees.length){
       listEl.innerHTML = '<div class="tk-empty">No employees found.</div>';
@@ -1530,14 +1552,7 @@
     if(!session || !session.user){ return; }
 
     try{
-      var roleRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
-      var role = roleRows.length ? roleRows[0].role : null;
-      var reports;
-      if(role === 'admin'){
-        reports = await dbRequest('profiles?id=neq.' + session.user.id + '&select=id,full_name,department_id');
-      } else {
-        reports = await dbRequest('profiles?manager_id=eq.' + session.user.id + '&select=id,full_name,department_id');
-      }
+      var reports = await getRecursiveReportIdsAsRows(session.user.id);
       var reportIds = reports.map(function(r){ return r.id; });
 
       var pendingHtml = '<div class="dash-card-empty">Nothing pending.</div>';
@@ -2118,14 +2133,7 @@
 
       var pendingApprovalsHtml = '<div class="dash-card-empty">Nothing pending.</div>';
       try{
-        var reportIds = [];
-        if(isAdmin()){
-          var allEmployees = await dbRequest('profiles?select=id');
-          reportIds = allEmployees.map(function(e){ return e.id; });
-        } else {
-          var reports = await dbRequest('profiles?manager_id=eq.' + session.user.id + '&select=id');
-          reportIds = reports.map(function(r){ return r.id; });
-        }
+        var reportIds = await getRecursiveReportIds(session.user.id);
 
         if(reportIds.length){
           var idFilter = 'employee_id=in.(' + reportIds.join(',') + ')';
