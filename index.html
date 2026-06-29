@@ -3800,6 +3800,8 @@
   var travelProjectsCache = [];
   var travelContractsCache = [];
   var travelPreferenceWasChecked = false;
+  var travelOwnKtn = '';
+  var travelOwnPrograms = [];
 
   async function loadTravelScreen(){
     var container = document.getElementById('travel-content');
@@ -3813,6 +3815,10 @@
       if(!travelContractsCache.length){
         travelContractsCache = await dbRequest('gov_contracts?select=id,contract_name&order=contract_name.asc');
       }
+
+      var profRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=known_traveler_number');
+      travelOwnKtn = profRows.length ? (profRows[0].known_traveler_number || '') : '';
+      travelOwnPrograms = await dbRequest('employee_travel_programs?employee_id=eq.' + session.user.id + '&select=program_type,provider_name');
 
       container.innerHTML = '<div class="tk-entry-card">'
         + '<div class="tk-section-title">New Travel Request</div>'
@@ -3838,8 +3844,17 @@
         + '<label for="trav-self-book">I want to research and propose my own travel arrangements</label>'
         + '</div>'
         + '<div id="trav-proposed-wrap" style="display:none;margin-bottom:14px;">'
-        + '<label class="field-label" for="trav-proposed">Proposed Arrangements</label>'
-        + '<textarea class="info-edit-input" id="trav-proposed" rows="3" placeholder="Flight, hotel, or other preferences you found"></textarea>'
+        + '<div class="resume-section"><div class="resume-section-title">Flights</div><div id="trav-flight-rows"></div>'
+        + '<button type="button" class="btn-add-row" onclick="addTravelFlightRow()">+ Add flight</button></div>'
+        + '<div class="resume-section" id="trav-hotel-section"><div class="resume-section-title">Hotel</div></div>'
+        + '<div class="resume-section" id="trav-car-section"><div class="resume-section-title">Car Rental</div></div>'
+        + '<div class="tk-entry-card" style="margin-top:14px;margin-bottom:0;">'
+        + '<div class="tk-pto-summary-row">'
+        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Flights</div><div class="tk-pto-stat-val" id="trav-total-flights">$0.00</div></div>'
+        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Hotel</div><div class="tk-pto-stat-val" id="trav-total-hotel">$0.00</div></div>'
+        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Car</div><div class="tk-pto-stat-val" id="trav-total-car">$0.00</div></div>'
+        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Trip Total</div><div class="tk-pto-stat-val" id="trav-total-grand">$0.00</div></div>'
+        + '</div></div>'
         + '</div>'
         + '<div style="display:flex;gap:10px;margin-top:10px;">'
         + '<button class="btn btn-primary" style="width:auto;padding:12px 20px;" onclick="submitTravelRequest(\'submitted\')">Submit Request</button>'
@@ -3852,6 +3867,9 @@
         + '<div class="tk-section-title">My Travel Requests</div>'
         + (await travelRenderMyRequestsTable(session.user.id))
         + '</div>';
+
+      document.getElementById('trav-hotel-section').insertAdjacentHTML('beforeend', travelHotelSectionHtml());
+      document.getElementById('trav-car-section').insertAdjacentHTML('beforeend', travelCarSectionHtml());
 
       travelPreferenceWasChecked = false;
     }catch(e){
@@ -3878,10 +3896,29 @@
     }
   }
 
+  function travelProposedHasData(){
+    if(document.querySelectorAll('#trav-flight-rows .trav-flight-row').length){ return true; }
+    var hotelInputs = ['trav-hotel-city','trav-hotel-state','trav-hotel-chain','trav-hotel-checkin','trav-hotel-checkout'];
+    var carInputs = ['trav-car-chain','trav-car-pickup-loc','trav-car-pickup-date','trav-car-dropoff-loc','trav-car-dropoff-date'];
+    var anyFilled = hotelInputs.concat(carInputs).some(function(id){
+      var el = document.getElementById(id);
+      return el && el.value && el.value.trim();
+    });
+    var anyCost = (parseFloat((document.getElementById('trav-hotel-cost')||{}).value) || 0) > 0
+      || (parseFloat((document.getElementById('trav-car-cost')||{}).value) || 0) > 0;
+    return anyFilled || anyCost;
+  }
+
+  function travelClearProposedForm(){
+    document.getElementById('trav-flight-rows').innerHTML = '';
+    document.getElementById('trav-hotel-section').innerHTML = '<div class="resume-section-title">Hotel</div>' + travelHotelSectionHtml();
+    document.getElementById('trav-car-section').innerHTML = '<div class="resume-section-title">Car Rental</div>' + travelCarSectionHtml();
+    recalcTravelTotals();
+  }
+
   function travelPreferenceToggled(){
     var checkbox = document.getElementById('trav-self-book');
     var proposedWrap = document.getElementById('trav-proposed-wrap');
-    var proposedField = document.getElementById('trav-proposed');
 
     if(checkbox.checked){
       proposedWrap.style.display = '';
@@ -3889,18 +3926,108 @@
       return;
     }
 
-    // Unchecking after it was checked: warn before clearing self-booked proposal text.
-    if(travelPreferenceWasChecked && proposedField.value.trim()){
-      var confirmed = confirm('Switching to Travel Admin booking will clear what you entered in Proposed Arrangements. Continue?');
+    // Unchecking after it was checked: warn before clearing self-booked flight/hotel/car entries.
+    if(travelPreferenceWasChecked && travelProposedHasData()){
+      var confirmed = confirm('Switching to Travel Admin booking will clear the flight, hotel, and car details you entered. Continue?');
       if(!confirmed){
         checkbox.checked = true;
         return;
       }
-      proposedField.value = '';
+      travelClearProposedForm();
     }
     proposedWrap.style.display = 'none';
     travelPreferenceWasChecked = false;
   }
+
+  function travelRewardsOptionsHtml(programType, selected){
+    var matches = travelOwnPrograms.filter(function(p){ return p.program_type === programType; });
+    var opts = '<option value="">— None —</option>';
+    matches.forEach(function(p){
+      opts += '<option value="' + escAttr(p.provider_name) + '"' + (p.provider_name === selected ? ' selected' : '') + '>' + p.provider_name + '</option>';
+    });
+    return opts;
+  }
+
+  function travelFlightRowHtml(){
+    return '<div class="resume-row trav-flight-row">'
+      + '<div class="resume-row-grid">'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Departure City</span><input class="info-edit-input" data-field="departure_city"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Departure State</span><input class="info-edit-input" data-field="departure_state"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Airport</span><input class="info-edit-input" data-field="airport"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Airline</span><input class="info-edit-input" data-field="airline"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Flight Number</span><input class="info-edit-input" data-field="flight_number"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Departure Time</span><input type="time" class="info-edit-input" data-field="departure_time"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Arrival Time</span><input type="time" class="info-edit-input" data-field="arrival_time"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Cost</span><input type="number" step="0.01" class="info-edit-input trav-cost-input" data-field="cost" data-bucket="flights" oninput="recalcTravelTotals()" value="0"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Known Traveler Number</span><div class="info-val" style="padding:6px 8px;">' + (travelOwnKtn || '—') + '</div></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Airline Rewards</span><select class="info-edit-input" data-field="rewards_program">' + travelRewardsOptionsHtml('airline') + '</select></div>'
+      + '</div>'
+      + '<button type="button" class="btn-remove-row" onclick="this.closest(\'.trav-flight-row\').remove();recalcTravelTotals();">Remove</button>'
+      + '</div>';
+  }
+
+  function addTravelFlightRow(){
+    document.getElementById('trav-flight-rows').insertAdjacentHTML('beforeend', travelFlightRowHtml());
+  }
+
+  function travelHotelSectionHtml(){
+    return '<div class="resume-row" id="trav-hotel-row">'
+      + '<div class="resume-row-grid">'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">City</span><input class="info-edit-input" id="trav-hotel-city"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">State</span><input class="info-edit-input" id="trav-hotel-state"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Chain</span><input class="info-edit-input" id="trav-hotel-chain"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Check-In Date</span><input type="date" class="info-edit-input" id="trav-hotel-checkin"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Check-Out Date</span><input type="date" class="info-edit-input" id="trav-hotel-checkout"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Cost</span><input type="number" step="0.01" class="info-edit-input trav-cost-input" id="trav-hotel-cost" data-bucket="hotel" oninput="recalcTravelTotals()" value="0"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Hotel Rewards</span><select class="info-edit-input" id="trav-hotel-rewards">' + travelRewardsOptionsHtml('hotel') + '</select></div>'
+      + '</div></div>';
+  }
+
+  function travelCarSectionHtml(){
+    return '<div class="resume-row" id="trav-car-row">'
+      + '<div class="resume-row-grid">'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Chain</span><input class="info-edit-input" id="trav-car-chain"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Pick-Up Location</span><input class="info-edit-input" id="trav-car-pickup-loc"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Pick-Up Date</span><input type="date" class="info-edit-input" id="trav-car-pickup-date"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Drop-Off Location</span><input class="info-edit-input" id="trav-car-dropoff-loc"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Drop-Off Date</span><input type="date" class="info-edit-input" id="trav-car-dropoff-date"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Cost</span><input type="number" step="0.01" class="info-edit-input trav-cost-input" id="trav-car-cost" data-bucket="car" oninput="recalcTravelTotals()" value="0"></div>'
+      + '<div class="field-mini-wrap"><span class="field-mini-label">Car Rewards</span><select class="info-edit-input" id="trav-car-rewards">' + travelRewardsOptionsHtml('car_rental') + '</select></div>'
+      + '</div></div>';
+  }
+
+  function recalcTravelTotals(){
+    var flightsSum = 0;
+    document.querySelectorAll('#trav-flight-rows .trav-cost-input').forEach(function(el){
+      flightsSum += parseFloat(el.value) || 0;
+    });
+    var hotelCost = parseFloat((document.getElementById('trav-hotel-cost') || {}).value) || 0;
+    var carCost = parseFloat((document.getElementById('trav-car-cost') || {}).value) || 0;
+    var grand = flightsSum + hotelCost + carCost;
+
+    document.getElementById('trav-total-flights').textContent = '$' + flightsSum.toFixed(2);
+    document.getElementById('trav-total-hotel').textContent = '$' + hotelCost.toFixed(2);
+    document.getElementById('trav-total-car').textContent = '$' + carCost.toFixed(2);
+    document.getElementById('trav-total-grand').textContent = '$' + grand.toFixed(2);
+
+    return { flightsSum: flightsSum, hotelCost: hotelCost, carCost: carCost, grand: grand };
+  }
+
+  function harvestTravelFlights(){
+    var rows = document.querySelectorAll('#trav-flight-rows .trav-flight-row');
+    var out = [];
+    rows.forEach(function(row){
+      var obj = {};
+      row.querySelectorAll('[data-field]').forEach(function(el){
+        obj[el.dataset.field] = el.tagName === 'SELECT' ? el.value : (el.value || '');
+      });
+      obj.cost = parseFloat(obj.cost) || 0;
+      obj.known_traveler_number = travelOwnKtn || '';
+      out.push(obj);
+    });
+    return out;
+  }
+
 
   async function travelRenderMyRequestsTable(employeeId){
     var rows = await dbRequest('travel_requests?requester_id=eq.' + employeeId + '&order=created_at.desc&select=id,destination,travel_start_date,travel_end_date,current_status,manager_status,travel_status');
@@ -3930,7 +4057,6 @@
     var costMode = document.getElementById('trav-cost-mode').value;
     var costDetail = document.getElementById('trav-cost-detail') ? document.getElementById('trav-cost-detail').value : '';
     var selfBook = document.getElementById('trav-self-book').checked;
-    var proposed = document.getElementById('trav-proposed').value.trim();
 
     // Drafts can be saved with missing information — only submitted requests are validated.
     if(targetStatus === 'submitted'){
@@ -3944,6 +4070,39 @@
       }
     }
 
+    var detail = null;
+    var flightsCost = 0, hotelCost = 0, carCost = 0, totalCost = 0;
+
+    if(selfBook){
+      var totals = recalcTravelTotals();
+      flightsCost = totals.flightsSum;
+      hotelCost = totals.hotelCost;
+      carCost = totals.carCost;
+      totalCost = totals.grand;
+
+      detail = {
+        flights: harvestTravelFlights(),
+        hotel: {
+          city: document.getElementById('trav-hotel-city').value.trim(),
+          state: document.getElementById('trav-hotel-state').value.trim(),
+          chain: document.getElementById('trav-hotel-chain').value.trim(),
+          check_in_date: document.getElementById('trav-hotel-checkin').value,
+          check_out_date: document.getElementById('trav-hotel-checkout').value,
+          cost: hotelCost,
+          rewards_program: document.getElementById('trav-hotel-rewards').value
+        },
+        car: {
+          chain: document.getElementById('trav-car-chain').value.trim(),
+          pickup_location: document.getElementById('trav-car-pickup-loc').value.trim(),
+          pickup_date: document.getElementById('trav-car-pickup-date').value,
+          dropoff_location: document.getElementById('trav-car-dropoff-loc').value.trim(),
+          dropoff_date: document.getElementById('trav-car-dropoff-date').value,
+          cost: carCost,
+          rewards_program: document.getElementById('trav-car-rewards').value
+        }
+      };
+    }
+
     var body = {
       requester_id: session.user.id,
       destination: destination || null,
@@ -3951,7 +4110,11 @@
       travel_start_date: startVal || null,
       travel_end_date: endVal || null,
       preference_mode: selfBook ? 'self_researched' : 'delegated',
-      proposed_arrangements: selfBook ? (proposed || null) : null,
+      proposed_arrangements_detail: detail,
+      flights_cost: flightsCost,
+      hotel_cost: hotelCost,
+      car_cost: carCost,
+      total_cost: totalCost,
       project_id: costMode === 'project' ? costDetail : null,
       gov_contract_id: costMode === 'gov_contract' ? costDetail : null,
       cost_category: costMode === 'training' ? 'training' : null,
