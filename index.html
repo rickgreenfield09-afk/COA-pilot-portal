@@ -207,7 +207,11 @@
   .dir-search-input{flex:1;min-width:220px;margin-bottom:0;}
   .dir-dept-filter{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:12px 14px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;min-width:200px;}
   .dir-dept-filter:focus{border-color:var(--teal);}
-  .dir-roster-row{display:flex;align-items:center;gap:12px;padding:10px 12px;}
+  .dir-roster-row{display:flex;align-items:center;gap:12px;padding:10px 12px;cursor:pointer;border-radius:6px;transition:background .15s;}
+  .dir-roster-row:hover{background:var(--raised);}
+  .dir-roster-detail{display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);}
+  .dir-roster-row.expanded .dir-roster-detail{display:block;}
+  .dir-roster-detail-line{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;line-height:1.6;}
   .dir-roster-initials{width:36px;height:36px;border-radius:50%;background:var(--raised);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--teal);flex-shrink:0;}
   .dir-roster-name{font-size:14px;color:var(--text);font-weight:500;}
   .dir-roster-title{font-size:12px;color:var(--sub);font-family:'DM Mono',monospace;}
@@ -218,23 +222,27 @@
   .dir-chart-toolbar-btn{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:8px 16px;font-size:12px;color:var(--sub);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
   .dir-chart-toolbar-btn:hover{border-color:var(--teal);color:var(--teal);}
   .dir-chart-scroll{overflow-x:auto;padding-bottom:20px;}
-  .dir-chart-root-wrap{display:flex;justify-content:center;margin-bottom:0;}
-  .dir-chart-row{display:flex;justify-content:center;position:relative;}
-  .dir-chart-row::before{content:'';position:absolute;top:0;left:50%;width:1px;height:24px;background:var(--border);transform:translateX(-50%);}
+  .dir-chart-root-wrap{display:flex;justify-content:flex-start;margin-bottom:0;padding-left:24px;}
+  .dir-chart-row{display:flex;justify-content:flex-start;position:relative;padding-left:24px;}
+  .dir-chart-row::before{content:'';position:absolute;top:0;left:48px;width:1px;height:24px;background:var(--border);}
   .dir-chart-branch{display:flex;flex-direction:column;align-items:center;padding-top:24px;position:relative;}
-  .dir-chart-branch::before{content:'';position:absolute;top:0;left:50%;width:1px;height:24px;background:var(--border);}
-  .dir-chart-siblings{display:flex;gap:32px;position:relative;padding-top:1px;}
-  .dir-chart-siblings::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:var(--border);}
-  .dir-chart-siblings > .dir-chart-branch:only-child::before{display:none;}
-  .dir-chart-card{width:180px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;cursor:default;transition:border-color .15s,box-shadow .15s;flex-shrink:0;}
+  /* Vertical stem from this branch's card up to the horizontal stub row */
+  .dir-chart-branch::before{content:'';position:absolute;top:0;left:50%;width:1px;height:24px;background:var(--border);z-index:1;}
+  .dir-chart-siblings{display:flex;gap:32px;position:relative;}
+  /* Horizontal stub: each branch (except the first) draws a line from its
+     own stem leftward to the previous sibling's stem. A lone child has no
+     siblings, so no stub element exists at all — fixes the old bug where
+     a shared full-width bar drew under single-child rows. */
+  .dir-chart-siblings > .dir-chart-branch:not(:first-child)::after{content:'';position:absolute;top:24px;right:50%;width:calc(16px + 50%);height:1px;background:var(--border);z-index:0;}
+  .dir-chart-card{width:200px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;cursor:default;transition:border-color .15s,box-shadow .15s;flex-shrink:0;position:relative;z-index:2;}
   .dir-chart-card.has-children{cursor:pointer;}
   .dir-chart-card.has-children:hover{border-color:var(--teal);}
   .dir-chart-card.is-you{border-color:var(--teal);box-shadow:0 0 0 1px rgba(42,184,166,0.3);}
-  .dir-chart-card.is-root{width:200px;}
+  .dir-chart-card.is-root{width:220px;}
   .dir-chart-avatar{width:48px;height:48px;border-radius:50%;background:var(--raised);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--teal);margin:0 auto 10px;}
   .dir-chart-card-name{font-size:13px;color:var(--text);font-weight:600;margin-bottom:2px;}
   .dir-chart-card-title{font-size:11px;color:var(--sub);font-family:'DM Mono',monospace;line-height:1.3;margin-bottom:6px;}
-  .dir-chart-card-contact{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;line-height:1.5;word-break:break-word;}
+  .dir-chart-card-contact{font-size:10.5px;color:var(--muted);font-family:'DM Mono',monospace;line-height:1.6;word-break:break-word;white-space:normal;}
   .dir-chart-you-tag{display:inline-block;font-size:9px;color:var(--teal);font-family:'DM Mono',monospace;letter-spacing:1px;text-transform:uppercase;margin-top:6px;}
   .dir-chart-caret-toggle{font-size:10px;color:var(--teal);margin-top:6px;}
   .dir-chart-children-wrap{display:none;}
@@ -3126,15 +3134,24 @@
     listEl.innerHTML = filtered.map(function(r){
       var deptName = r.departments && r.departments.name ? r.departments.name : '—';
       var mgr = r.manager_id && byId[r.manager_id] ? byId[r.manager_id].full_name : '—';
-      return '<div class="dir-roster-row">'
+      return '<div class="dir-roster-row" onclick="dirToggleRosterRow(this)">'
         + '<div class="dir-roster-initials">' + dirInitials(r.full_name) + '</div>'
         + '<div style="flex:1;">'
         + '<div class="dir-roster-name">' + (r.full_name||'—') + '</div>'
-        + '<div class="dir-roster-title">' + (r.job_title||'—') + ' · Reports to ' + mgr + '</div>'
+        + '<div class="dir-roster-title">' + (r.job_title||'—') + '</div>'
+        + '<div class="dir-roster-detail">'
+        + '<div class="dir-roster-detail-line">' + (r.email||'—') + '</div>'
+        + '<div class="dir-roster-detail-line">' + (r.phone||'—') + '</div>'
+        + '<div class="dir-roster-detail-line">Reports to ' + mgr + '</div>'
+        + '</div>'
         + '</div>'
         + '<div class="dir-roster-dept">' + deptName + '</div>'
         + '</div>';
     }).join('');
+  }
+
+  function dirToggleRosterRow(rowEl){
+    rowEl.classList.toggle('expanded');
   }
 
   // ---- Org Chart subtab: tree built client-side from manager_id ----
