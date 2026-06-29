@@ -3802,11 +3802,15 @@
   var travelPreferenceWasChecked = false;
   var travelOwnKtn = '';
   var travelOwnPrograms = [];
+  var travelEditingId = null;
+  var travelEditingRow = null;
 
-  async function loadTravelScreen(){
+  async function loadTravelScreen(editId){
     var container = document.getElementById('travel-content');
     var session = getSession();
     if(!session || !session.user){ return; }
+    travelEditingId = editId || null;
+    travelEditingRow = null;
 
     try{
       if(!travelProjectsCache.length){
@@ -3820,8 +3824,13 @@
       travelOwnKtn = profRows.length ? (profRows[0].known_traveler_number || '') : '';
       travelOwnPrograms = await dbRequest('employee_travel_programs?employee_id=eq.' + session.user.id + '&select=program_type,provider_name');
 
+      if(travelEditingId){
+        var existingRows = await dbRequest('travel_requests?id=eq.' + travelEditingId + '&select=*');
+        if(existingRows.length){ travelEditingRow = existingRows[0]; }
+      }
+
       container.innerHTML = '<div class="tk-entry-card">'
-        + '<div class="tk-section-title">New Travel Request</div>'
+        + '<div class="tk-section-title">' + (travelEditingRow ? 'Edit Draft Travel Request' : 'New Travel Request') + '</div>'
         + '<div class="tk-pto-form-grid" style="grid-template-columns:1fr 1fr;">'
         + '<div><label class="field-label" for="trav-destination">Destination</label><input class="field-input" id="trav-destination" placeholder="City, State"></div>'
         + '<div><label class="field-label" for="trav-purpose">Purpose</label><input class="field-input" id="trav-purpose" placeholder="Reason for travel"></div>'
@@ -3878,12 +3887,85 @@
       document.getElementById('trav-hotel-section').insertAdjacentHTML('beforeend', travelHotelSectionHtml());
       document.getElementById('trav-car-fields-wrap').insertAdjacentHTML('beforeend', travelCarSectionHtml());
 
+      if(travelEditingRow){
+        travelPrefillForm(travelEditingRow);
+      }
+
       travelPreferenceWasChecked = false;
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load travel</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
   }
+
+  function travelPrefillForm(row){
+    document.getElementById('trav-destination').value = row.destination || '';
+    document.getElementById('trav-purpose').value = row.purpose || '';
+    document.getElementById('trav-start').value = row.travel_start_date || '';
+    document.getElementById('trav-end').value = row.travel_end_date || '';
+
+    var costMode = row.project_id ? 'project' : (row.gov_contract_id ? 'gov_contract' : (row.cost_category === 'training' ? 'training' : ''));
+    document.getElementById('trav-cost-mode').value = costMode;
+    if(costMode){
+      travelCostModeChanged();
+      var detailVal = row.project_id || row.gov_contract_id || '';
+      if(detailVal){ document.getElementById('trav-cost-detail').value = detailVal; }
+    }
+
+    if(row.preference_mode === 'self_researched'){
+      document.getElementById('trav-self-book').checked = true;
+      travelPreferenceToggled();
+
+      var detail = row.proposed_arrangements_detail || {};
+      var flights = detail.flights || [];
+      var departureData = flights.find(function(f){ return f.leg === 'departure'; });
+      var returnData = flights.find(function(f){ return f.leg === 'return'; });
+
+      if(departureData){ travelFillFlightRow('trav-flight-departure', departureData); }
+      if(returnData){
+        travelFillFlightRow('trav-flight-return', returnData);
+      }else if(flights.length){
+        // Had flight data but no return leg saved — treat as one-way.
+        document.getElementById('trav-oneway').checked = true;
+        travelOnewayToggled();
+      }
+
+      if(detail.hotel){
+        document.getElementById('trav-hotel-city').value = detail.hotel.city || '';
+        document.getElementById('trav-hotel-state').value = detail.hotel.state || '';
+        document.getElementById('trav-hotel-chain').value = detail.hotel.chain || '';
+        document.getElementById('trav-hotel-checkin').value = detail.hotel.check_in_date || '';
+        document.getElementById('trav-hotel-checkout').value = detail.hotel.check_out_date || '';
+        document.getElementById('trav-hotel-cost').value = detail.hotel.cost || 0;
+        document.getElementById('trav-hotel-rewards').value = detail.hotel.rewards_program || '';
+      }
+
+      if(detail.car && (detail.car.chain || detail.car.pickup_location || (detail.car.cost || 0) > 0)){
+        document.getElementById('trav-car-chain').value = detail.car.chain || '';
+        document.getElementById('trav-car-pickup-loc').value = detail.car.pickup_location || '';
+        document.getElementById('trav-car-pickup-date').value = detail.car.pickup_date || '';
+        document.getElementById('trav-car-dropoff-loc').value = detail.car.dropoff_location || '';
+        document.getElementById('trav-car-dropoff-date').value = detail.car.dropoff_date || '';
+        document.getElementById('trav-car-cost').value = detail.car.cost || 0;
+        document.getElementById('trav-car-rewards').value = detail.car.rewards_program || '';
+      }else{
+        document.getElementById('trav-rideshare').checked = true;
+        travelRideshareToggled();
+      }
+
+      recalcTravelTotals();
+    }
+  }
+
+  function travelFillFlightRow(rowId, data){
+    var row = document.getElementById(rowId);
+    if(!row){ return; }
+    row.querySelectorAll('[data-field]').forEach(function(el){
+      var key = el.dataset.field;
+      if(data[key] !== undefined){ el.value = data[key]; }
+    });
+  }
+
 
   function travelCostModeChanged(){
     var mode = document.getElementById('trav-cost-mode').value;
@@ -4131,13 +4213,17 @@
     if(!rows.length){
       return '<div class="tk-empty">No travel requests yet.</div>';
     }
-    return '<table class="tk-grid-table"><thead><tr><th>Destination</th><th>Dates</th><th>Status</th><th>Manager</th><th>Travel Admin</th></tr></thead><tbody>'
+    return '<table class="tk-grid-table"><thead><tr><th>Destination</th><th>Dates</th><th>Status</th><th>Manager</th><th>Travel Admin</th><th></th></tr></thead><tbody>'
       + rows.map(function(r){
+          var action = r.current_status === 'draft'
+            ? '<button class="tk-now-btn" type="button" onclick="loadTravelScreen(\'' + r.id + '\')">Edit Draft</button>'
+            : '';
           return '<tr><td>' + (r.destination || '—') + '</td>'
             + '<td>' + formatDate(r.travel_start_date) + ' – ' + formatDate(r.travel_end_date) + '</td>'
             + '<td>' + tkStatusPill(r.current_status) + '</td>'
             + '<td>' + tkStatusPill(r.manager_status) + '</td>'
-            + '<td>' + tkStatusPill(r.travel_status) + '</td></tr>';
+            + '<td>' + tkStatusPill(r.travel_status) + '</td>'
+            + '<td>' + action + '</td></tr>';
         }).join('')
       + '</tbody></table>';
   }
@@ -4219,7 +4305,14 @@
     };
 
     try{
-      await dbWrite('travel_requests', 'POST', [body]);
+      if(travelEditingId){
+        delete body.requester_id;
+        await dbWrite('travel_requests?id=eq.' + travelEditingId, 'PATCH', body);
+      }else{
+        await dbWrite('travel_requests', 'POST', [body]);
+      }
+      travelEditingId = null;
+      travelEditingRow = null;
       loadTravelScreen();
     }catch(e){
       errorEl.textContent = 'Couldn\'t save travel request. Try again.';
