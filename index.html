@@ -168,6 +168,7 @@
 
   /* ---------- Dashboard top row: News + Alerts ---------- */
   .dash-top-row{display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:20px;align-items:start;}
+  .dash-row-50{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;align-items:start;}
   .news-item{background:var(--raised);border-radius:6px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:border-color .15s;border:1px solid transparent;}
   .news-item:hover{border-color:var(--teal);}
   .news-item-title{font-size:13px;color:var(--text);font-weight:500;}
@@ -188,6 +189,7 @@
     .shortcuts-grid{grid-template-columns:repeat(2,1fr);}
     .dash-grid{grid-template-columns:1fr;}
     .dash-top-row{grid-template-columns:1fr;}
+    .dash-row-50{grid-template-columns:1fr;}
     .dash-header-meta{margin-left:0;}
   }
   .resume-cart-item{display:flex;align-items:center;justify-content:space-between;background:var(--raised);border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:13px;}
@@ -544,12 +546,32 @@
       <div class="screen" id="screen-admin">
         <div class="subtab-bar">
           <button class="subtab-btn active" data-adminsubtab="dashboard" onclick="switchAdminSubtab('dashboard')">Dashboard</button>
+          <button class="subtab-btn" data-adminsubtab="timekeeping" onclick="switchAdminSubtab('timekeeping')">Timekeeping</button>
+          <button class="subtab-btn" data-adminsubtab="travel" onclick="switchAdminSubtab('travel')">Travel</button>
+          <button class="subtab-btn" data-adminsubtab="training" onclick="switchAdminSubtab('training')">Training</button>
           <button class="subtab-btn" data-adminsubtab="resumes" onclick="switchAdminSubtab('resumes')">Resumes</button>
           <button class="subtab-btn" data-adminsubtab="assets" onclick="switchAdminSubtab('assets')">Assets</button>
         </div>
         <div class="admin-subscreen active" id="admin-dashboard">
           <div id="admin-dashboard-content">
             <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+        <div class="admin-subscreen" id="admin-timekeeping">
+          <div id="admin-timekeeping-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+        <div class="admin-subscreen" id="admin-travel">
+          <div class="placeholder-card">
+            <div class="placeholder-title">Travel</div>
+            <div class="placeholder-sub">Coming next session</div>
+          </div>
+        </div>
+        <div class="admin-subscreen" id="admin-training">
+          <div class="placeholder-card">
+            <div class="placeholder-title">Training</div>
+            <div class="placeholder-sub">Coming next session</div>
           </div>
         </div>
         <div class="admin-subscreen" id="admin-resumes">
@@ -1547,7 +1569,7 @@
     document.querySelectorAll('#screen-myteam [data-myteamsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.myteamsubtab === name); });
     document.getElementById('myteam-' + name).classList.add('active');
     if(name === 'dashboard'){ loadTeamDashboard(); }
-    if(name === 'timekeeping'){ loadMyTeam(); }
+    if(name === 'timekeeping'){ loadTeamTimekeeping('myteam'); }
     if(name === 'resumes'){ loadTeamResumes('myteam'); }
     if(name === 'assets'){ loadTeamAssets('myteam'); }
   }
@@ -1568,6 +1590,7 @@
     document.querySelectorAll('#screen-admin [data-adminsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.adminsubtab === name); });
     document.getElementById('admin-' + name).classList.add('active');
     if(name === 'dashboard'){ loadAdminDashboard(); }
+    if(name === 'timekeeping'){ loadTeamTimekeeping('admin'); }
     if(name === 'resumes'){ loadTeamResumes('admin'); }
     if(name === 'assets'){ loadTeamAssets('admin'); }
   }
@@ -1691,13 +1714,11 @@
         }
       }
 
-      container.innerHTML = '<div class="dash-top-row">'
-        + '<div class="alert-stack" style="width:100%;">'
+      container.innerHTML = '<div class="dash-row-50">'
         + '<div class="dash-card"><div class="dash-card-title">Pending Requests</div>' + pendingHtml + '</div>'
-        + '<div class="dash-card" style="margin-top:16px;"><div class="dash-card-title">Out Today (Approved PTO)</div>' + outTodayHtml + '</div>'
+        + '<div class="dash-card"><div class="dash-card-title">Out Today (Approved PTO)</div>' + outTodayHtml + '</div>'
         + '</div>'
-        + '</div>'
-        + '<div class="dash-top-row">'
+        + '<div class="dash-row-50">'
         + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Coming soon.</div></div>'
         + '<div class="dash-card"><div class="dash-card-title">Training Requirements<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Coming soon.</div></div>'
         + '</div>'
@@ -1715,7 +1736,7 @@
     if(!session || !session.user){ return; }
 
     try{
-      var reports = await getRecursiveReportIdsAsRows(session.user.id);
+      var reports = await dbRequest('profiles?id=neq.' + session.user.id + '&select=id,full_name');
       var reportIds = reports.map(function(r){ return r.id; });
 
       var pendingHtml = '<div class="dash-card-empty">Nothing pending.</div>';
@@ -1735,7 +1756,7 @@
         Object.keys(groups).forEach(function(key){
           if(!groups[key].length){ return; }
           sectionsHtml += '<div class="pending-group-header">' + groupLabels[key] + '</div>'
-            + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'myteam\');setTimeout(function(){switchMyTeamSubtab(\'timekeeping\');},0);return false;">Review</a></div>';
+            + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'admin\');setTimeout(function(){switchAdminSubtab(\'timekeeping\');},0);return false;">Review</a></div>';
         });
         pendingHtml = sectionsHtml || pendingHtml;
 
@@ -1753,16 +1774,11 @@
         }
       }
 
-      container.innerHTML = '<div class="dash-top-row">'
-        + '<div class="alert-stack" style="width:100%;">'
+      container.innerHTML = '<div class="dash-row-50">'
         + '<div class="dash-card"><div class="dash-card-title">Pending Approvals</div>' + pendingHtml + '</div>'
-        + '<div class="dash-card" style="margin-top:16px;"><div class="dash-card-title">Pending Equipment Requests</div>' + pendingEquipHtml + '</div>'
+        + '<div class="dash-card"><div class="dash-card-title">Pending Equipment Requests</div>' + pendingEquipHtml + '</div>'
         + '</div>'
-        + '</div>'
-        + '<div class="tk-entry-card">'
-        + '<div class="tk-section-title">Out Today (Approved PTO)</div>'
-        + outTodayHtml
-        + '</div>';
+        + '<div class="dash-card"><div class="dash-card-title">Out Today (Approved PTO)</div>' + outTodayHtml + '</div>';
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load team overview</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
@@ -2364,36 +2380,6 @@
       try{ projectRows = await dbRequest('projects?active=eq.true&select=id,name&order=name.asc'); }catch(e){ console.error(e); }
       var projectOptions = projectRows.map(function(pr){ return '<option value="' + pr.id + '">' + pr.name + '</option>'; }).join('');
 
-      var pendingApprovalsHtml = '<div class="dash-card-empty">Nothing pending.</div>';
-      try{
-        var reportIds = await getRecursiveReportIds(session.user.id);
-
-        if(reportIds.length){
-          var idFilter = 'employee_id=in.(' + reportIds.join(',') + ')';
-          var pendingRows = await dbRequest('time_entries?' + idFilter + '&status=in.(submitted,pending)&select=id,earning_type,status');
-
-          var groups = { timecard: [], pto: [], training: [], travel: [], admin: [], award: [] };
-          pendingRows.forEach(function(r){
-            if(r.status === 'submitted'){ groups.timecard.push(r); }
-            else if(r.earning_type === 'pto'){ groups.pto.push(r); }
-            else if(r.earning_type === 'training'){ groups.training.push(r); }
-            else if(r.earning_type === 'travel'){ groups.travel.push(r); }
-            else if(r.earning_type === 'admin'){ groups.admin.push(r); }
-            else if(r.earning_type === 'award'){ groups.award.push(r); }
-          });
-
-          var groupLabels = { timecard:'Time Cards', pto:'PTO', training:'Training', travel:'Travel', admin:'Admin', award:'Award' };
-          var sectionsHtml = '';
-          Object.keys(groups).forEach(function(key){
-            if(!groups[key].length){ return; } // header only renders when that type is present
-            sectionsHtml += '<div class="pending-group-header">' + groupLabels[key] + '</div>'
-              + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'myteam\');setTimeout(function(){switchMyTeamSubtab(\'timekeeping\');},0);return false;">Review</a></div>';
-          });
-
-          pendingApprovalsHtml = sectionsHtml || '<div class="dash-card-empty">Nothing pending.</div>';
-        }
-      }catch(e){ console.error(e); }
-
       container.innerHTML =
         '<div class="dash-header-strip">'
         + '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>'
@@ -2423,10 +2409,6 @@
         + '</div>'
         + '<div class="alert-stack">'
         + '<div class="dash-card">'
-        + '<div class="dash-card-title">Pending Approvals</div>'
-        + pendingApprovalsHtml
-        + '</div>'
-        + '<div class="dash-card" style="margin-top:16px;">'
         + '<div class="dash-card-title">Quick Time Entry</div>'
         + '<div class="quick-entry-row">'
         + '<div><label class="field-label" for="qte-hours">Hours</label><input type="text" inputmode="decimal" id="qte-hours" class="field-input qte-hours-input" maxlength="2" placeholder="8"></div>'
@@ -2536,7 +2518,6 @@
     if(name === 'history'){ initTkHistory(); }
     if(name === 'ptorequest'){ loadPtoRequest(); }
     if(name === 'ptobalance'){ loadPtoBalance(); }
-    if(name === 'myteam'){ loadMyTeam(); }
   }
 
   // ---- Period math: TK_ANCHOR (6/21/2026) is offset 0; Period numbering
@@ -2578,68 +2559,78 @@
   }
 
   // ---------- My Team (manager/admin review) ----------
-  var myTeamFlagged = {}; // { employeeId: Set of dates flagged for return }
+  var myTeamFlagged = {}; // { employeeId: Set of dates flagged for return } — keyed by employee id only; ids are unique company-wide so no scope collision risk
 
-  var myTeamReports = [];
-  var myTeamIndex = 0;
-  var myTeamStartISO = '';
-  var myTeamEndISO = '';
+  var teamTkReports = { myteam: [], admin: [] };
+  var teamTkIndex = { myteam: 0, admin: 0 };
+  var teamTkStartISO = { myteam: '', admin: '' };
+  var teamTkEndISO = { myteam: '', admin: '' };
 
-  async function loadMyTeam(){
-    var container = document.getElementById('myteam-timekeeping-content');
+  function teamTkContentId(scope){
+    return scope + '-timekeeping-content';
+  }
+
+  async function loadTeamTimekeeping(scope){
+    var container = document.getElementById(teamTkContentId(scope));
     var session = getSession();
     if(!session || !session.user){ return; }
 
     try{
-      var ids = await getRecursiveReportIds(session.user.id);
-      myTeamReports = ids.length
+      var ids;
+      if(scope === 'admin'){
+        ids = (await dbRequest('profiles?id=neq.' + session.user.id + '&select=id')).map(function(r){ return r.id; });
+      } else {
+        ids = await getRecursiveReportIds(session.user.id);
+      }
+      teamTkReports[scope] = ids.length
         ? await dbRequest('profiles?id=in.(' + ids.join(',') + ')&select=id,full_name,job_title&order=full_name.asc')
         : [];
 
-      if(!myTeamReports.length){
-        container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No direct reports</div><div class="placeholder-sub">Nobody is currently assigned to you for review.</div></div>';
+      if(!teamTkReports[scope].length){
+        container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No employees found</div><div class="placeholder-sub">' + (scope === 'admin' ? 'No other employees on file.' : 'Nobody is currently assigned to you for review.') + '</div></div>';
         return;
       }
 
       var todayOffset = tkOffsetForToday();
       var bounds = tkPeriodBounds(todayOffset);
-      myTeamStartISO = tkDateToISO(bounds.start);
-      myTeamEndISO = tkDateToISO(bounds.end);
-      if(myTeamIndex >= myTeamReports.length){ myTeamIndex = 0; }
+      teamTkStartISO[scope] = tkDateToISO(bounds.start);
+      teamTkEndISO[scope] = tkDateToISO(bounds.end);
+      if(teamTkIndex[scope] >= teamTkReports[scope].length){ teamTkIndex[scope] = 0; }
 
-      await myTeamRenderCurrentCard();
+      await teamTkRenderCurrentCard(scope);
     }catch(e){
-      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load My Team</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load timekeeping</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
   }
 
-  async function myTeamRenderCurrentCard(){
-    var container = document.getElementById('myteam-timekeeping-content');
-    var bounds = tkPeriodBounds(tkOffsetForToday());
-    var employee = myTeamReports[myTeamIndex];
+  async function teamTkRenderCurrentCard(scope){
+    var container = document.getElementById(teamTkContentId(scope));
+    var employee = teamTkReports[scope][teamTkIndex[scope]];
+    var startISO = teamTkStartISO[scope];
+    var endISO = teamTkEndISO[scope];
 
     var navHtml = '<div class="myteam-nav-row">'
-      + '<button class="tk-period-nav-btn" ' + (myTeamIndex === 0 ? 'disabled' : '') + ' onclick="myTeamNavEmployee(-1)">&larr; Prev</button>'
-      + '<div class="myteam-nav-count">Employee ' + (myTeamIndex+1) + ' of ' + myTeamReports.length + '</div>'
-      + '<button class="tk-period-nav-btn" ' + (myTeamIndex === myTeamReports.length-1 ? 'disabled' : '') + ' onclick="myTeamNavEmployee(1)">Next &rarr;</button>'
+      + '<button class="tk-period-nav-btn" ' + (teamTkIndex[scope] === 0 ? 'disabled' : '') + ' onclick="teamTkNavEmployee(\'' + scope + '\',-1)">&larr; Prev</button>'
+      + '<div class="myteam-nav-count">Employee ' + (teamTkIndex[scope]+1) + ' of ' + teamTkReports[scope].length + '</div>'
+      + '<button class="tk-period-nav-btn" ' + (teamTkIndex[scope] === teamTkReports[scope].length-1 ? 'disabled' : '') + ' onclick="teamTkNavEmployee(\'' + scope + '\',1)">Next &rarr;</button>'
       + '</div>'
       + '<div class="tk-period-label" style="margin-bottom:4px;">Pay Period ' + tkPeriodNumber(tkOffsetForToday()) + '</div>'
-      + '<div class="tk-period-dates" style="margin-bottom:20px;">' + formatDate(myTeamStartISO) + ' – ' + formatDate(myTeamEndISO) + '</div>';
+      + '<div class="tk-period-dates" style="margin-bottom:20px;">' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div>';
 
     container.innerHTML = navHtml + '<div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>';
-    var cardHtml = await myTeamRenderCard(employee, myTeamStartISO, myTeamEndISO);
+    var cardHtml = await teamTkRenderCard(employee, startISO, endISO, scope);
     container.innerHTML = navHtml + cardHtml;
   }
 
-  function myTeamNavEmployee(dir){
-    myTeamIndex += dir;
-    if(myTeamIndex < 0){ myTeamIndex = 0; }
-    if(myTeamIndex >= myTeamReports.length){ myTeamIndex = myTeamReports.length - 1; }
-    myTeamRenderCurrentCard();
+  function teamTkNavEmployee(scope, dir){
+    teamTkIndex[scope] += dir;
+    if(teamTkIndex[scope] < 0){ teamTkIndex[scope] = 0; }
+    if(teamTkIndex[scope] >= teamTkReports[scope].length){ teamTkIndex[scope] = teamTkReports[scope].length - 1; }
+    teamTkRenderCurrentCard(scope);
   }
 
-  async function myTeamRenderCard(employee, startISO, endISO){
+  async function teamTkRenderCard(employee, startISO, endISO, scope){
     var projects = await tkGetProjects();
     var rows = await dbRequest('time_entries?employee_id=eq.' + employee.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
     var byDate = {};
@@ -2676,7 +2667,7 @@
         + '<td>' + (row && row.project_id ? (projects.find(function(p){ return p.id === row.project_id; }) || {}).name || '—' : '—') + '</td>'
         + '<td>' + (earningType ? TK_TYPE_LABELS[earningType] : '—') + '</td>'
         + '<td>' + (hours || '—') + '</td>'
-        + '<td>' + (hasEntry ? '<button class="tk-now-btn" type="button" onclick="myTeamToggleFlag(\'' + employee.id + '\',\'' + iso + '\')">' + (isFlagged ? 'Unflag' : 'Flag') + '</button>' : '—') + '</td>'
+        + '<td>' + (hasEntry ? '<button class="tk-now-btn" type="button" onclick="teamTkToggleFlag(\'' + scope + '\',\'' + employee.id + '\',\'' + iso + '\')">' + (isFlagged ? 'Unflag' : 'Flag') + '</button>' : '—') + '</td>'
         + '</tr>';
     });
 
@@ -2699,19 +2690,19 @@
       + '<div id="myteam-return-panel-' + employee.id + '"></div>'
       + '<div class="tk-grid-actions">'
       + '<div class="login-error" id="myteam-error-' + employee.id + '" style="margin-top:0;flex:1;"></div>'
-      + '<button class="btn-logout" style="width:auto;" onclick="myTeamOpenReturnPanel(\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Return</button>'
-      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" ' + (anyFlagged ? 'disabled' : '') + ' onclick="myTeamApproveAll(\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Approve All</button>'
+      + '<button class="btn-logout" style="width:auto;" onclick="teamTkOpenReturnPanel(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Return</button>'
+      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" ' + (anyFlagged ? 'disabled' : '') + ' onclick="teamTkApproveAll(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Approve All</button>'
       + '</div>'
       + '</div>';
   }
 
-  function myTeamToggleFlag(employeeId, iso){
+  function teamTkToggleFlag(scope, employeeId, iso){
     if(!myTeamFlagged[employeeId]){ myTeamFlagged[employeeId] = {}; }
     myTeamFlagged[employeeId][iso] = !myTeamFlagged[employeeId][iso];
-    myTeamRenderCurrentCard();
+    teamTkRenderCurrentCard(scope);
   }
 
-  async function myTeamApproveAll(employeeId, startISO, endISO){
+  async function teamTkApproveAll(scope, employeeId, startISO, endISO){
     var errorEl = document.getElementById('myteam-error-' + employeeId);
     errorEl.textContent = '';
     try{
@@ -2727,14 +2718,14 @@
       // Accrue PTO once per employee per approved period, not per-row
       try{ await dbRpc('accrue_pto', { p_employee_id: employeeId }); }catch(e){ console.error(e); }
       delete myTeamFlagged[employeeId];
-      myTeamRenderCurrentCard();
+      teamTkRenderCurrentCard(scope);
     }catch(e){
       errorEl.textContent = 'Could not approve — try again.';
       console.error(e);
     }
   }
 
-  function myTeamOpenReturnPanel(employeeId, startISO, endISO){
+  function teamTkOpenReturnPanel(scope, employeeId, startISO, endISO){
     var panel = document.getElementById('myteam-return-panel-' + employeeId);
     var flaggedDates = Object.keys(myTeamFlagged[employeeId] || {}).filter(function(k){ return myTeamFlagged[employeeId][k]; });
 
@@ -2752,11 +2743,11 @@
     panel.innerHTML = '<div class="myteam-return-box">'
       + '<div class="tk-section-title">Return Reason</div>'
       + fieldsHtml
-      + '<button class="btn btn-primary" style="width:auto;padding:9px 16px;" onclick="myTeamSubmitReturn(\'' + employeeId + '\',\'' + startISO + '\',\'' + endISO + '\')">Submit Return</button>'
+      + '<button class="btn btn-primary" style="width:auto;padding:9px 16px;" onclick="teamTkSubmitReturn(\'' + scope + '\',\'' + employeeId + '\',\'' + startISO + '\',\'' + endISO + '\')">Submit Return</button>'
       + '</div>';
   }
 
-  async function myTeamSubmitReturn(employeeId, startISO, endISO){
+  async function teamTkSubmitReturn(scope, employeeId, startISO, endISO){
     var errorEl = document.getElementById('myteam-error-' + employeeId);
     errorEl.textContent = '';
     var session = getSession();
@@ -2792,7 +2783,7 @@
         }
       }
       delete myTeamFlagged[employeeId];
-      myTeamRenderCurrentCard();
+      teamTkRenderCurrentCard(scope);
     }catch(e){
       errorEl.textContent = 'Could not submit return — try again.';
       console.error(e);
