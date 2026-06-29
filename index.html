@@ -230,10 +230,13 @@
   .dir-chart-branch::before{content:'';position:absolute;top:0;left:50%;width:1px;height:24px;background:var(--border);z-index:1;}
   .dir-chart-siblings{display:flex;gap:32px;position:relative;}
   /* Horizontal stub: each branch (except the first) draws a line from its
-     own stem leftward to the previous sibling's stem. A lone child has no
-     siblings, so no stub element exists at all — fixes the old bug where
-     a shared full-width bar drew under single-child rows. */
-  .dir-chart-siblings > .dir-chart-branch:not(:first-child)::after{content:'';position:absolute;top:24px;right:50%;width:calc(16px + 50%);height:1px;background:var(--border);z-index:0;}
+     own stem leftward to the previous sibling's stem. Cards are a fixed
+     200px wide with a fixed 32px gap, so center-to-center distance is
+     always exactly 232px — drawn as a precise pixel width anchored to
+     this branch's own center, reaching left across the gap and half of
+     the previous card. A lone child has no siblings, so :not(:first-child)
+     never matches and no stub renders at all. */
+  .dir-chart-siblings > .dir-chart-branch:not(:first-child)::after{content:'';position:absolute;top:24px;right:50%;width:232px;height:1px;background:var(--border);z-index:0;}
   .dir-chart-card{width:200px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;cursor:default;transition:border-color .15s,box-shadow .15s;flex-shrink:0;position:relative;z-index:2;}
   .dir-chart-card.has-children{cursor:pointer;}
   .dir-chart-card.has-children:hover{border-color:var(--teal);}
