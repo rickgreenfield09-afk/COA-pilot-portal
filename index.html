@@ -42,7 +42,8 @@
       <button class="nav-btn" data-screen="profile" onclick="requestSwitchScreen('profile')">My Profile</button>
       <button class="nav-btn" data-screen="directory" onclick="requestSwitchScreen('directory')">Directory</button>
       <button class="nav-btn" data-screen="timekeeping" onclick="requestSwitchScreen('timekeeping')">Timekeeping</button>
-      <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel</button>
+      <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel Request (New)</button>
+      <button class="nav-btn" data-screen="travelestimate" onclick="requestSwitchScreen('travelestimate')">Travel Estimate</button>
       <button class="nav-btn" data-screen="training" onclick="requestSwitchScreen('training')">Training</button>
       <button class="nav-btn" id="nav-btn-myteam" data-screen="myteam" onclick="requestSwitchScreen('myteam')" style="display:none;">My Team</button>
       <button class="nav-btn" id="nav-btn-admin" data-screen="admin" onclick="requestSwitchScreen('admin')" style="display:none;">Admin</button>
@@ -175,6 +176,11 @@
           <div class="placeholder-card"><div class="placeholder-sub">Loading travel...</div></div>
         </div>
       </div>
+      <div class="screen" id="screen-travelestimate">
+        <div id="travelestimate-content">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading travel estimate...</div></div>
+        </div>
+      </div>
       <div class="screen" id="screen-training">
         <div class="subtab-bar">
           <button class="subtab-btn active" data-subtab="internal" onclick="switchTrainingSubtab('internal')">Internal Training</button>
@@ -297,6 +303,7 @@
 
   <!-- PRINT BATCH CONTAINER (populated and shown only during print) -->
   <div id="print-resume-batch" style="position:absolute;top:-99999px;left:-99999px;"></div>
+  <div id="print-travel-estimate" style="position:absolute;top:-99999px;left:-99999px;"></div>
 
   <script src="app-core.js"></script>
   <script src="screen-auth.js"></script>
@@ -305,6 +312,7 @@
   <script src="screen-timekeeping.js"></script>
   <script src="screen-dashboard.js"></script>
   <script src="screen-travel.js"></script>
+  <script src="screen-travel-estimate.js"></script>
   <script src="screen-training.js"></script>
   <script src="screen-myteam.js"></script>
   <script src="screen-admin.js"></script>

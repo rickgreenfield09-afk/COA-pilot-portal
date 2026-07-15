@@ -261,4 +261,7 @@
     if(name === 'travel'){
       loadTravelScreen();
     }
+    if(name === 'travelestimate'){
+      loadTravelEstimateScreen();
+    }
   }
