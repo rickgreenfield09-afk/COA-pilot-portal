@@ -1,0 +1,379 @@
+/* COA Employee Portal — screen-travel-estimate.js
+   Travel Estimate screen: create/edit a draft estimate, view own estimates,
+   Internal/Customer print. Distinct from screen-travel.js's Travel Request
+   (New) flow — travel_estimates is its own table with its own status
+   lifecycle (draft/submitted/approved/expensed/paid).
+   Depends on app-core.js: getSession, dbRequest, dbWrite, escAttr, formatDate.
+
+   Per diem / markup rules (confirmed with client, see CLAUDE.md history):
+   - Travel days (departure + return, 2 total) = 1.5x daily M&IE rate each.
+   - Full days (nights - 1) = 1x M&IE rate each.
+   - Hotel = nights x lodging rate.
+   - Fee multiplier (Customer/Prime view only) applies to: airfare, airport
+     parking/transport, baggage, hotel, rental car/gas/parking/tolls,
+     mileage, shipping to/back. Per diem and EWW are never marked up.
+   - fee_multiplier_used is snapshotted onto the row at submit time so a
+     later change to travel_settings.fee_multiplier doesn't rewrite history.
+   - Only status='draft' rows are editable here; submitted/approved/expensed/
+     paid render read-only (approval workflow itself is a follow-up build). */
+
+  var teEditingId = null;
+  var teEditingRow = null;
+  var teViewMode = 'internal'; // 'internal' | 'customer'
+  var teLiveFeeMultiplier = 1;
+
+  async function loadTravelEstimateScreen(editId){
+    var container = document.getElementById('travelestimate-content');
+    var session = getSession();
+    if(!session || !session.user){ return; }
+    teEditingId = editId || null;
+    teEditingRow = null;
+    teViewMode = 'internal';
+
+    try{
+      var settingsRows = await dbRequest('travel_settings?select=fee_multiplier&limit=1');
+      teLiveFeeMultiplier = settingsRows.length ? (parseFloat(settingsRows[0].fee_multiplier) || 1) : 1;
+
+      if(teEditingId){
+        var rows = await dbRequest('travel_estimates?id=eq.' + teEditingId + '&select=*');
+        if(rows.length){ teEditingRow = rows[0]; }
+      }
+
+      if(teEditingRow && teEditingRow.status !== 'draft'){
+        container.innerHTML = '<div id="te-detail-wrap"></div><div class="tk-entry-card"><div class="tk-section-title">My Travel Estimates</div>' + (await teRenderMyEstimatesTable(session.user.id)) + '</div>';
+        renderTeReadOnlyDetail(teEditingRow);
+        return;
+      }
+
+      container.innerHTML = teFormHtml(teEditingRow)
+        + '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">My Travel Estimates</div>'
+        + (await teRenderMyEstimatesTable(session.user.id))
+        + '</div>';
+
+      if(teEditingRow){ tePrefillForm(teEditingRow); }
+      teRecalc();
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load travel estimate</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  function teFormHtml(row){
+    return '<div class="tk-entry-card">'
+      + '<div class="tk-section-title">' + (row ? 'Edit Draft Travel Estimate' : 'New Travel Estimate') + '</div>'
+      + '<div class="subtab-bar" style="margin-bottom:18px;">'
+      + '<button type="button" class="subtab-btn active" id="te-view-internal-btn" onclick="teSetViewMode(\'internal\')">Internal</button>'
+      + '<button type="button" class="subtab-btn" id="te-view-customer-btn" onclick="teSetViewMode(\'customer\')">Customer / Prime</button>'
+      + '</div>'
+      + '<div class="tk-pto-form-grid" style="grid-template-columns:1fr 1fr;">'
+      + '<div><label class="field-label" for="te-destination">Destination / Event</label><input class="field-input" id="te-destination" placeholder="City, State / Event name"></div>'
+      + '<div><label class="field-label" for="te-trainers">Number of Trainers</label><input type="number" min="1" step="1" class="field-input" id="te-trainers" value="1" oninput="teRecalc()"></div>'
+      + '<div><label class="field-label" for="te-leave-date">Leave Date</label><input type="date" class="field-input" id="te-leave-date" oninput="teRecalc()"></div>'
+      + '<div><label class="field-label" for="te-return-date">Return Date</label><input type="date" class="field-input" id="te-return-date" oninput="teRecalc()"></div>'
+      + '</div>'
+      + '<div class="resume-section"><div class="resume-section-title">Per Diem</div>'
+      + '<div class="tk-pto-form-grid" style="grid-template-columns:1fr 1fr;">'
+      + '<div><label class="field-label" for="te-lodging-rate">Lodging Rate (per night)</label><input type="number" step="0.01" class="field-input" id="te-lodging-rate" value="0" oninput="teRecalc()"></div>'
+      + '<div><label class="field-label" for="te-meals-rate">Meals (M&IE) Rate (per day)</label><input type="number" step="0.01" class="field-input" id="te-meals-rate" value="0" oninput="teRecalc()"></div>'
+      + '</div>'
+      + '<div class="profile-grid" style="margin-top:4px;">'
+      + '<div class="info-box"><div class="info-label">Nights</div><div class="info-val" id="te-calc-nights">0</div></div>'
+      + '<div class="info-box"><div class="info-label">Travel Days (1.5x)</div><div class="info-val" id="te-calc-traveldays">2</div></div>'
+      + '<div class="info-box"><div class="info-label">Full Days (1x)</div><div class="info-val" id="te-calc-fulldays">0</div></div>'
+      + '<div class="info-box"><div class="info-label">Per Diem Meals Total</div><div class="info-val" id="te-calc-perdiem">$0.00</div></div>'
+      + '</div>'
+      + '</div>'
+      + '<div class="resume-section"><div class="resume-section-title">Other Direct Costs</div>'
+      + '<div class="tk-pto-form-grid" style="grid-template-columns:1fr 1fr 1fr;">'
+      + '<div><label class="field-label" for="te-airfare">Airfare (avg)</label><input type="number" step="0.01" class="field-input te-cost-input" id="te-airfare" value="0" oninput="teRecalc()"></div>'
+      + '<div><label class="field-label" for="te-parking-transport">Airport Parking / Transport</label><input type="number" step="0.01" class="field-input te-cost-input" id="te-parking-transport" value="0" oninput="teRecalc()"></div>'
+      + '<div><label class="field-label" for="te-baggage">Baggage</label><input type="number" step="0.01" class="field-input te-cost-input" id="te-baggage" value="0" oninput="teRecalc()"></div>'
+      + '<div><label class="field-label" for="te-rental-car">Rental Car / Gas / Parking / Tolls</label><input type="number" step="0.01" class="field-input te-cost-input" id="te-rental-car" value="0" oninput="teRecalc()"></div>'
+      + '<div><label class="field-label" for="te-mileage">Mileage</label><input type="number" step="0.01" class="field-input te-cost-input" id="te-mileage" value="0" oninput="teRecalc()"></div>'
+      + '</div>'
+      + '<div class="tk-pto-form-grid" style="grid-template-columns:1fr 1fr;">'
+      + '<div><label class="field-label" for="te-shipping-to">Shipping (to)</label><input type="number" step="0.01" class="field-input te-cost-input" id="te-shipping-to" value="0" oninput="teRecalc()"></div>'
+      + '<div><label class="field-label" for="te-shipping-back">Shipping (back)</label><input type="number" step="0.01" class="field-input te-cost-input" id="te-shipping-back" value="0" oninput="teRecalc()"></div>'
+      + '</div>'
+      + '</div>'
+      + '<div class="resume-section"><div class="resume-section-title">EWW (Extended Work Week)</div>'
+      + '<div class="tk-pto-form-grid" style="grid-template-columns:1fr 1fr;">'
+      + '<div><label class="field-label" for="te-eww-rate">EWW Rate (per hour)</label><input type="number" step="0.01" class="field-input" id="te-eww-rate" value="0" oninput="teRecalc()"></div>'
+      + '<div><label class="field-label" for="te-eww-hours">EWW Hours per Trainer</label><input type="number" step="0.01" class="field-input" id="te-eww-hours" value="0" oninput="teRecalc()"></div>'
+      + '</div>'
+      + '</div>'
+      + '<div class="tk-entry-card" style="margin-top:14px;margin-bottom:0;">'
+      + '<div class="tk-pto-summary-row" style="grid-template-columns:repeat(4,1fr);">'
+      + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Per Traveler Subtotal</div><div class="tk-pto-stat-val" id="te-total-per-traveler">$0.00</div></div>'
+      + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Trip Lead Total</div><div class="tk-pto-stat-val" id="te-total-trip-lead">$0.00</div></div>'
+      + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">EWW Total</div><div class="tk-pto-stat-val" id="te-total-eww">$0.00</div></div>'
+      + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Grand Total (ODC + EWW)</div><div class="tk-pto-stat-val" id="te-total-grand">$0.00</div></div>'
+      + '</div></div>'
+      + '<div style="display:flex;gap:10px;margin-top:14px;">'
+      + '<button class="btn btn-primary" style="width:auto;padding:12px 20px;" onclick="submitTravelEstimate(\'submitted\')">Submit Estimate</button>'
+      + '<button class="btn-cancel" onclick="submitTravelEstimate(\'draft\')">Save as Draft</button>'
+      + '<button class="btn-cancel" onclick="loadTravelEstimateScreen()">Cancel</button>'
+      + '<button class="btn-edit" onclick="printTravelEstimate()">Print</button>'
+      + '</div>'
+      + '<div class="login-error" id="te-form-error"></div>'
+      + '</div>';
+  }
+
+  function tePrefillForm(row){
+    document.getElementById('te-destination').value = row.destination_event || '';
+    document.getElementById('te-trainers').value = row.number_of_trainers || 1;
+    document.getElementById('te-leave-date').value = row.leave_date || '';
+    document.getElementById('te-return-date').value = row.return_date || '';
+    document.getElementById('te-lodging-rate').value = row.per_diem_lodging_rate || 0;
+    document.getElementById('te-meals-rate').value = row.per_diem_meals_rate || 0;
+    document.getElementById('te-airfare').value = row.airfare_avg || 0;
+    document.getElementById('te-parking-transport').value = row.airport_parking_transport || 0;
+    document.getElementById('te-baggage').value = row.baggage || 0;
+    document.getElementById('te-rental-car').value = row.rental_car_gas_parking_tolls || 0;
+    document.getElementById('te-mileage').value = row.mileage || 0;
+    document.getElementById('te-shipping-to').value = row.shipping_to || 0;
+    document.getElementById('te-shipping-back').value = row.shipping_back || 0;
+    document.getElementById('te-eww-rate').value = row.eww_rate || 0;
+    document.getElementById('te-eww-hours').value = row.eww_hours_per_trainer || 0;
+  }
+
+  function teSetViewMode(mode){
+    teViewMode = mode;
+    document.getElementById('te-view-internal-btn').classList.toggle('active', mode === 'internal');
+    document.getElementById('te-view-customer-btn').classList.toggle('active', mode === 'customer');
+    teRecalc();
+  }
+
+  // Core calc, shared by the live form (teRecalc) and the print render. Returns
+  // both internal (raw) and customer (fee-multiplied) figures so callers pick
+  // whichever the current view needs without recomputing.
+  function teCalc(inputs){
+    var leave = inputs.leaveDate ? new Date(inputs.leaveDate) : null;
+    var ret = inputs.returnDate ? new Date(inputs.returnDate) : null;
+    var nights = (leave && ret) ? Math.round((ret - leave) / 86400000) : 0;
+    if(nights < 0){ nights = 0; }
+
+    var travelDaysCost = 2 * 1.5 * inputs.mealsRate;
+    var fullDays = Math.max(nights - 1, 0);
+    var fullDaysCost = fullDays * inputs.mealsRate;
+    var perDiemMealsTotal = travelDaysCost + fullDaysCost;
+    var hotelTotal = nights * inputs.lodgingRate;
+
+    var markupBucketInternal = hotelTotal + inputs.airfare + inputs.parkingTransport + inputs.baggage + inputs.rentalCar + inputs.mileage;
+    var shippingInternal = inputs.shippingTo + inputs.shippingBack;
+
+    var perTravelerInternal = perDiemMealsTotal + markupBucketInternal;
+    var tripLeadInternal = perTravelerInternal * inputs.trainers + shippingInternal;
+    var odcInternal = tripLeadInternal;
+    var ewwTotal = inputs.ewwRate * inputs.ewwHours * inputs.trainers;
+
+    var multiplier = inputs.feeMultiplier;
+    var perTravelerCustomer = perDiemMealsTotal + (markupBucketInternal * multiplier);
+    var tripLeadCustomer = perTravelerCustomer * inputs.trainers + (shippingInternal * multiplier);
+    var odcCustomer = tripLeadCustomer;
+
+    return {
+      nights: nights, travelDaysCost: travelDaysCost, fullDays: fullDays, fullDaysCost: fullDaysCost,
+      perDiemMealsTotal: perDiemMealsTotal, hotelTotal: hotelTotal, ewwTotal: ewwTotal,
+      perTravelerInternal: perTravelerInternal, tripLeadInternal: tripLeadInternal, odcInternal: odcInternal,
+      perTravelerCustomer: perTravelerCustomer, tripLeadCustomer: tripLeadCustomer, odcCustomer: odcCustomer
+    };
+  }
+
+  function teReadFormInputs(){
+    return {
+      leaveDate: document.getElementById('te-leave-date').value,
+      returnDate: document.getElementById('te-return-date').value,
+      trainers: parseInt(document.getElementById('te-trainers').value, 10) || 1,
+      lodgingRate: parseFloat(document.getElementById('te-lodging-rate').value) || 0,
+      mealsRate: parseFloat(document.getElementById('te-meals-rate').value) || 0,
+      airfare: parseFloat(document.getElementById('te-airfare').value) || 0,
+      parkingTransport: parseFloat(document.getElementById('te-parking-transport').value) || 0,
+      baggage: parseFloat(document.getElementById('te-baggage').value) || 0,
+      rentalCar: parseFloat(document.getElementById('te-rental-car').value) || 0,
+      mileage: parseFloat(document.getElementById('te-mileage').value) || 0,
+      shippingTo: parseFloat(document.getElementById('te-shipping-to').value) || 0,
+      shippingBack: parseFloat(document.getElementById('te-shipping-back').value) || 0,
+      ewwRate: parseFloat(document.getElementById('te-eww-rate').value) || 0,
+      ewwHours: parseFloat(document.getElementById('te-eww-hours').value) || 0,
+      feeMultiplier: teLiveFeeMultiplier
+    };
+  }
+
+  function teRecalc(){
+    var inputs = teReadFormInputs();
+    var calc = teCalc(inputs);
+    var isCustomer = teViewMode === 'customer';
+
+    document.getElementById('te-calc-nights').textContent = calc.nights;
+    document.getElementById('te-calc-fulldays').textContent = calc.fullDays;
+    document.getElementById('te-calc-perdiem').textContent = '$' + calc.perDiemMealsTotal.toFixed(2);
+    document.getElementById('te-total-per-traveler').textContent = '$' + (isCustomer ? calc.perTravelerCustomer : calc.perTravelerInternal).toFixed(2);
+    document.getElementById('te-total-trip-lead').textContent = '$' + (isCustomer ? calc.tripLeadCustomer : calc.tripLeadInternal).toFixed(2);
+    document.getElementById('te-total-eww').textContent = '$' + calc.ewwTotal.toFixed(2);
+    var odc = isCustomer ? calc.odcCustomer : calc.odcInternal;
+    document.getElementById('te-total-grand').textContent = '$' + (odc + calc.ewwTotal).toFixed(2);
+
+    return calc;
+  }
+
+  async function teRenderMyEstimatesTable(employeeId){
+    var rows = await dbRequest('travel_estimates?created_by=eq.' + employeeId + '&order=created_at.desc&select=id,destination_event,leave_date,return_date,status,trip_lead_total,eww_total');
+    if(!rows.length){
+      return '<div class="tk-empty">No travel estimates yet.</div>';
+    }
+    return '<table class="tk-grid-table"><thead><tr><th>Destination / Event</th><th>Dates</th><th>Status</th><th>Grand Total</th><th></th></tr></thead><tbody>'
+      + rows.map(function(r){
+          var grand = (parseFloat(r.trip_lead_total) || 0) + (parseFloat(r.eww_total) || 0);
+          var action = r.status === 'draft'
+            ? '<button class="tk-now-btn" type="button" onclick="loadTravelEstimateScreen(\'' + r.id + '\')">Edit Draft</button>'
+            : '<button class="tk-now-btn" type="button" onclick="loadTravelEstimateScreen(\'' + r.id + '\')">View</button>';
+          return '<tr><td>' + (r.destination_event || '—') + '</td>'
+            + '<td>' + formatDate(r.leave_date) + ' – ' + formatDate(r.return_date) + '</td>'
+            + '<td>' + tkStatusPill(r.status) + '</td>'
+            + '<td>$' + grand.toFixed(2) + '</td>'
+            + '<td>' + action + '</td></tr>';
+        }).join('')
+      + '</tbody></table>';
+  }
+
+  function renderTeReadOnlyDetail(r){
+    var wrap = document.getElementById('te-detail-wrap');
+    var grand = (parseFloat(r.trip_lead_total) || 0) + (parseFloat(r.eww_total) || 0);
+    wrap.innerHTML = '<div class="tk-entry-card">'
+      + '<div class="tk-section-title">Travel Estimate — ' + (r.destination_event || '—') + ' ' + tkStatusPill(r.status) + '</div>'
+      + '<div class="placeholder-sub" style="margin-bottom:14px;">This estimate is ' + r.status + ' and can no longer be edited here.</div>'
+      + '<div class="profile-grid">'
+      + teamTravelReadOnlyField('Dates', formatDate(r.leave_date) + ' – ' + formatDate(r.return_date))
+      + teamTravelReadOnlyField('Number of Trainers', r.number_of_trainers)
+      + teamTravelReadOnlyField('Per Traveler Subtotal', '$' + (parseFloat(r.per_traveler_subtotal) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Trip Lead Total', '$' + (parseFloat(r.trip_lead_total) || 0).toFixed(2))
+      + teamTravelReadOnlyField('EWW Total', '$' + (parseFloat(r.eww_total) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Grand Total', '$' + grand.toFixed(2))
+      + teamTravelReadOnlyField('Fee Multiplier Used', r.fee_multiplier_used || '—')
+      + '</div>'
+      + '<div class="profile-actions"><button class="btn-cancel" onclick="loadTravelEstimateScreen()">Back</button></div>'
+      + '</div>';
+  }
+
+  async function submitTravelEstimate(targetStatus){
+    var errorEl = document.getElementById('te-form-error');
+    var session = getSession();
+    errorEl.textContent = '';
+
+    var destination = document.getElementById('te-destination').value.trim();
+    var inputs = teReadFormInputs();
+
+    if(targetStatus === 'submitted'){
+      if(!destination || !inputs.leaveDate || !inputs.returnDate){
+        errorEl.textContent = 'Destination/Event and both dates are required to submit.';
+        return;
+      }
+      if(new Date(inputs.returnDate) < new Date(inputs.leaveDate)){
+        errorEl.textContent = 'Return date must be on or after leave date.';
+        return;
+      }
+    }
+
+    var calc = teCalc(inputs);
+
+    var body = {
+      destination_event: destination || null,
+      leave_date: inputs.leaveDate || null,
+      return_date: inputs.returnDate || null,
+      number_of_trainers: inputs.trainers,
+      per_diem_lodging_rate: inputs.lodgingRate,
+      per_diem_meals_rate: inputs.mealsRate,
+      airfare_avg: inputs.airfare,
+      airport_parking_transport: inputs.parkingTransport,
+      baggage: inputs.baggage,
+      rental_car_gas_parking_tolls: inputs.rentalCar,
+      mileage: inputs.mileage,
+      shipping_to: inputs.shippingTo,
+      shipping_back: inputs.shippingBack,
+      eww_rate: inputs.ewwRate,
+      eww_hours_per_trainer: inputs.ewwHours,
+      per_traveler_subtotal: calc.perTravelerInternal,
+      trip_lead_total: calc.tripLeadInternal,
+      estimated_total_odc: calc.odcInternal,
+      eww_total: calc.ewwTotal,
+      status: targetStatus
+    };
+    if(targetStatus === 'submitted'){
+      body.fee_multiplier_used = teLiveFeeMultiplier;
+    }
+
+    try{
+      var previousStatus = teEditingRow ? teEditingRow.status : null;
+      var fieldChanges = teDiffFields(teEditingRow, body);
+
+      if(teEditingId){
+        await dbWrite('travel_estimates?id=eq.' + teEditingId, 'PATCH', body);
+      }else{
+        body.created_by = session.user.id;
+        await dbWrite('travel_estimates', 'POST', [body]);
+        var created = await dbRequest('travel_estimates?created_by=eq.' + session.user.id + '&order=created_at.desc&limit=1&select=id');
+        teEditingId = created.length ? created[0].id : null;
+      }
+
+      await dbWrite('travel_estimate_audit_log', 'POST', [{
+        estimate_id: teEditingId,
+        changed_by: session.user.id,
+        changed_at: new Date().toISOString(),
+        action: (previousStatus && previousStatus !== targetStatus) ? 'status_change' : 'edit',
+        field_changes: fieldChanges,
+        previous_status: previousStatus,
+        new_status: targetStatus
+      }]);
+
+      teEditingId = null;
+      teEditingRow = null;
+      loadTravelEstimateScreen();
+    }catch(e){
+      errorEl.textContent = 'Couldn\'t save travel estimate. Try again.';
+      console.error(e);
+    }
+  }
+
+  // Field-level before/after diff for the audit log — required so
+  // travel_estimate_audit_log captures what changed, not just a status flag.
+  function teDiffFields(previousRow, newBody){
+    var changes = {};
+    Object.keys(newBody).forEach(function(key){
+      var before = previousRow ? previousRow[key] : null;
+      var after = newBody[key];
+      if(before !== after && !(before == null && after == null)){
+        changes[key] = { from: before == null ? null : before, to: after == null ? null : after };
+      }
+    });
+    return changes;
+  }
+
+  function printTravelEstimate(){
+    var inputs = teReadFormInputs();
+    var calc = teCalc(inputs);
+    var isCustomer = teViewMode === 'customer';
+    var destination = document.getElementById('te-destination').value.trim() || '—';
+    var perTraveler = isCustomer ? calc.perTravelerCustomer : calc.perTravelerInternal;
+    var tripLead = isCustomer ? calc.tripLeadCustomer : calc.tripLeadInternal;
+    var odc = isCustomer ? calc.odcCustomer : calc.odcInternal;
+    var grand = odc + calc.ewwTotal;
+
+    var html = '<div class="print-te-page">'
+      + '<div class="print-te-title">COA Travel Estimate</div>'
+      + '<div class="print-te-sub">' + (isCustomer ? 'Customer / Prime Copy' : 'Internal Copy') + ' — ' + destination + '</div>'
+      + '<table><tbody>'
+      + '<tr><td>Dates</td><td>' + formatDate(inputs.leaveDate) + ' – ' + formatDate(inputs.returnDate) + '</td></tr>'
+      + '<tr><td>Number of Trainers</td><td>' + inputs.trainers + '</td></tr>'
+      + '<tr><td>Per Diem Meals Total (not marked up)</td><td>$' + calc.perDiemMealsTotal.toFixed(2) + '</td></tr>'
+      + '<tr><td>Per Traveler Subtotal</td><td>$' + perTraveler.toFixed(2) + '</td></tr>'
+      + '<tr><td>Trip Lead Total</td><td>$' + tripLead.toFixed(2) + '</td></tr>'
+      + '<tr><td>EWW Total</td><td>$' + calc.ewwTotal.toFixed(2) + '</td></tr>'
+      + '</tbody></table>'
+      + '<div class="print-te-grand">Grand Total: $' + grand.toFixed(2) + '</div>'
+      + '</div>';
+
+    document.getElementById('print-travel-estimate').innerHTML = html;
+    window.print();
+  }
