@@ -61,3 +61,28 @@ this whole flow concept with the client before it's relied on. Also not
 enforced server-side: a direct API read of `travel_estimates` still
 exposes the raw fields regardless of status in the current Supabase POC
 (no live data, accepted risk).
+
+## 2026-07-16 — Travel Expense Report: audit trail + storage bucket (AU-2/AU-3, SC-28)
+New `travel_expenses`, `travel_expense_receipts`, `travel_expense_audit_log`
+tables (user-run SQL, this session). Field-level audit logging mirrors the
+Travel Estimate pattern: every create/edit/submit writes a row to
+`travel_expense_audit_log` via `texDiffFields()`. Receipts are stored in a
+new public Supabase Storage bucket `travel-receipts`, simulating the future
+Azure Blob Storage migration, with a permissive "any authenticated user can
+insert/select" policy — accepted risk for the no-live-data POC, same stance
+as the rest of the data layer.
+Status: Implemented (client-side, Supabase POC).
+Gap/follow-up:
+- Storage bucket policy is intentionally permissive (any authenticated user
+  can read/write any object in the bucket, not just their own receipts) —
+  must be tightened to per-user/per-report scoping before go-live.
+- Only `draft` reports are editable in the UI; not enforced by RLS (same
+  gap as travel_estimates).
+- Submitting an expense report sets the linked `travel_estimates.status` to
+  `expensed` — this is a client-side write, not a DB trigger, so it's only
+  as reliable as the app's error handling; a failed follow-up write would
+  leave the two tables inconsistent. Worth a DB trigger before go-live.
+- Two-stage approval fields (`supervisor_status`, `principal_status`) exist
+  on the table but no approval-review UI is built yet — deferred to a
+  follow-up session per user's explicit call, same as the Travel Estimate
+  approval workflow.

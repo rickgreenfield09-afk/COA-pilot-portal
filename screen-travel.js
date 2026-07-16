@@ -11,6 +11,7 @@
     document.getElementById('travel-' + name).classList.add('active');
     if(name === 'request'){ loadTravelScreen(); }
     if(name === 'estimate'){ loadTravelEstimateScreen(); }
+    if(name === 'expense'){ loadTravelExpenseScreen(); }
   }
 
   // ---------- Travel screen (standalone travel_requests) ----------
