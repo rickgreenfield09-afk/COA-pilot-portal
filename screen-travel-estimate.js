@@ -1,8 +1,9 @@
 /* COA Employee Portal — screen-travel-estimate.js
-   Travel Estimate screen: create/edit a draft estimate, view own estimates,
-   Internal/Customer print. Distinct from screen-travel.js's Travel Request
-   (New) flow — travel_estimates is its own table with its own status
-   lifecycle (draft/submitted/approved/expensed/paid).
+   Travel Estimate subtab (nested under the Travel nav item, alongside
+   screen-travel.js's Travel Request (New)): create/edit a draft estimate,
+   view own estimates, Internal print, post-approval Customer/Prime copy.
+   travel_estimates is its own table with its own status lifecycle
+   (draft/submitted/approved/expensed/paid), separate from travel_requests.
    Depends on app-core.js: getSession, dbRequest, dbWrite, escAttr, formatDate.
 
    Per diem / markup rules (confirmed with client, see CLAUDE.md history):
@@ -15,11 +16,19 @@
    - fee_multiplier_used is snapshotted onto the row at submit time so a
      later change to travel_settings.fee_multiplier doesn't rewrite history.
    - Only status='draft' rows are editable here; submitted/approved/expensed/
-     paid render read-only (approval workflow itself is a follow-up build). */
+     paid render read-only (approval workflow itself is a follow-up build).
+   - Customer/Prime figures are never shown on the live/draft form — only
+     Internal numbers exist pre-approval. Once status='approved' (or later),
+     the read-only detail view exposes a "Generate Customer/Prime Copy"
+     action that computes the marked-up view from the stored internal
+     totals + fee_multiplier_used, for viewing/printing only (never a
+     separately editable record). Confirmed with user 2026-07-16; who may
+     trigger it is intentionally unrestricted for now (anyone who can view
+     the estimate) pending confirmation of this whole flow with the client
+     — see backlog note in coa_travel_backlog memory / next session prompt. */
 
   var teEditingId = null;
   var teEditingRow = null;
-  var teViewMode = 'internal'; // 'internal' | 'customer'
   var teLiveFeeMultiplier = 1;
 
   async function loadTravelEstimateScreen(editId){
@@ -28,7 +37,6 @@
     if(!session || !session.user){ return; }
     teEditingId = editId || null;
     teEditingRow = null;
-    teViewMode = 'internal';
 
     try{
       var settingsRows = await dbRequest('travel_settings?select=fee_multiplier&limit=1');
@@ -62,10 +70,6 @@
   function teFormHtml(row){
     return '<div class="tk-entry-card">'
       + '<div class="tk-section-title">' + (row ? 'Edit Draft Travel Estimate' : 'New Travel Estimate') + '</div>'
-      + '<div class="subtab-bar" style="margin-bottom:18px;">'
-      + '<button type="button" class="subtab-btn active" id="te-view-internal-btn" onclick="teSetViewMode(\'internal\')">Internal</button>'
-      + '<button type="button" class="subtab-btn" id="te-view-customer-btn" onclick="teSetViewMode(\'customer\')">Customer / Prime</button>'
-      + '</div>'
       + '<div class="tk-pto-form-grid" style="grid-template-columns:1fr 1fr;">'
       + '<div><label class="field-label" for="te-destination">Destination / Event</label><input class="field-input" id="te-destination" placeholder="City, State / Event name"></div>'
       + '<div><label class="field-label" for="te-trainers">Number of Trainers</label><input type="number" min="1" step="1" class="field-input" id="te-trainers" value="1" oninput="teRecalc()"></div>'
@@ -138,13 +142,6 @@
     document.getElementById('te-eww-hours').value = row.eww_hours_per_trainer || 0;
   }
 
-  function teSetViewMode(mode){
-    teViewMode = mode;
-    document.getElementById('te-view-internal-btn').classList.toggle('active', mode === 'internal');
-    document.getElementById('te-view-customer-btn').classList.toggle('active', mode === 'customer');
-    teRecalc();
-  }
-
   // Core calc, shared by the live form (teRecalc) and the print render. Returns
   // both internal (raw) and customer (fee-multiplied) figures so callers pick
   // whichever the current view needs without recomputing.
@@ -204,16 +201,14 @@
   function teRecalc(){
     var inputs = teReadFormInputs();
     var calc = teCalc(inputs);
-    var isCustomer = teViewMode === 'customer';
 
     document.getElementById('te-calc-nights').textContent = calc.nights;
     document.getElementById('te-calc-fulldays').textContent = calc.fullDays;
     document.getElementById('te-calc-perdiem').textContent = '$' + calc.perDiemMealsTotal.toFixed(2);
-    document.getElementById('te-total-per-traveler').textContent = '$' + (isCustomer ? calc.perTravelerCustomer : calc.perTravelerInternal).toFixed(2);
-    document.getElementById('te-total-trip-lead').textContent = '$' + (isCustomer ? calc.tripLeadCustomer : calc.tripLeadInternal).toFixed(2);
+    document.getElementById('te-total-per-traveler').textContent = '$' + calc.perTravelerInternal.toFixed(2);
+    document.getElementById('te-total-trip-lead').textContent = '$' + calc.tripLeadInternal.toFixed(2);
     document.getElementById('te-total-eww').textContent = '$' + calc.ewwTotal.toFixed(2);
-    var odc = isCustomer ? calc.odcCustomer : calc.odcInternal;
-    document.getElementById('te-total-grand').textContent = '$' + (odc + calc.ewwTotal).toFixed(2);
+    document.getElementById('te-total-grand').textContent = '$' + (calc.odcInternal + calc.ewwTotal).toFixed(2);
 
     return calc;
   }
@@ -238,9 +233,13 @@
       + '</tbody></table>';
   }
 
+  var TE_CUSTOMER_COPY_STATUSES = ['approved', 'expensed', 'paid'];
+
   function renderTeReadOnlyDetail(r){
     var wrap = document.getElementById('te-detail-wrap');
     var grand = (parseFloat(r.trip_lead_total) || 0) + (parseFloat(r.eww_total) || 0);
+    var canGenerateCustomerCopy = TE_CUSTOMER_COPY_STATUSES.indexOf(r.status) !== -1;
+
     wrap.innerHTML = '<div class="tk-entry-card">'
       + '<div class="tk-section-title">Travel Estimate — ' + (r.destination_event || '—') + ' ' + tkStatusPill(r.status) + '</div>'
       + '<div class="placeholder-sub" style="margin-bottom:14px;">This estimate is ' + r.status + ' and can no longer be edited here.</div>'
@@ -253,8 +252,54 @@
       + teamTravelReadOnlyField('Grand Total', '$' + grand.toFixed(2))
       + teamTravelReadOnlyField('Fee Multiplier Used', r.fee_multiplier_used || '—')
       + '</div>'
+      + (canGenerateCustomerCopy
+          ? '<div class="profile-actions"><button class="btn-edit" onclick="teGenerateCustomerCopy(\'' + r.id + '\')">Generate Customer / Prime Copy</button></div>'
+          : '<div class="placeholder-sub" style="margin-top:4px;">Customer/Prime copy becomes available once this estimate is approved.</div>')
+      + '<div id="te-customer-copy-wrap"></div>'
       + '<div class="profile-actions"><button class="btn-cancel" onclick="loadTravelEstimateScreen()">Back</button></div>'
       + '</div>';
+  }
+
+  // Recomputes the fee-multiplied view from the stored row (never live form
+  // input, since this only exists for non-draft rows) using the snapshotted
+  // fee_multiplier_used. View/print only — never written back to the row.
+  // Result is cached in teCustomerCopyContext for printTeCustomerCopy() to
+  // use, rather than round-tripping the data through an onclick attribute.
+  var teCustomerCopyContext = null;
+
+  function teGenerateCustomerCopy(estimateId){
+    var r = teEditingRow && teEditingRow.id === estimateId ? teEditingRow : null;
+    if(!r){ return; }
+    var inputs = {
+      leaveDate: r.leave_date, returnDate: r.return_date, trainers: r.number_of_trainers || 1,
+      lodgingRate: parseFloat(r.per_diem_lodging_rate) || 0, mealsRate: parseFloat(r.per_diem_meals_rate) || 0,
+      airfare: parseFloat(r.airfare_avg) || 0, parkingTransport: parseFloat(r.airport_parking_transport) || 0,
+      baggage: parseFloat(r.baggage) || 0, rentalCar: parseFloat(r.rental_car_gas_parking_tolls) || 0,
+      mileage: parseFloat(r.mileage) || 0, shippingTo: parseFloat(r.shipping_to) || 0, shippingBack: parseFloat(r.shipping_back) || 0,
+      ewwRate: parseFloat(r.eww_rate) || 0, ewwHours: parseFloat(r.eww_hours_per_trainer) || 0,
+      feeMultiplier: parseFloat(r.fee_multiplier_used) || 1
+    };
+    var calc = teCalc(inputs);
+    var grand = calc.odcCustomer + calc.ewwTotal;
+    teCustomerCopyContext = { destination: r.destination_event || '—', inputs: inputs, calc: calc };
+
+    document.getElementById('te-customer-copy-wrap').innerHTML = '<div class="tk-entry-card" style="margin-top:14px;">'
+      + '<div class="tk-section-title">Customer / Prime Copy</div>'
+      + '<div class="profile-grid">'
+      + teamTravelReadOnlyField('Per Traveler Subtotal', '$' + calc.perTravelerCustomer.toFixed(2))
+      + teamTravelReadOnlyField('Trip Lead Total', '$' + calc.tripLeadCustomer.toFixed(2))
+      + teamTravelReadOnlyField('EWW Total', '$' + calc.ewwTotal.toFixed(2))
+      + teamTravelReadOnlyField('Grand Total', '$' + grand.toFixed(2))
+      + '</div>'
+      + '<div class="profile-actions"><button class="btn-edit" onclick="printTeCustomerCopy()">Print Customer / Prime Copy</button></div>'
+      + '</div>';
+  }
+
+  function printTeCustomerCopy(){
+    if(!teCustomerCopyContext){ return; }
+    var ctx = teCustomerCopyContext;
+    document.getElementById('print-travel-estimate').innerHTML = buildTePrintHtml(ctx.destination, true, ctx.inputs, ctx.calc);
+    window.print();
   }
 
   async function submitTravelEstimate(targetStatus){
@@ -350,17 +395,15 @@
     return changes;
   }
 
-  function printTravelEstimate(){
-    var inputs = teReadFormInputs();
-    var calc = teCalc(inputs);
-    var isCustomer = teViewMode === 'customer';
-    var destination = document.getElementById('te-destination').value.trim() || '—';
+  // Shared print markup builder — used by the draft form's Print button
+  // (always Internal) and printTeCustomerCopy() (post-approval only).
+  function buildTePrintHtml(destination, isCustomer, inputs, calc){
     var perTraveler = isCustomer ? calc.perTravelerCustomer : calc.perTravelerInternal;
     var tripLead = isCustomer ? calc.tripLeadCustomer : calc.tripLeadInternal;
     var odc = isCustomer ? calc.odcCustomer : calc.odcInternal;
     var grand = odc + calc.ewwTotal;
 
-    var html = '<div class="print-te-page">'
+    return '<div class="print-te-page">'
       + '<div class="print-te-title">COA Travel Estimate</div>'
       + '<div class="print-te-sub">' + (isCustomer ? 'Customer / Prime Copy' : 'Internal Copy') + ' — ' + destination + '</div>'
       + '<table><tbody>'
@@ -373,7 +416,14 @@
       + '</tbody></table>'
       + '<div class="print-te-grand">Grand Total: $' + grand.toFixed(2) + '</div>'
       + '</div>';
+  }
 
-    document.getElementById('print-travel-estimate').innerHTML = html;
+  // Draft-form Print button — Internal only, since Customer/Prime doesn't
+  // exist pre-approval.
+  function printTravelEstimate(){
+    var inputs = teReadFormInputs();
+    var calc = teCalc(inputs);
+    var destination = document.getElementById('te-destination').value.trim() || '—';
+    document.getElementById('print-travel-estimate').innerHTML = buildTePrintHtml(destination, false, inputs, calc);
     window.print();
   }

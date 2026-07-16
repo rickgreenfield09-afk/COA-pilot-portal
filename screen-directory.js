@@ -2,6 +2,8 @@
    Company directory: roster list and org chart.
    Depends on app-core.js: getSession, dbRequest, getInitials. */
 
+  var dirAllProfiles = [];
+
   function switchDirectorySubtab(name){
     document.querySelectorAll('#screen-directory .dir-subscreen').forEach(function(s){ s.classList.remove('active'); });
     document.querySelectorAll('#screen-directory [data-dirsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.dirsubtab === name); });

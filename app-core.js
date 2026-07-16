@@ -89,6 +89,17 @@
     return currentProfile && currentProfile.role === 'admin';
   }
 
+  // Profile field edit gates — used by renderProfile()/saveProfile() and the
+  // Travel Info card in screen-profile.js. Contact info is employee
+  // self-service; org placement, HR status, and clearance data are
+  // admin-only (confirmed with user 2026-07-16, see ssp-log.md AC-3 entry).
+  var employeeEditableFields = ['preferred_name', 'phone', 'home_email', 'home_phone', 'known_traveler_number'];
+  var adminEditableFields = employeeEditableFields.concat([
+    'full_name', 'job_title', 'department', 'location',
+    'start_date', 'employment_status',
+    'clearance_level', 'clearance_investigation_type', 'clearance_granted_date', 'clearance_expiration_date'
+  ]);
+
   // Returns all direct + indirect report IDs for userId, regardless of role.
   // Manager-ness is derived from manager_id chains, not from the role column.
   // Pulls id+manager_id for the whole org once (cheap at this headcount) and
@@ -259,9 +270,6 @@
       switchMyTeamSubtab('dashboard');
     }
     if(name === 'travel'){
-      loadTravelScreen();
-    }
-    if(name === 'travelestimate'){
-      loadTravelEstimateScreen();
+      switchTravelSubtab('request');
     }
   }

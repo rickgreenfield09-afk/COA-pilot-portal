@@ -5,6 +5,14 @@
    Depends on app-core.js: getSession, dbRequest, dbWrite, isAdmin, escAttr,
    formatDate, getRecursiveReportIds. */
 
+  function switchTravelSubtab(name){
+    document.querySelectorAll('#screen-travel .travel-subscreen').forEach(function(s){ s.classList.remove('active'); });
+    document.querySelectorAll('#screen-travel [data-travelsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.travelsubtab === name); });
+    document.getElementById('travel-' + name).classList.add('active');
+    if(name === 'request'){ loadTravelScreen(); }
+    if(name === 'estimate'){ loadTravelEstimateScreen(); }
+  }
+
   // ---------- Travel screen (standalone travel_requests) ----------
   var travelProjectsCache = [];
   var travelContractsCache = [];

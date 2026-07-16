@@ -42,8 +42,7 @@
       <button class="nav-btn" data-screen="profile" onclick="requestSwitchScreen('profile')">My Profile</button>
       <button class="nav-btn" data-screen="directory" onclick="requestSwitchScreen('directory')">Directory</button>
       <button class="nav-btn" data-screen="timekeeping" onclick="requestSwitchScreen('timekeeping')">Timekeeping</button>
-      <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel Request (New)</button>
-      <button class="nav-btn" data-screen="travelestimate" onclick="requestSwitchScreen('travelestimate')">Travel Estimate</button>
+      <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel</button>
       <button class="nav-btn" data-screen="training" onclick="requestSwitchScreen('training')">Training</button>
       <button class="nav-btn" id="nav-btn-myteam" data-screen="myteam" onclick="requestSwitchScreen('myteam')" style="display:none;">My Team</button>
       <button class="nav-btn" id="nav-btn-admin" data-screen="admin" onclick="requestSwitchScreen('admin')" style="display:none;">Admin</button>
@@ -172,13 +171,26 @@
         </div>
       </div>
       <div class="screen" id="screen-travel">
-        <div id="travel-content">
-          <div class="placeholder-card"><div class="placeholder-sub">Loading travel...</div></div>
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-travelsubtab="request" onclick="switchTravelSubtab('request')">Travel Request (New)</button>
+          <button class="subtab-btn" data-travelsubtab="estimate" onclick="switchTravelSubtab('estimate')">Travel Estimate</button>
+          <button class="subtab-btn" data-travelsubtab="expense" onclick="switchTravelSubtab('expense')">Travel Expense Report</button>
         </div>
-      </div>
-      <div class="screen" id="screen-travelestimate">
-        <div id="travelestimate-content">
-          <div class="placeholder-card"><div class="placeholder-sub">Loading travel estimate...</div></div>
+        <div class="travel-subscreen active" id="travel-request">
+          <div id="travel-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading travel...</div></div>
+          </div>
+        </div>
+        <div class="travel-subscreen" id="travel-estimate">
+          <div id="travelestimate-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading travel estimate...</div></div>
+          </div>
+        </div>
+        <div class="travel-subscreen" id="travel-expense">
+          <div class="placeholder-card">
+            <div class="placeholder-title">Travel Expense Report</div>
+            <div class="placeholder-sub">Coming next session</div>
+          </div>
         </div>
       </div>
       <div class="screen" id="screen-training">
