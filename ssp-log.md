@@ -166,3 +166,49 @@ Report team-review detail cards, so an approver can see the underlying
 line items (per diem rates, airfare, lodging, EWW hours, etc.) before
 deciding, not just the rolled-up totals. Purely additive display — no
 access-control implications.
+
+## 2026-07-16 — Collapsed redundant supervisor+principal approval on Expense Reports (AC-3)
+User flagged a real workflow problem while testing: in this org, the
+Principal approver is the same person as the employee's direct
+Supervisor, so the two-stage chain made him approve the identical report
+twice — once under My Team, once under Admin — for no reason.
+`teamExpenseAction()` (screen-travel-expense.js) now detects when the
+actor is viewing as `myteam` (i.e., is the report's supervisor by
+definition of the recursive-reports scope) AND also holds the Admin role
+(`isAdmin()`); if so, a single Approve sets both `supervisor_status` and
+`principal_status` to `approved` and finalizes `current_status` in one
+write, instead of requiring a second visit to the Admin screen. A note is
+shown in the review card when this collapse will happen, so it isn't a
+silent behavior change. Deny/Return are NOT collapsed — either stage can
+still independently stop the report regardless of the actor's other
+roles, since a return/deny is meant to halt progress, not skip it.
+Status: Implemented at UI level only. Same RLS gap as other approval
+actions — not enforced server-side yet.
+
+## 2026-07-16 — Date-display timezone bug found and fixed (no control impact, correctness)
+`formatDate()` (app-core.js) parsed plain `YYYY-MM-DD` strings via
+`new Date(d)`, which JS parses as UTC midnight — `.toLocaleDateString()`
+then converts to the browser's local timezone, so anyone west of UTC saw
+every date-only field rendered one calendar day earlier than what's
+actually stored (confirmed live: a trip entered as Aug 10–14 displayed as
+Aug 9–13). This affected every date-only column shown anywhere in the
+app — Timekeeping, PTO, Travel Requests/Estimates/Expenses, Directory
+start dates, clearance dates, etc. — not just Travel. Fixed by parsing
+`YYYY-MM-DD` strings as local calendar components (year/month/day)
+instead of routing them through UTC. Timestamp strings (with a time
+component) are unaffected and still parse via the original path.
+Status: Implemented, fixes display only — the underlying stored dates
+were never wrong, only how they rendered.
+
+## 2026-07-16 — BACKLOG: expense-report terminal status should be "approved," not "paid" (planning note, no code change)
+User flagged: once Principal approval clears, the pill currently shows
+`paid` (both `travel_expenses.current_status` and the linked
+`travel_estimates.status`), but the real-world process needs an
+intermediate `approved` state — `paid` should only be set by a separate,
+explicit Admin action ("mark as sent in this payroll run"), decoupled
+from the approval decision itself. Per user's explicit instruction, this
+is a backlog note only — no code changed. User also noted the
+timekeeping/payroll module has a chunk of work still ahead of it before
+shipping data to the 3rd-party payroll processor's API, and this
+"mark as paid" mechanism likely belongs alongside that effort rather than
+as a standalone toggle. See coa_travel_backlog memory.

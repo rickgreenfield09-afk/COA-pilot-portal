@@ -65,9 +65,17 @@
     return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
   }
 
+  // Plain YYYY-MM-DD strings (every date-only column in this app) must be
+  // parsed as local calendar components, not UTC midnight — `new Date(d)`
+  // on a date-only string parses as UTC, so anyone west of UTC sees every
+  // date rendered one day early once .toLocaleDateString() converts back
+  // to local time. Timestamps (with a time component) fall through to the
+  // original parsing, which is correct for those.
   function formatDate(d){
     if(!d) return '—';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d));
+    var dt = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(d);
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
   // Shared HTML-attribute escaper — used by screen-profile.js (resume fields)

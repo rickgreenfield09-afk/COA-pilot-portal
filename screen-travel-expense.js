@@ -591,9 +591,11 @@
     var canAct = scope === 'admin'
       ? (r.current_status === 'submitted' && r.supervisor_status === 'approved' && r.principal_status === 'pending')
       : (r.current_status === 'submitted' && r.supervisor_status === 'pending');
+    var willCollapseApproval = scope === 'myteam' && canAct && isAdmin();
 
     var actionsHtml = canAct
-      ? '<button class="btn-save" onclick="teamExpenseAction(\'' + scope + '\',\'' + r.id + '\',\'approved\')">Approve</button>'
+      ? (willCollapseApproval ? '<div class="placeholder-sub" style="margin-bottom:8px;">You\'re also this report\'s Principal approver — Approve here will finalize the whole report, not just the supervisor stage.</div>' : '')
+        + '<button class="btn-save" onclick="teamExpenseAction(\'' + scope + '\',\'' + r.id + '\',\'approved\')">Approve</button>'
         + '<button class="btn-edit" onclick="teamExpenseAction(\'' + scope + '\',\'' + r.id + '\',\'returned\')">Return</button>'
         + '<button class="btn-cancel" style="color:var(--red);border-color:var(--red);" onclick="teamExpenseAction(\'' + scope + '\',\'' + r.id + '\',\'denied\')">Deny</button>'
       : '';
@@ -666,19 +668,30 @@
       if(!existing.length){ return; }
       var prev = existing[0];
 
+      // If the same person is both the report's supervisor (viewing as
+      // myteam) and Admin/principal, approving once here also clears the
+      // principal stage — otherwise they'd have to approve the same
+      // report twice, once per screen, for no reason. Only collapses on
+      // approval; a supervisor-stage return/deny still stops the report
+      // there regardless of the actor's other roles.
+      var isCollapsedApproval = scope === 'myteam' && decision === 'approved' && isAdmin();
+
       var statusField = scope === 'admin' ? 'principal_status' : 'supervisor_status';
       var body = {};
       body[statusField] = decision;
+      if(isCollapsedApproval){ body.principal_status = 'approved'; }
 
       if(scope === 'admin'){
         body.current_status = decision === 'approved' ? 'paid' : decision;
+      }else if(isCollapsedApproval){
+        body.current_status = 'paid';
       }else{
         body.current_status = decision === 'approved' ? 'submitted' : decision;
       }
 
       await dbWrite('travel_expenses?id=eq.' + expenseId, 'PATCH', body);
 
-      if(scope === 'admin' && decision === 'approved'){
+      if((scope === 'admin' && decision === 'approved') || isCollapsedApproval){
         await dbWrite('travel_estimates?id=eq.' + prev.estimate_id, 'PATCH', { status: 'paid' });
       }
 
