@@ -428,12 +428,12 @@
     window.print();
   }
 
-  // ---------- Team Travel Estimate review (My Team = approver, Admin = read-only oversight) ----------
-  // travel_estimates has a single approved_by/approved_at slot, not the
-  // dual manager/travel_admin fields travel_requests has — so only one
-  // scope can actually decide. My Team (the employee's manager chain) gets
-  // Approve/Return/Deny; Admin sees the same data read-only. Flagged as an
-  // assumption pending confirmation with the client — see coa_travel_backlog.
+  // ---------- Team Travel Estimate review (My Team = manager approval, Admin = full override) ----------
+  // travel_estimates has a single approved_by/approved_at slot — both My
+  // Team and Admin can Approve/Return/Deny it (Admin has full override
+  // power over everything per user's explicit call 2026-07-16; only 2-3
+  // people ever hold the Admin role, so a race between manager and Admin
+  // deciding the same field is an accepted, unlikely-in-practice risk).
   var teamEstimateReportIds = { myteam: null, admin: null };
 
   async function loadTeamTravelEstimates(scope){
@@ -456,32 +456,28 @@
       }
       var idList = ids.join(',');
 
-      var pendingRows = scope === 'myteam'
-        ? await dbRequest('travel_estimates?created_by=in.(' + idList + ')&status=eq.submitted&select=id,created_by,destination_event,leave_date,return_date,trip_lead_total,eww_total&order=created_at.asc')
-        : [];
+      var pendingRows = await dbRequest('travel_estimates?created_by=in.(' + idList + ')&status=eq.submitted&select=id,created_by,destination_event,leave_date,return_date,trip_lead_total,eww_total&order=created_at.asc');
       var allRows = await dbRequest('travel_estimates?created_by=in.(' + idList + ')&status=neq.draft&select=id,created_by,destination_event,leave_date,return_date,status,trip_lead_total,eww_total&order=created_at.desc');
 
       var namesById = {};
       var nameRows = await dbRequest('profiles?id=in.(' + idList + ')&select=id,full_name');
       nameRows.forEach(function(r){ namesById[r.id] = r.full_name; });
 
-      var pendingHtml = scope === 'myteam'
-        ? '<div class="tk-entry-card">'
-          + '<div class="tk-section-title">Needs Your Approval (' + pendingRows.length + ')</div>'
-          + (pendingRows.length
-              ? '<table class="tk-grid-table"><thead><tr><th>Employee</th><th>Destination / Event</th><th>Dates</th><th>Grand Total</th><th></th></tr></thead><tbody>'
-                + pendingRows.map(function(r){
-                    var grand = (parseFloat(r.trip_lead_total) || 0) + (parseFloat(r.eww_total) || 0);
-                    return '<tr><td>' + (namesById[r.created_by] || '—') + '</td>'
-                      + '<td>' + (r.destination_event || '—') + '</td>'
-                      + '<td>' + formatDate(r.leave_date) + ' – ' + formatDate(r.return_date) + '</td>'
-                      + '<td>$' + grand.toFixed(2) + '</td>'
-                      + '<td><button class="tk-now-btn" type="button" onclick="openTeamEstimateDetail(\'' + scope + '\',\'' + r.id + '\')">Review</button></td></tr>';
-                  }).join('')
-                + '</tbody></table>'
-              : '<div class="tk-empty">Nothing pending.</div>')
-          + '</div>'
-        : '';
+      var pendingHtml = '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">Needs Your Approval (' + pendingRows.length + ')</div>'
+        + (pendingRows.length
+            ? '<table class="tk-grid-table"><thead><tr><th>Employee</th><th>Destination / Event</th><th>Dates</th><th>Grand Total</th><th></th></tr></thead><tbody>'
+              + pendingRows.map(function(r){
+                  var grand = (parseFloat(r.trip_lead_total) || 0) + (parseFloat(r.eww_total) || 0);
+                  return '<tr><td>' + (namesById[r.created_by] || '—') + '</td>'
+                    + '<td>' + (r.destination_event || '—') + '</td>'
+                    + '<td>' + formatDate(r.leave_date) + ' – ' + formatDate(r.return_date) + '</td>'
+                    + '<td>$' + grand.toFixed(2) + '</td>'
+                    + '<td><button class="tk-now-btn" type="button" onclick="openTeamEstimateDetail(\'' + scope + '\',\'' + r.id + '\')">Review</button></td></tr>';
+                }).join('')
+              + '</tbody></table>'
+            : '<div class="tk-empty">Nothing pending.</div>')
+        + '</div>';
 
       container.innerHTML = pendingHtml
         + '<div class="tk-entry-card">'
@@ -527,7 +523,8 @@
 
   function renderTeamEstimateDetail(detailContainer, scope, r, employeeName){
     var grand = (parseFloat(r.trip_lead_total) || 0) + (parseFloat(r.eww_total) || 0);
-    var canAct = scope === 'myteam' && r.status === 'submitted';
+    var canAct = r.status === 'submitted';
+    var breakdownId = 'team-estimate-breakdown-' + scope;
 
     var actionsHtml = canAct
       ? '<button class="btn-save" onclick="teamEstimateAction(\'' + scope + '\',\'' + r.id + '\',\'approved\')">Approve</button>'
@@ -545,6 +542,20 @@
       + teamTravelReadOnlyField('Trip Lead Total', '$' + (parseFloat(r.trip_lead_total) || 0).toFixed(2))
       + teamTravelReadOnlyField('EWW Total', '$' + (parseFloat(r.eww_total) || 0).toFixed(2))
       + teamTravelReadOnlyField('Grand Total', '$' + grand.toFixed(2))
+      + '</div>'
+      + '<button type="button" class="btn-edit" style="margin-top:6px;" onclick="toggleDetailBreakdown(\'' + breakdownId + '\')">Show Full Cost Breakdown</button>'
+      + '<div class="profile-grid" id="' + breakdownId + '" style="display:none;margin-top:12px;">'
+      + teamTravelReadOnlyField('Lodging Rate (per night)', '$' + (parseFloat(r.per_diem_lodging_rate) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Meals (M&IE) Rate (per day)', '$' + (parseFloat(r.per_diem_meals_rate) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Airfare (avg)', '$' + (parseFloat(r.airfare_avg) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Airport Parking / Transport', '$' + (parseFloat(r.airport_parking_transport) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Baggage', '$' + (parseFloat(r.baggage) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Rental Car / Gas / Parking / Tolls', '$' + (parseFloat(r.rental_car_gas_parking_tolls) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Mileage', '$' + (parseFloat(r.mileage) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Shipping (to)', '$' + (parseFloat(r.shipping_to) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Shipping (back)', '$' + (parseFloat(r.shipping_back) || 0).toFixed(2))
+      + teamTravelReadOnlyField('EWW Rate (per hour)', '$' + (parseFloat(r.eww_rate) || 0).toFixed(2))
+      + teamTravelReadOnlyField('EWW Hours per Trainer', r.eww_hours_per_trainer)
       + '</div>'
       + (canAct
           ? '<div id="team-estimate-note-wrap-' + scope + '" style="display:none;margin-top:16px;">'

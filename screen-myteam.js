@@ -47,6 +47,7 @@
           sectionsHtml += '<div class="pending-group-header">' + groupLabels[key] + '</div>'
             + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'myteam\');setTimeout(function(){switchMyTeamSubtab(\'timekeeping\');},0);return false;">Review</a></div>';
         });
+        try{ sectionsHtml += await travelPendingSummaryHtml('myteam', reportIds); }catch(e){ console.error(e); }
         pendingHtml = sectionsHtml || pendingHtml;
 
         var equipRows = await dbRequest('asset_requests?requested_by=in.(' + reportIds.join(',') + ')&status=eq.pending&select=id');
@@ -63,11 +64,14 @@
         }
       }
 
+      var upcomingTravelHtml = '<div class="dash-card-empty">No upcoming travel.</div>';
+      try{ upcomingTravelHtml = await buildUpcomingTravelHtml(reportIds); }catch(e){ console.error(e); }
+
       container.innerHTML = '<div class="dash-grid-2col">'
         + '<div class="dash-card"><div class="dash-card-title">Pending Requests</div>' + pendingHtml + '</div>'
         + '<div class="dash-card"><div class="dash-card-title">Asset Requests</div>' + assetRequestsHtml + '</div>'
         + '<div class="dash-card"><div class="dash-card-title">Out Today (Approved PTO)</div>' + outTodayHtml + '</div>'
-        + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Coming soon.</div></div>'
+        + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel</div>' + upcomingTravelHtml + '</div>'
         + '<div class="dash-card"><div class="dash-card-title">Training Requirements<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Coming soon.</div></div>'
         + '<div class="dash-card"><div class="dash-card-title">Surveys Due<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Coming soon.</div></div>'
         + '</div>';

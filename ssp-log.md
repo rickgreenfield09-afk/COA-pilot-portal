@@ -130,3 +130,39 @@ Gap/follow-up:
   app — anyone who can reach the Admin screen (`isAdmin()` gate) can act
   as principal. If the client wants a narrower "Principal" role distinct
   from general Admin, that needs its own role/permission work.
+
+## 2026-07-16 — Admin given full approve/return/deny power on Travel Estimates (AC-3, supersedes prior entry)
+User clarified: Admin is a deliberately small role (2-3 people — the
+principal, the main Admin, and the user for testing/troubleshooting) with
+"superpower over everything." Changed `renderTeamEstimateDetail()` /
+`loadTeamTravelEstimates()` (screen-travel-estimate.js) so Admin now gets
+the same Approve/Return/Deny actions on Travel Estimates that My Team has,
+instead of the read-only oversight view from the earlier entry. Both
+scopes can independently decide the same `approved_by`/`approved_at`
+field — accepted as a low-probability race given the very small number of
+Admin accounts, not something worth blocking on for this POC.
+Status: Implemented at UI level only. Same RLS gap as noted above applies.
+
+## 2026-07-16 — Dashboard: pending-approval counts + Upcoming Travel wired to real data (no control impact)
+Found and fixed a pre-existing display bug the user hit while testing:
+after approving a Travel Estimate, it appeared to "disappear" because the
+Dashboard's "Upcoming Travel" card (My Dashboard, My Team, and Admin) was
+a static "Coming soon" placeholder that had never been wired to any
+table — not a bug in the approval write path itself, and not date-gated
+as the user suspected. Added `buildUpcomingTravelHtml()` (screen-travel.js,
+shared) which lists approved `travel_estimates` + approved
+`travel_requests` with a future date, and wired it into all three
+dashboards. Also added `travelPendingSummaryHtml()` (screen-travel.js,
+shared) so the existing "Pending Requests" dashboard card (which already
+listed Time Cards/PTO counts) now also surfaces Travel Requests/Estimates/
+Expense Reports awaiting approval, with a Review link that jumps straight
+to the right nested subtab. No access-control implications — purely a
+missing-query / stale-placeholder fix, not a permission change.
+
+## 2026-07-16 — Expand-to-full-cost-breakdown on approval review (no control impact)
+Added a "Show Full Cost Breakdown" toggle (`toggleDetailBreakdown()`,
+screen-travel.js, shared) to both the Travel Estimate and Travel Expense
+Report team-review detail cards, so an approver can see the underlying
+line items (per diem rates, airfare, lodging, EWW hours, etc.) before
+deciding, not just the rolled-up totals. Purely additive display — no
+access-control implications.

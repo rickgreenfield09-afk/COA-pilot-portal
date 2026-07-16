@@ -41,6 +41,9 @@
       try{ projectRows = await dbRequest('projects?active=eq.true&select=id,name&order=name.asc'); }catch(e){ console.error(e); }
       var projectOptions = projectRows.map(function(pr){ return '<option value="' + pr.id + '">' + pr.name + '</option>'; }).join('');
 
+      var upcomingTravelHtml = '<div class="dash-card-empty">No travel data connected yet.</div>';
+      try{ upcomingTravelHtml = await buildUpcomingTravelHtml([session.user.id]); }catch(e){ console.error(e); }
+
       container.innerHTML =
         '<div class="dash-header-strip">'
         + '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>'
@@ -101,7 +104,7 @@
         + '<div class="dash-grid">'
         + '<div class="dash-card"><div class="dash-card-title">Upcoming Training Deadlines<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No training data connected yet.</div></div>'
         + '<div class="dash-card"><div class="dash-card-title">Action Needed<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No surveys pending yet.</div></div>'
-        + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No travel data connected yet.</div></div>'
+        + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel</div>' + upcomingTravelHtml + '</div>'
         + '<div class="dash-card"><div class="dash-card-title">Assets In Your Care<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Asset tracker coming next session.</div></div>'
         + '</div>';
     }catch(e){

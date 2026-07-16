@@ -622,6 +622,87 @@
     return '<div class="info-box"><div class="info-label">' + label + '</div><div class="info-val">' + (value || '—') + '</div></div>';
   }
 
+  // Shows/hides the full line-item cost breakdown on a team review detail
+  // card (Estimate or Expense) — approvers can expand it to see what's
+  // driving the rolled-up totals before deciding.
+  function toggleDetailBreakdown(id){
+    var el = document.getElementById(id);
+    if(el){ el.style.display = el.style.display === 'none' ? '' : 'none'; }
+  }
+
+  // Dashboard "Pending Requests" line items for Travel Requests/Estimates/
+  // Expense Reports — shared by loadTeamDashboard (screen-myteam.js) and
+  // loadAdminDashboard (screen-admin.js) so the pending-approval queries
+  // aren't duplicated per CLAUDE.md's shared-function rule. ids is the
+  // caller's already-scoped employee id list (recursive reports for
+  // myteam, all company profiles for admin).
+  async function travelPendingSummaryHtml(scope, ids){
+    if(!ids.length){ return ''; }
+    var idList = ids.join(',');
+    var subtabFn = scope === 'admin' ? 'switchAdminSubtab' : 'switchMyTeamSubtab';
+    var html = '';
+
+    function reviewLink(subtab){
+      return '<a href="#" onclick="requestSwitchScreen(\'' + scope + '\');setTimeout(function(){' + subtabFn + '(\'travel\');switchTeamTravelSubtab(\'' + scope + '\',\'' + subtab + '\');},0);return false;">Review</a>';
+    }
+
+    var reqPending = await dbRequest('travel_requests?requester_id=in.(' + idList + ')&manager_status=eq.pending&current_status=eq.submitted&select=id');
+    if(reqPending.length){
+      html += '<div class="pending-group-header">Travel Requests</div>'
+        + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + reqPending.length + ' awaiting approval. ' + reviewLink('request') + '</div>';
+    }
+
+    var estPending = await dbRequest('travel_estimates?created_by=in.(' + idList + ')&status=eq.submitted&select=id');
+    if(estPending.length){
+      html += '<div class="pending-group-header">Travel Estimates</div>'
+        + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + estPending.length + ' awaiting approval. ' + reviewLink('estimate') + '</div>';
+    }
+
+    var expFilter = scope === 'admin'
+      ? '&supervisor_status=eq.approved&principal_status=eq.pending&current_status=eq.submitted'
+      : '&supervisor_status=eq.pending&current_status=eq.submitted';
+    var expPending = await dbRequest('travel_expenses?created_by=in.(' + idList + ')' + expFilter + '&select=id');
+    if(expPending.length){
+      html += '<div class="pending-group-header">Travel Expense Reports</div>'
+        + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + expPending.length + ' awaiting approval. ' + reviewLink('expense') + '</div>';
+    }
+
+    return html;
+  }
+
+  // "Upcoming Travel" dashboard widget — shared across My Dashboard
+  // (ids=[you]), My Team (ids=your reports), and Admin (ids=everyone).
+  // Merges approved travel_estimates + approved travel_requests with a
+  // future leave/start date, sorted soonest-first.
+  async function buildUpcomingTravelHtml(ids){
+    if(!ids.length){ return '<div class="dash-card-empty">No upcoming travel.</div>'; }
+    var idList = ids.join(',');
+    var todayISO = new Date().toISOString().slice(0,10);
+
+    var estRows = await dbRequest('travel_estimates?created_by=in.(' + idList + ')&status=in.(approved,expensed,paid)&leave_date=gte.' + todayISO + '&select=id,created_by,destination_event,leave_date,return_date&order=leave_date.asc');
+    var reqRows = await dbRequest('travel_requests?requester_id=in.(' + idList + ')&current_status=eq.approved&travel_start_date=gte.' + todayISO + '&select=id,requester_id,destination,travel_start_date,travel_end_date&order=travel_start_date.asc');
+
+    var namesById = {};
+    if(ids.length > 1){
+      var nameRows = await dbRequest('profiles?id=in.(' + idList + ')&select=id,full_name');
+      nameRows.forEach(function(r){ namesById[r.id] = r.full_name; });
+    }
+
+    var combined = estRows.map(function(r){
+      return { employeeId: r.created_by, destination: r.destination_event, start: r.leave_date, end: r.return_date };
+    }).concat(reqRows.map(function(r){
+      return { employeeId: r.requester_id, destination: r.destination, start: r.travel_start_date, end: r.travel_end_date };
+    }));
+    combined.sort(function(a, b){ return new Date(a.start) - new Date(b.start); });
+
+    if(!combined.length){ return '<div class="dash-card-empty">No upcoming travel.</div>'; }
+
+    return combined.slice(0, 6).map(function(t){
+      var who = (ids.length > 1 && namesById[t.employeeId]) ? namesById[t.employeeId] + ' — ' : '';
+      return '<div class="dash-card-empty" style="padding:4px 0;">' + who + (t.destination || '—') + ' (' + formatDate(t.start) + ' – ' + formatDate(t.end) + ')</div>';
+    }).join('');
+  }
+
   async function openTeamTravelDetail(scope, requestId){
     var detailContainer = document.getElementById('team-travel-detail-' + scope);
     detailContainer.innerHTML = '<div class="tk-entry-card"><div class="placeholder-sub">Loading request...</div></div>';

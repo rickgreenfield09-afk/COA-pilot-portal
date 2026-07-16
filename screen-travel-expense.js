@@ -603,6 +603,8 @@
       ? receiptsRows.map(function(rec){ return '<div class="resume-cart-item"><a href="' + rec.file_url + '" target="_blank" style="color:var(--teal);">' + (rec.file_name || 'Receipt') + '</a></div>'; }).join('')
       : '<div class="tk-empty">No receipts attached.</div>';
 
+    var breakdownId = 'team-expense-breakdown-' + scope;
+
     detailContainer.innerHTML = '<div class="tk-entry-card">'
       + '<div class="tk-section-title">Expense Report — ' + employeeName + ' ' + tkStatusPill(r.current_status) + '</div>'
       + '<div class="profile-grid">'
@@ -616,6 +618,21 @@
       + teamTravelReadOnlyField('Variance vs. Estimate', (variance >= 0 ? '+$' : '-$') + Math.abs(variance).toFixed(2))
       + teamTravelReadOnlyField('Supervisor Decision', tkStatusPill(r.supervisor_status))
       + teamTravelReadOnlyField('Principal Decision', tkStatusPill(r.principal_status))
+      + '</div>'
+      + '<button type="button" class="btn-edit" style="margin-top:6px;" onclick="toggleDetailBreakdown(\'' + breakdownId + '\')">Show Full Cost Breakdown</button>'
+      + '<div class="profile-grid" id="' + breakdownId + '" style="display:none;margin-top:12px;">'
+      + teamTravelReadOnlyField('Meals (M&IE) Rate (per day)', '$' + (parseFloat(r.per_diem_meals_rate) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Per Diem Meals Total', '$' + (parseFloat(r.actual_per_diem_meals_total) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Airfare', '$' + (parseFloat(r.actual_airfare) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Airport Parking / Transport', '$' + (parseFloat(r.actual_airport_parking_transport) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Baggage', '$' + (parseFloat(r.actual_baggage) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Lodging (actual total)', '$' + (parseFloat(r.actual_lodging_total) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Rental Car / Gas / Parking / Tolls', '$' + (parseFloat(r.actual_rental_car_gas_parking_tolls) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Mileage', '$' + (parseFloat(r.actual_mileage) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Shipping (to)', '$' + (parseFloat(r.actual_shipping_to) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Shipping (back)', '$' + (parseFloat(r.actual_shipping_back) || 0).toFixed(2))
+      + teamTravelReadOnlyField('EWW Rate (per hour)', '$' + (parseFloat(r.eww_rate) || 0).toFixed(2))
+      + teamTravelReadOnlyField('EWW Hours per Trainer', r.eww_hours_per_trainer)
       + '</div>'
       + '<div class="resume-section"><div class="resume-section-title">Receipts</div>' + receiptsHtml + '</div>'
       + (canAct
