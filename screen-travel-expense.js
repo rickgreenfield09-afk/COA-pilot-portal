@@ -8,12 +8,19 @@
    SUPABASE_URL, SUPABASE_ANON_KEY. Depends on screen-travel.js's
    teamTravelReadOnlyField and screen-timekeeping.js's tkStatusPill.
 
-   Rules (confirmed with user):
+   Rules (confirmed with user; per diem/trainer-multiplication grouping
+   verified 2026-07-16 against the source-of-truth spreadsheet, superseding
+   an earlier session's incorrect assumption — see screen-travel-estimate.js):
    - Internal-only document — no Customer/Prime markup concept here.
-   - Per diem/EWW stay formula-based (same 1.5x/1x M&IE, rate x hours x
-     trainers as the Estimate) but recomputed off actual travel dates.
-     Every other cost bucket (airfare, lodging, parking/transport, baggage,
-     rental car, mileage, shipping) is a direct actual-dollar entry.
+   - Per diem stays formula-based: travel days = 1.5x M&IE ONCE (not once per
+     departure/return), full days = 1x M&IE each — recomputed off actual
+     travel dates. EWW stays rate x hours x trainers.
+   - Per-traveler bucket, multiplied by number of trainers: airfare, lodging
+     (actual total, not rate x nights, since it's receipt-reimbursed),
+     parking/transport, baggage, per diem.
+   - Trip-level bucket, NOT multiplied by trainers: rental car/gas/parking/
+     tolls, mileage, shipping to/back — these are direct actual-dollar
+     entries either way, receipt-backed.
    - Approval is two-stage (supervisor_status, principal_status) rolling
      into current_status — mirrors travel_requests' manager_status/
      travel_status pattern. Only the employee-facing create/submit/view
@@ -197,20 +204,26 @@
   // Purely internal — no fee-multiplier concept, unlike teCalc() in
   // screen-travel-estimate.js. Lodging is an actual total, not rate x
   // nights, since it's receipt-reimbursed rather than formulaic.
+  //
+  // Matches the source-of-truth spreadsheet, verified 2026-07-16 (same fix
+  // as teCalc() in screen-travel-estimate.js): Travel Days per diem is
+  // 1.5x M&IE ONCE, not per-departure-and-return. Rental car/gas/parking/
+  // tolls and mileage are trip-level costs (not multiplied by trainers),
+  // grouped with shipping rather than with airfare/baggage/lodging/per diem.
   function texCalc(inputs){
     var leave = inputs.leaveDate ? new Date(inputs.leaveDate) : null;
     var ret = inputs.returnDate ? new Date(inputs.returnDate) : null;
     var nights = (leave && ret) ? Math.round((ret - leave) / 86400000) : 0;
     if(nights < 0){ nights = 0; }
 
-    var travelDaysCost = 2 * 1.5 * inputs.mealsRate;
+    var travelDaysCost = 1.5 * inputs.mealsRate;
     var fullDaysCost = Math.max(nights - 1, 0) * inputs.mealsRate;
     var perDiemMealsTotal = travelDaysCost + fullDaysCost;
 
-    var costBucket = inputs.lodgingTotal + inputs.airfare + inputs.parkingTransport + inputs.baggage + inputs.rentalCar + inputs.mileage;
-    var perTravelerSubtotal = perDiemMealsTotal + costBucket;
-    var shipping = inputs.shippingTo + inputs.shippingBack;
-    var tripLeadTotal = perTravelerSubtotal * inputs.trainers + shipping;
+    var perTravelerBucket = inputs.lodgingTotal + inputs.airfare + inputs.parkingTransport + inputs.baggage;
+    var perTravelerSubtotal = perDiemMealsTotal + perTravelerBucket;
+    var tripLevelBucket = inputs.rentalCar + inputs.mileage + inputs.shippingTo + inputs.shippingBack;
+    var tripLeadTotal = (perTravelerSubtotal * inputs.trainers) + tripLevelBucket;
     var ewwTotal = inputs.ewwRate * inputs.ewwHours * inputs.trainers;
 
     return {

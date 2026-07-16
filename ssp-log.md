@@ -212,3 +212,62 @@ timekeeping/payroll module has a chunk of work still ahead of it before
 shipping data to the 3rd-party payroll processor's API, and this
 "mark as paid" mechanism likely belongs alongside that effort rather than
 as a standalone toggle. See coa_travel_backlog memory.
+
+## 2026-07-16 — Corrected calc formulas against source-of-truth spreadsheet (correctness, financial)
+User provided the client's actual Excel template
+(CyberOffset_Travel_estimate_V26.0, "To Prime"/"COA Internal" tabs) and
+confirmed it is the source of truth for these calculations, correcting
+two prior assumptions:
+1. "Travel Days" per diem is 1.5x M&IE **once**, not once per departure
+   day AND return day. An earlier session had confirmed "both ends" —
+   that was wrong; the spreadsheet formula (`D15=G7*1.5`) is authoritative.
+2. Only Airfare, Airport Parking/Transport, Baggage, Per Diem, and Hotel
+   are multiplied by Number of Trainers (the "per-traveler" bucket).
+   Rental Car/Gas/Parking/Tolls, Mileage, and Shipping To/Back are
+   trip-level costs added once regardless of headcount (the spreadsheet's
+   separate "Trip lead total" group, `D25:D29`) — previously Rental Car
+   and Mileage were wrongly included in the per-traveler (multiplied)
+   bucket in both `teCalc()` (screen-travel-estimate.js) and `texCalc()`
+   (screen-travel-expense.js).
+Fixed both functions to match. Verified via direct JS execution against a
+test scenario (4 nights, 2 trainers) — Internal grand total moved from an
+incorrectly-inflated $4,406.00 to a correct $3,942.00; Customer/Prime
+grand total to ≈$4,274.51.
+Status: Implemented. This affects every Estimate/Expense total computed
+before this date — historical rows already submitted/approved before this
+fix carry the old (incorrect) stored totals and were not retroactively
+recalculated (no request to do so; flag if COA wants existing test rows
+corrected or discarded).
+
+## 2026-07-16 — EWW shown as a real dollar total on Customer/Prime copy (BACKLOG: verify with client)
+The source spreadsheet's "To Prime" tab has a mini-summary box that
+references a blank cell (`D38`) instead of the actual EWW total cell
+(`D39`), so it always displays $0 for EWW there — while still showing the
+raw EWW hours elsewhere on the same sheet. Could be intentional (hide the
+EWW dollar figure from the customer-facing copy) or a leftover template
+bug. Per user's explicit call, the app's Customer/Prime copy will
+continue showing the real computed EWW dollar total (unchanged from
+current behavior) rather than matching the spreadsheet's apparent
+suppression. Flagged in coa_travel_backlog memory to confirm with the
+client which behavior they actually want.
+
+## 2026-07-16 — Travel Estimate print rebuilt to match spreadsheet groupings (no control impact)
+Rewrote `buildTePrintHtml()` (screen-travel-estimate.js) — previously a
+6-line summary of rolled-up totals only — to mirror the source
+spreadsheet's "To Prime" tab layout and labels line-for-line: header/
+destination, Leave On/Return On dates, Per Diem Rates (Lodging*/M&IE
+columns) with "*includes taxes" footnote, Number of Trainers, an
+"ODC (Per Traveler)" section (Airfare, Airport Parking/Transport,
+Baggage, Per Diem Travel/Full Days, Hotel, then Per Traveler/Subtotal),
+a "Trip Lead Total" section (Rental Cars/Gas/Parking/Tolls, Mileage,
+Shipping To/Back, then Trip lead total), the combined "Estimated Total
+Travel Cost (ODC)", an EWW section (hours per trainer, hours total,
+dollar total), and a final Grand Total. Applies for both Internal and
+Customer/Prime views — the fee multiplier is applied per line item
+(matching how the spreadsheet itself displays marked-up figures), not
+just to the summary totals.
+Status: Implemented. Verified the recomputed "Estimated Total Travel
+Cost (ODC)" line matches `teCalc()`'s own `odcInternal`/`odcCustomer`
+values exactly (both true) for a test scenario, confirming the
+per-line-item math is internally consistent with the stored totals.
+No access-control implications — display/print layout only.

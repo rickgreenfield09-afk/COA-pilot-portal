@@ -6,13 +6,18 @@
    (draft/submitted/approved/expensed/paid), separate from travel_requests.
    Depends on app-core.js: getSession, dbRequest, dbWrite, escAttr, formatDate.
 
-   Per diem / markup rules (confirmed with client, see CLAUDE.md history):
-   - Travel days (departure + return, 2 total) = 1.5x daily M&IE rate each.
+   Per diem / markup rules — verified 2026-07-16 against the source-of-truth
+   spreadsheet (CyberOffset_Travel_estimate_V26.0, "To Prime"/"COA Internal"
+   tabs), superseding an earlier session's incorrect assumption:
+   - Travel days = 1.5x daily M&IE rate, ONCE (not once per departure/return).
    - Full days (nights - 1) = 1x M&IE rate each.
    - Hotel = nights x lodging rate.
-   - Fee multiplier (Customer/Prime view only) applies to: airfare, airport
-     parking/transport, baggage, hotel, rental car/gas/parking/tolls,
-     mileage, shipping to/back. Per diem and EWW are never marked up.
+   - Per-traveler bucket, multiplied by number of trainers: airfare, airport
+     parking/transport, baggage, per diem, hotel.
+   - Trip-level bucket, NOT multiplied by trainers (added once regardless of
+     headcount): rental car/gas/parking/tolls, mileage, shipping to/back.
+   - Fee multiplier (Customer/Prime view only) applies to everything in both
+     buckets above except per diem. Per diem and EWW are never marked up.
    - fee_multiplier_used is snapshotted onto the row at submit time so a
      later change to travel_settings.fee_multiplier doesn't rewrite history.
    - Only status='draft' rows are editable here; submitted/approved/expensed/
@@ -145,29 +150,41 @@
   // Core calc, shared by the live form (teRecalc) and the print render. Returns
   // both internal (raw) and customer (fee-multiplied) figures so callers pick
   // whichever the current view needs without recomputing.
+  //
+  // Matches the source-of-truth spreadsheet (CyberOffset_Travel_estimate_V26.0,
+  // "To Prime"/"COA Internal" tabs), verified 2026-07-16:
+  // - Travel Days per diem = 1.5x M&IE ONCE (not per-departure-and-return —
+  //   an earlier session's "both ends" assumption was wrong; the spreadsheet
+  //   formula D15=G7*1.5 is the confirmed source of truth).
+  // - Two separate buckets: a "per-traveler" bucket (airfare, parking/
+  //   transport, baggage, per diem, hotel) that gets multiplied by
+  //   number of trainers, and a "trip-level" bucket (rental car/gas/parking/
+  //   tolls, mileage, shipping to/back) that does NOT — those costs don't
+  //   scale with headcount. Previously rental car and mileage were wrongly
+  //   included in the per-traveler (multiplied) bucket.
   function teCalc(inputs){
     var leave = inputs.leaveDate ? new Date(inputs.leaveDate) : null;
     var ret = inputs.returnDate ? new Date(inputs.returnDate) : null;
     var nights = (leave && ret) ? Math.round((ret - leave) / 86400000) : 0;
     if(nights < 0){ nights = 0; }
 
-    var travelDaysCost = 2 * 1.5 * inputs.mealsRate;
+    var travelDaysCost = 1.5 * inputs.mealsRate;
     var fullDays = Math.max(nights - 1, 0);
     var fullDaysCost = fullDays * inputs.mealsRate;
     var perDiemMealsTotal = travelDaysCost + fullDaysCost;
     var hotelTotal = nights * inputs.lodgingRate;
 
-    var markupBucketInternal = hotelTotal + inputs.airfare + inputs.parkingTransport + inputs.baggage + inputs.rentalCar + inputs.mileage;
-    var shippingInternal = inputs.shippingTo + inputs.shippingBack;
+    var perTravelerMarkupBucket = hotelTotal + inputs.airfare + inputs.parkingTransport + inputs.baggage;
+    var tripLevelBucket = inputs.rentalCar + inputs.mileage + inputs.shippingTo + inputs.shippingBack;
 
-    var perTravelerInternal = perDiemMealsTotal + markupBucketInternal;
-    var tripLeadInternal = perTravelerInternal * inputs.trainers + shippingInternal;
+    var perTravelerInternal = perDiemMealsTotal + perTravelerMarkupBucket;
+    var tripLeadInternal = (perTravelerInternal * inputs.trainers) + tripLevelBucket;
     var odcInternal = tripLeadInternal;
     var ewwTotal = inputs.ewwRate * inputs.ewwHours * inputs.trainers;
 
     var multiplier = inputs.feeMultiplier;
-    var perTravelerCustomer = perDiemMealsTotal + (markupBucketInternal * multiplier);
-    var tripLeadCustomer = perTravelerCustomer * inputs.trainers + (shippingInternal * multiplier);
+    var perTravelerCustomer = perDiemMealsTotal + (perTravelerMarkupBucket * multiplier);
+    var tripLeadCustomer = (perTravelerCustomer * inputs.trainers) + (tripLevelBucket * multiplier);
     var odcCustomer = tripLeadCustomer;
 
     return {
@@ -397,24 +414,79 @@
 
   // Shared print markup builder — used by the draft form's Print button
   // (always Internal) and printTeCustomerCopy() (post-approval only).
+  // Layout and groupings deliberately mirror the source-of-truth
+  // spreadsheet's "To Prime" tab (verified 2026-07-16): header/destination,
+  // travel dates + per diem rates, trainer count, the per-traveler cost
+  // group culminating in "Per Traveler"/"Subtotal", the trip-level cost
+  // group culminating in "Trip lead total", the combined "Estimated Total
+  // Travel Cost (ODC)", then the EWW group. The fee multiplier (Customer/
+  // Prime only) is applied per-line here rather than only to the totals,
+  // so every line item shown matches what the spreadsheet itself displays.
   function buildTePrintHtml(destination, isCustomer, inputs, calc){
-    var perTraveler = isCustomer ? calc.perTravelerCustomer : calc.perTravelerInternal;
-    var tripLead = isCustomer ? calc.tripLeadCustomer : calc.tripLeadInternal;
-    var odc = isCustomer ? calc.odcCustomer : calc.odcInternal;
-    var grand = odc + calc.ewwTotal;
+    var multiplier = isCustomer ? inputs.feeMultiplier : 1;
+
+    var airfareShown = inputs.airfare * multiplier;
+    var parkingShown = inputs.parkingTransport * multiplier;
+    var baggageShown = inputs.baggage * multiplier;
+    var hotelShown = calc.hotelTotal * multiplier;
+    var rentalCarShown = inputs.rentalCar * multiplier;
+    var mileageShown = inputs.mileage * multiplier;
+    var shippingToShown = inputs.shippingTo * multiplier;
+    var shippingBackShown = inputs.shippingBack * multiplier;
+
+    var perTravelerShown = isCustomer ? calc.perTravelerCustomer : calc.perTravelerInternal;
+    var subtotalShown = perTravelerShown * inputs.trainers;
+    var tripLevelShown = rentalCarShown + mileageShown + shippingToShown + shippingBackShown;
+    var estimatedTotalOdc = subtotalShown + tripLevelShown;
+    var ewwHoursTotal = inputs.ewwHours * inputs.trainers;
+    var grand = estimatedTotalOdc + calc.ewwTotal;
 
     return '<div class="print-te-page">'
-      + '<div class="print-te-title">COA Travel Estimate</div>'
-      + '<div class="print-te-sub">' + (isCustomer ? 'Customer / Prime Copy' : 'Internal Copy') + ' — ' + destination + '</div>'
+      + '<div class="print-te-title">Travel Estimate for trip to: ' + destination + '</div>'
+      + '<div class="print-te-sub">' + (isCustomer ? 'Customer / Prime Copy' : 'Internal Copy') + '</div>'
+
       + '<table><tbody>'
-      + '<tr><td>Dates</td><td>' + formatDate(inputs.leaveDate) + ' – ' + formatDate(inputs.returnDate) + '</td></tr>'
-      + '<tr><td>Number of Trainers</td><td>' + inputs.trainers + '</td></tr>'
-      + '<tr><td>Per Diem Meals Total (not marked up)</td><td>$' + calc.perDiemMealsTotal.toFixed(2) + '</td></tr>'
-      + '<tr><td>Per Traveler Subtotal</td><td>$' + perTraveler.toFixed(2) + '</td></tr>'
-      + '<tr><td>Trip Lead Total</td><td>$' + tripLead.toFixed(2) + '</td></tr>'
+      + '<tr><td>Leave On</td><td>' + formatDate(inputs.leaveDate) + '</td><td>Return On</td><td>' + formatDate(inputs.returnDate) + '</td></tr>'
+      + '</tbody></table>'
+
+      + '<table><thead><tr><th>Per Diem Rates</th><th>Lodging*</th><th>ME&amp;I</th></tr></thead><tbody>'
+      + '<tr><td></td><td>$' + (parseFloat(inputs.lodgingRate) || 0).toFixed(2) + '</td><td>$' + (parseFloat(inputs.mealsRate) || 0).toFixed(2) + '</td></tr>'
+      + '</tbody></table>'
+      + '<div class="print-te-footnote">*includes taxes</div>'
+
+      + '<table><tbody><tr><td>Number of Trainers</td><td>' + inputs.trainers + '</td></tr></tbody></table>'
+
+      + '<div class="print-te-section-title">ODC (Per Traveler)</div>'
+      + '<table><tbody>'
+      + '<tr><td>Airfare (average)</td><td>$' + airfareShown.toFixed(2) + '</td></tr>'
+      + '<tr><td>Airport Parking/Transport</td><td>$' + parkingShown.toFixed(2) + '</td></tr>'
+      + '<tr><td>Baggage</td><td>$' + baggageShown.toFixed(2) + '</td></tr>'
+      + '<tr><td>Per Diem (Travel Days)</td><td>$' + calc.travelDaysCost.toFixed(2) + '</td></tr>'
+      + '<tr><td>Per Diem (Full Days)</td><td>$' + calc.fullDaysCost.toFixed(2) + '</td></tr>'
+      + '<tr><td>Hotel</td><td>$' + hotelShown.toFixed(2) + '</td></tr>'
+      + '<tr><td><strong>Per Traveler</strong></td><td><strong>$' + perTravelerShown.toFixed(2) + '</strong></td></tr>'
+      + '<tr><td><strong>Subtotal</strong> (&times; ' + inputs.trainers + ' trainer' + (inputs.trainers === 1 ? '' : 's') + ')</td><td><strong>$' + subtotalShown.toFixed(2) + '</strong></td></tr>'
+      + '</tbody></table>'
+
+      + '<div class="print-te-section-title">Trip Lead Total</div>'
+      + '<table><tbody>'
+      + '<tr><td>Rental Cars/Gas/Parking/Tolls</td><td>$' + rentalCarShown.toFixed(2) + '</td></tr>'
+      + '<tr><td>Mileage</td><td>$' + mileageShown.toFixed(2) + '</td></tr>'
+      + '<tr><td>Shipping To</td><td>$' + shippingToShown.toFixed(2) + '</td></tr>'
+      + '<tr><td>Shipping Back</td><td>$' + shippingBackShown.toFixed(2) + '</td></tr>'
+      + '<tr><td><strong>Trip lead total</strong></td><td><strong>$' + tripLevelShown.toFixed(2) + '</strong></td></tr>'
+      + '</tbody></table>'
+
+      + '<div class="print-te-grand">Estimated Total Travel Cost (ODC): $' + estimatedTotalOdc.toFixed(2) + '</div>'
+
+      + '<div class="print-te-section-title">EWW</div>'
+      + '<table><tbody>'
+      + '<tr><td>EWW Hours per Trainer</td><td>' + inputs.ewwHours + '</td></tr>'
+      + '<tr><td>EWW Hours Total</td><td>' + ewwHoursTotal + '</td></tr>'
       + '<tr><td>EWW Total</td><td>$' + calc.ewwTotal.toFixed(2) + '</td></tr>'
       + '</tbody></table>'
-      + '<div class="print-te-grand">Grand Total: $' + grand.toFixed(2) + '</div>'
+
+      + '<div class="print-te-grand">Grand Total (ODC + EWW): $' + grand.toFixed(2) + '</div>'
       + '</div>';
   }
 
