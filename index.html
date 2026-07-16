@@ -134,7 +134,20 @@
           </div>
         </div>
         <div class="myteam-subscreen" id="myteam-travel">
-          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          <div class="subtab-bar">
+            <button class="subtab-btn active" data-teamtravelsubtab="request" onclick="switchTeamTravelSubtab('myteam','request')">Travel Requests</button>
+            <button class="subtab-btn" data-teamtravelsubtab="estimate" onclick="switchTeamTravelSubtab('myteam','estimate')">Travel Estimates</button>
+            <button class="subtab-btn" data-teamtravelsubtab="expense" onclick="switchTeamTravelSubtab('myteam','expense')">Travel Expense Reports</button>
+          </div>
+          <div class="travel-subscreen active" id="myteam-travel-request">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+          <div class="travel-subscreen" id="myteam-travel-estimate">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+          <div class="travel-subscreen" id="myteam-travel-expense">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
         </div>
         <div class="myteam-subscreen" id="myteam-training">
           <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
@@ -244,9 +257,19 @@
           </div>
         </div>
         <div class="admin-subscreen" id="admin-travel">
-          <div class="placeholder-card">
-            <div class="placeholder-title">Travel</div>
-            <div class="placeholder-sub">Coming next session</div>
+          <div class="subtab-bar">
+            <button class="subtab-btn active" data-teamtravelsubtab="request" onclick="switchTeamTravelSubtab('admin','request')">Travel Requests</button>
+            <button class="subtab-btn" data-teamtravelsubtab="estimate" onclick="switchTeamTravelSubtab('admin','estimate')">Travel Estimates</button>
+            <button class="subtab-btn" data-teamtravelsubtab="expense" onclick="switchTeamTravelSubtab('admin','expense')">Travel Expense Reports</button>
+          </div>
+          <div class="travel-subscreen active" id="admin-travel-request">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+          <div class="travel-subscreen" id="admin-travel-estimate">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+          <div class="travel-subscreen" id="admin-travel-expense">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
           </div>
         </div>
         <div class="admin-subscreen" id="admin-training">

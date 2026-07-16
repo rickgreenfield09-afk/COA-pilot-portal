@@ -427,3 +427,177 @@
     document.getElementById('print-travel-estimate').innerHTML = buildTePrintHtml(destination, false, inputs, calc);
     window.print();
   }
+
+  // ---------- Team Travel Estimate review (My Team = approver, Admin = read-only oversight) ----------
+  // travel_estimates has a single approved_by/approved_at slot, not the
+  // dual manager/travel_admin fields travel_requests has — so only one
+  // scope can actually decide. My Team (the employee's manager chain) gets
+  // Approve/Return/Deny; Admin sees the same data read-only. Flagged as an
+  // assumption pending confirmation with the client — see coa_travel_backlog.
+  var teamEstimateReportIds = { myteam: null, admin: null };
+
+  async function loadTeamTravelEstimates(scope){
+    var container = document.getElementById(scope + '-travel-estimate');
+    var session = getSession();
+    if(!session || !session.user){ return; }
+
+    try{
+      var ids;
+      if(scope === 'admin'){
+        ids = (await dbRequest('profiles?select=id')).map(function(p){ return p.id; });
+      }else{
+        ids = await getRecursiveReportIds(session.user.id);
+      }
+      teamEstimateReportIds[scope] = ids;
+
+      if(!ids.length){
+        container.innerHTML = '<div class="tk-empty">No team members found.</div>';
+        return;
+      }
+      var idList = ids.join(',');
+
+      var pendingRows = scope === 'myteam'
+        ? await dbRequest('travel_estimates?created_by=in.(' + idList + ')&status=eq.submitted&select=id,created_by,destination_event,leave_date,return_date,trip_lead_total,eww_total&order=created_at.asc')
+        : [];
+      var allRows = await dbRequest('travel_estimates?created_by=in.(' + idList + ')&status=neq.draft&select=id,created_by,destination_event,leave_date,return_date,status,trip_lead_total,eww_total&order=created_at.desc');
+
+      var namesById = {};
+      var nameRows = await dbRequest('profiles?id=in.(' + idList + ')&select=id,full_name');
+      nameRows.forEach(function(r){ namesById[r.id] = r.full_name; });
+
+      var pendingHtml = scope === 'myteam'
+        ? '<div class="tk-entry-card">'
+          + '<div class="tk-section-title">Needs Your Approval (' + pendingRows.length + ')</div>'
+          + (pendingRows.length
+              ? '<table class="tk-grid-table"><thead><tr><th>Employee</th><th>Destination / Event</th><th>Dates</th><th>Grand Total</th><th></th></tr></thead><tbody>'
+                + pendingRows.map(function(r){
+                    var grand = (parseFloat(r.trip_lead_total) || 0) + (parseFloat(r.eww_total) || 0);
+                    return '<tr><td>' + (namesById[r.created_by] || '—') + '</td>'
+                      + '<td>' + (r.destination_event || '—') + '</td>'
+                      + '<td>' + formatDate(r.leave_date) + ' – ' + formatDate(r.return_date) + '</td>'
+                      + '<td>$' + grand.toFixed(2) + '</td>'
+                      + '<td><button class="tk-now-btn" type="button" onclick="openTeamEstimateDetail(\'' + scope + '\',\'' + r.id + '\')">Review</button></td></tr>';
+                  }).join('')
+                + '</tbody></table>'
+              : '<div class="tk-empty">Nothing pending.</div>')
+          + '</div>'
+        : '';
+
+      container.innerHTML = pendingHtml
+        + '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">' + (scope === 'admin' ? 'All Company Travel Estimates' : 'All Team Travel Estimates') + '</div>'
+        + (allRows.length
+            ? '<table class="tk-grid-table"><thead><tr><th>Employee</th><th>Destination / Event</th><th>Dates</th><th>Status</th><th>Grand Total</th><th></th></tr></thead><tbody>'
+              + allRows.map(function(r){
+                  var grand = (parseFloat(r.trip_lead_total) || 0) + (parseFloat(r.eww_total) || 0);
+                  return '<tr><td>' + (namesById[r.created_by] || '—') + '</td>'
+                    + '<td>' + (r.destination_event || '—') + '</td>'
+                    + '<td>' + formatDate(r.leave_date) + ' – ' + formatDate(r.return_date) + '</td>'
+                    + '<td>' + tkStatusPill(r.status) + '</td>'
+                    + '<td>$' + grand.toFixed(2) + '</td>'
+                    + '<td><button class="tk-now-btn" type="button" onclick="openTeamEstimateDetail(\'' + scope + '\',\'' + r.id + '\')">View</button></td></tr>';
+                }).join('')
+              + '</tbody></table>'
+            : '<div class="tk-empty">No submitted travel estimates yet.</div>')
+        + '</div>'
+        + '<div id="team-estimate-detail-' + scope + '"></div>';
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load travel estimates</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  async function openTeamEstimateDetail(scope, estimateId){
+    var detailContainer = document.getElementById('team-estimate-detail-' + scope);
+    detailContainer.innerHTML = '<div class="tk-entry-card"><div class="placeholder-sub">Loading estimate...</div></div>';
+    detailContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    try{
+      var rows = await dbRequest('travel_estimates?id=eq.' + estimateId + '&select=*');
+      if(!rows.length){ detailContainer.innerHTML = ''; return; }
+      var r = rows[0];
+      var nameRows = await dbRequest('profiles?id=eq.' + r.created_by + '&select=full_name');
+      var employeeName = nameRows.length ? nameRows[0].full_name : '—';
+      renderTeamEstimateDetail(detailContainer, scope, r, employeeName);
+    }catch(e){
+      detailContainer.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load estimate</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  function renderTeamEstimateDetail(detailContainer, scope, r, employeeName){
+    var grand = (parseFloat(r.trip_lead_total) || 0) + (parseFloat(r.eww_total) || 0);
+    var canAct = scope === 'myteam' && r.status === 'submitted';
+
+    var actionsHtml = canAct
+      ? '<button class="btn-save" onclick="teamEstimateAction(\'' + scope + '\',\'' + r.id + '\',\'approved\')">Approve</button>'
+        + '<button class="btn-edit" onclick="teamEstimateAction(\'' + scope + '\',\'' + r.id + '\',\'returned\')">Return</button>'
+        + '<button class="btn-cancel" style="color:var(--red);border-color:var(--red);" onclick="teamEstimateAction(\'' + scope + '\',\'' + r.id + '\',\'denied\')">Deny</button>'
+      : '';
+
+    detailContainer.innerHTML = '<div class="tk-entry-card">'
+      + '<div class="tk-section-title">Travel Estimate — ' + employeeName + ' ' + tkStatusPill(r.status) + '</div>'
+      + '<div class="profile-grid">'
+      + teamTravelReadOnlyField('Destination / Event', r.destination_event)
+      + teamTravelReadOnlyField('Dates', formatDate(r.leave_date) + ' – ' + formatDate(r.return_date))
+      + teamTravelReadOnlyField('Number of Trainers', r.number_of_trainers)
+      + teamTravelReadOnlyField('Per Traveler Subtotal', '$' + (parseFloat(r.per_traveler_subtotal) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Trip Lead Total', '$' + (parseFloat(r.trip_lead_total) || 0).toFixed(2))
+      + teamTravelReadOnlyField('EWW Total', '$' + (parseFloat(r.eww_total) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Grand Total', '$' + grand.toFixed(2))
+      + '</div>'
+      + (canAct
+          ? '<div id="team-estimate-note-wrap-' + scope + '" style="display:none;margin-top:16px;">'
+            + '<label class="field-label" for="team-estimate-note-' + scope + '">Note (required for Return or Deny)</label>'
+            + '<textarea class="info-edit-input" id="team-estimate-note-' + scope + '" rows="2"></textarea>'
+            + '</div>'
+          : '')
+      + '<div class="login-error" id="team-estimate-action-error-' + scope + '"></div>'
+      + '<div class="profile-actions">' + actionsHtml + '<button class="btn-cancel" onclick="document.getElementById(\'team-estimate-detail-' + scope + '\').innerHTML=\'\'">Close</button></div>'
+      + '</div>';
+  }
+
+  async function teamEstimateAction(scope, estimateId, decision){
+    var noteWrap = document.getElementById('team-estimate-note-wrap-' + scope);
+    var noteField = document.getElementById('team-estimate-note-' + scope);
+    var errorEl = document.getElementById('team-estimate-action-error-' + scope);
+    errorEl.textContent = '';
+
+    if(decision !== 'approved'){
+      noteWrap.style.display = '';
+      if(!noteField.value.trim()){
+        errorEl.textContent = 'A note is required to return or deny this estimate.';
+        return;
+      }
+    }
+
+    try{
+      var session = getSession();
+      var existing = await dbRequest('travel_estimates?id=eq.' + estimateId + '&select=status');
+      var previousStatus = existing.length ? existing[0].status : null;
+
+      var body = { status: decision };
+      if(decision === 'approved'){
+        body.approved_by = session.user.id;
+        body.approved_at = new Date().toISOString();
+      }
+
+      await dbWrite('travel_estimates?id=eq.' + estimateId, 'PATCH', body);
+
+      await dbWrite('travel_estimate_audit_log', 'POST', [{
+        estimate_id: estimateId,
+        changed_by: session.user.id,
+        changed_at: new Date().toISOString(),
+        action: 'status_change',
+        field_changes: { status: { from: previousStatus, to: decision }, note: noteField ? noteField.value.trim() : null },
+        previous_status: previousStatus,
+        new_status: decision
+      }]);
+
+      document.getElementById('team-estimate-detail-' + scope).innerHTML = '';
+      loadTeamTravelEstimates(scope);
+    }catch(e){
+      errorEl.textContent = 'Couldn\'t save decision. Try again.';
+      console.error(e);
+    }
+  }

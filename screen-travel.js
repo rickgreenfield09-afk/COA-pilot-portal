@@ -542,8 +542,18 @@
   // ---------- Team Travel (My Team = read-only + manager decision; Admin = editable + travel admin decision) ----------
   var teamTravelReportIds = { myteam: null, admin: null };
 
+  function switchTeamTravelSubtab(scope, name){
+    var wrap = document.getElementById(scope + '-travel');
+    wrap.querySelectorAll('.travel-subscreen').forEach(function(s){ s.classList.remove('active'); });
+    wrap.querySelectorAll('[data-teamtravelsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.teamtravelsubtab === name); });
+    document.getElementById(scope + '-travel-' + name).classList.add('active');
+    if(name === 'request'){ loadTeamTravel(scope); }
+    if(name === 'estimate'){ loadTeamTravelEstimates(scope); }
+    if(name === 'expense'){ loadTeamTravelExpenses(scope); }
+  }
+
   async function loadTeamTravel(scope){
-    var container = document.getElementById(scope === 'admin' ? 'admin-travel' : 'myteam-travel');
+    var container = document.getElementById(scope + '-travel-request');
     var session = getSession();
     if(!session || !session.user){ return; }
 

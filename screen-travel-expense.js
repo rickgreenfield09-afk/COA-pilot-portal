@@ -485,3 +485,203 @@
     });
     return changes;
   }
+
+  // ---------- Team Expense Report review (My Team = supervisor stage, Admin = principal stage) ----------
+  // Two-stage: supervisor_status must clear first (My Team's queue), then
+  // principal_status decides (Admin's queue) — mirrors travel_requests'
+  // manager_status/travel_status pattern. Supervisor 'approved' passes the
+  // report to the principal's queue without changing current_status;
+  // principal 'approved' is terminal ('paid') and also flips the linked
+  // estimate to 'paid' (the intended purpose of that estimate status, per
+  // user). Either stage's deny/return is terminal immediately. "Principal"
+  // may need to become "Admin" formally later per user's note — flagged in
+  // coa_travel_backlog, kept as a label only so no schema change is needed.
+  var teamExpenseReportIds = { myteam: null, admin: null };
+
+  async function loadTeamTravelExpenses(scope){
+    var container = document.getElementById(scope + '-travel-expense');
+    var session = getSession();
+    if(!session || !session.user){ return; }
+
+    try{
+      var ids;
+      if(scope === 'admin'){
+        ids = (await dbRequest('profiles?select=id')).map(function(p){ return p.id; });
+      }else{
+        ids = await getRecursiveReportIds(session.user.id);
+      }
+      teamExpenseReportIds[scope] = ids;
+
+      if(!ids.length){
+        container.innerHTML = '<div class="tk-empty">No team members found.</div>';
+        return;
+      }
+      var idList = ids.join(',');
+      var pendingFilter = scope === 'admin'
+        ? '&supervisor_status=eq.approved&principal_status=eq.pending&current_status=eq.submitted'
+        : '&supervisor_status=eq.pending&current_status=eq.submitted';
+
+      var pendingRows = await dbRequest('travel_expenses?created_by=in.(' + idList + ')' + pendingFilter + '&select=id,created_by,actual_trip_lead_total,actual_eww_total,variance_total,travel_estimates(destination_event,leave_date,return_date)&order=created_at.asc');
+      var allRows = await dbRequest('travel_expenses?created_by=in.(' + idList + ')&current_status=neq.draft&select=id,created_by,current_status,supervisor_status,principal_status,actual_trip_lead_total,actual_eww_total,variance_total,travel_estimates(destination_event,leave_date,return_date)&order=created_at.desc');
+
+      var namesById = {};
+      var nameRows = await dbRequest('profiles?id=in.(' + idList + ')&select=id,full_name');
+      nameRows.forEach(function(r){ namesById[r.id] = r.full_name; });
+
+      function rowHtml(r, isPendingTable){
+        var est = r.travel_estimates || {};
+        var grand = (parseFloat(r.actual_trip_lead_total) || 0) + (parseFloat(r.actual_eww_total) || 0);
+        var variance = parseFloat(r.variance_total) || 0;
+        var statusCell = isPendingTable ? '' : '<td>' + tkStatusPill(r.current_status) + '</td>';
+        return '<tr><td>' + (namesById[r.created_by] || '—') + '</td>'
+          + '<td>' + (est.destination_event || '—') + '</td>'
+          + '<td>' + formatDate(est.leave_date) + ' – ' + formatDate(est.return_date) + '</td>'
+          + statusCell
+          + '<td>$' + grand.toFixed(2) + '</td>'
+          + '<td>' + (variance >= 0 ? '+$' : '-$') + Math.abs(variance).toFixed(2) + '</td>'
+          + '<td><button class="tk-now-btn" type="button" onclick="openTeamExpenseDetail(\'' + scope + '\',\'' + r.id + '\')">' + (isPendingTable ? 'Review' : 'View') + '</button></td></tr>';
+      }
+
+      container.innerHTML = '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">Needs Your Approval (' + pendingRows.length + ')</div>'
+        + (pendingRows.length
+            ? '<table class="tk-grid-table"><thead><tr><th>Employee</th><th>Destination / Event</th><th>Dates</th><th>Actual Total</th><th>Variance</th><th></th></tr></thead><tbody>'
+              + pendingRows.map(function(r){ return rowHtml(r, true); }).join('')
+              + '</tbody></table>'
+            : '<div class="tk-empty">Nothing pending.</div>')
+        + '</div>'
+        + '<div class="tk-entry-card">'
+        + '<div class="tk-section-title">' + (scope === 'admin' ? 'All Company Expense Reports' : 'All Team Expense Reports') + '</div>'
+        + (allRows.length
+            ? '<table class="tk-grid-table"><thead><tr><th>Employee</th><th>Destination / Event</th><th>Dates</th><th>Status</th><th>Actual Total</th><th>Variance</th><th></th></tr></thead><tbody>'
+              + allRows.map(function(r){ return rowHtml(r, false); }).join('')
+              + '</tbody></table>'
+            : '<div class="tk-empty">No submitted expense reports yet.</div>')
+        + '</div>'
+        + '<div id="team-expense-detail-' + scope + '"></div>';
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load expense reports</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  async function openTeamExpenseDetail(scope, expenseId){
+    var detailContainer = document.getElementById('team-expense-detail-' + scope);
+    detailContainer.innerHTML = '<div class="tk-entry-card"><div class="placeholder-sub">Loading report...</div></div>';
+    detailContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    try{
+      var rows = await dbRequest('travel_expenses?id=eq.' + expenseId + '&select=*,travel_estimates(destination_event,leave_date,return_date,trip_lead_total,eww_total)');
+      if(!rows.length){ detailContainer.innerHTML = ''; return; }
+      var r = rows[0];
+      var nameRows = await dbRequest('profiles?id=eq.' + r.created_by + '&select=full_name');
+      var employeeName = nameRows.length ? nameRows[0].full_name : '—';
+      await renderTeamExpenseDetail(detailContainer, scope, r, employeeName);
+    }catch(e){
+      detailContainer.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load report</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }
+
+  async function renderTeamExpenseDetail(detailContainer, scope, r, employeeName){
+    var est = r.travel_estimates || {};
+    var grand = (parseFloat(r.actual_trip_lead_total) || 0) + (parseFloat(r.actual_eww_total) || 0);
+    var variance = parseFloat(r.variance_total) || 0;
+
+    var canAct = scope === 'admin'
+      ? (r.current_status === 'submitted' && r.supervisor_status === 'approved' && r.principal_status === 'pending')
+      : (r.current_status === 'submitted' && r.supervisor_status === 'pending');
+
+    var actionsHtml = canAct
+      ? '<button class="btn-save" onclick="teamExpenseAction(\'' + scope + '\',\'' + r.id + '\',\'approved\')">Approve</button>'
+        + '<button class="btn-edit" onclick="teamExpenseAction(\'' + scope + '\',\'' + r.id + '\',\'returned\')">Return</button>'
+        + '<button class="btn-cancel" style="color:var(--red);border-color:var(--red);" onclick="teamExpenseAction(\'' + scope + '\',\'' + r.id + '\',\'denied\')">Deny</button>'
+      : '';
+
+    var receiptsRows = await dbRequest('travel_expense_receipts?expense_id=eq.' + r.id + '&order=uploaded_at.asc&select=*');
+    var receiptsHtml = receiptsRows.length
+      ? receiptsRows.map(function(rec){ return '<div class="resume-cart-item"><a href="' + rec.file_url + '" target="_blank" style="color:var(--teal);">' + (rec.file_name || 'Receipt') + '</a></div>'; }).join('')
+      : '<div class="tk-empty">No receipts attached.</div>';
+
+    detailContainer.innerHTML = '<div class="tk-entry-card">'
+      + '<div class="tk-section-title">Expense Report — ' + employeeName + ' ' + tkStatusPill(r.current_status) + '</div>'
+      + '<div class="profile-grid">'
+      + teamTravelReadOnlyField('Destination / Event', est.destination_event)
+      + teamTravelReadOnlyField('Actual Dates', formatDate(r.actual_leave_date) + ' – ' + formatDate(r.actual_return_date))
+      + teamTravelReadOnlyField('Number of Trainers', r.number_of_trainers)
+      + teamTravelReadOnlyField('Per Traveler Subtotal', '$' + (parseFloat(r.actual_per_traveler_subtotal) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Trip Lead Total', '$' + (parseFloat(r.actual_trip_lead_total) || 0).toFixed(2))
+      + teamTravelReadOnlyField('EWW Total', '$' + (parseFloat(r.actual_eww_total) || 0).toFixed(2))
+      + teamTravelReadOnlyField('Actual Grand Total', '$' + grand.toFixed(2))
+      + teamTravelReadOnlyField('Variance vs. Estimate', (variance >= 0 ? '+$' : '-$') + Math.abs(variance).toFixed(2))
+      + teamTravelReadOnlyField('Supervisor Decision', tkStatusPill(r.supervisor_status))
+      + teamTravelReadOnlyField('Principal Decision', tkStatusPill(r.principal_status))
+      + '</div>'
+      + '<div class="resume-section"><div class="resume-section-title">Receipts</div>' + receiptsHtml + '</div>'
+      + (canAct
+          ? '<div id="team-expense-note-wrap-' + scope + '" style="display:none;margin-top:16px;">'
+            + '<label class="field-label" for="team-expense-note-' + scope + '">Note (required for Return or Deny)</label>'
+            + '<textarea class="info-edit-input" id="team-expense-note-' + scope + '" rows="2"></textarea>'
+            + '</div>'
+          : '')
+      + '<div class="login-error" id="team-expense-action-error-' + scope + '"></div>'
+      + '<div class="profile-actions">' + actionsHtml + '<button class="btn-cancel" onclick="document.getElementById(\'team-expense-detail-' + scope + '\').innerHTML=\'\'">Close</button></div>'
+      + '</div>';
+  }
+
+  async function teamExpenseAction(scope, expenseId, decision){
+    var noteWrap = document.getElementById('team-expense-note-wrap-' + scope);
+    var noteField = document.getElementById('team-expense-note-' + scope);
+    var errorEl = document.getElementById('team-expense-action-error-' + scope);
+    errorEl.textContent = '';
+
+    if(decision !== 'approved'){
+      noteWrap.style.display = '';
+      if(!noteField.value.trim()){
+        errorEl.textContent = 'A note is required to return or deny this report.';
+        return;
+      }
+    }
+
+    try{
+      var session = getSession();
+      var existing = await dbRequest('travel_expenses?id=eq.' + expenseId + '&select=current_status,supervisor_status,principal_status,estimate_id');
+      if(!existing.length){ return; }
+      var prev = existing[0];
+
+      var statusField = scope === 'admin' ? 'principal_status' : 'supervisor_status';
+      var body = {};
+      body[statusField] = decision;
+
+      if(scope === 'admin'){
+        body.current_status = decision === 'approved' ? 'paid' : decision;
+      }else{
+        body.current_status = decision === 'approved' ? 'submitted' : decision;
+      }
+
+      await dbWrite('travel_expenses?id=eq.' + expenseId, 'PATCH', body);
+
+      if(scope === 'admin' && decision === 'approved'){
+        await dbWrite('travel_estimates?id=eq.' + prev.estimate_id, 'PATCH', { status: 'paid' });
+      }
+
+      await dbWrite('travel_expense_audit_log', 'POST', [{
+        expense_id: expenseId,
+        changed_by: session.user.id,
+        changed_at: new Date().toISOString(),
+        action: 'status_change',
+        field_changes: {
+          current_status: { from: prev.current_status, to: body.current_status },
+          note: noteField ? noteField.value.trim() : null
+        },
+        previous_status: prev.current_status,
+        new_status: body.current_status
+      }]);
+
+      document.getElementById('team-expense-detail-' + scope).innerHTML = '';
+      loadTeamTravelExpenses(scope);
+    }catch(e){
+      errorEl.textContent = 'Couldn\'t save decision. Try again.';
+      console.error(e);
+    }
+  }
