@@ -1,21 +1,25 @@
 /* COA Employee Portal — screen-timekeeping.js
-   Current period entry, history, PTO request/balance, and the My Team/Admin
-   timekeeping review functions (scope param, reused by screen-myteam.js and
-   screen-admin.js). TK_SELECTABLE_TYPES/TK_TYPE_LABELS are also read by
-   screen-dashboard.js (quick time entry) — load order in index.html keeps
-   this file before screen-dashboard.js.
+   Weekly time card (Time Code x Mon-Sun matrix), history, PTO request/
+   balance, and the My Team/Admin timekeeping review functions (scope
+   param, reused by screen-myteam.js and screen-admin.js). Time Code
+   options come from the new time_codes table via tkGetTimeCodes() — also
+   read by screen-dashboard.js (quick time entry) — load order in
+   index.html keeps this file before screen-dashboard.js.
    Depends on app-core.js: getSession, dbRequest, dbWrite, dbRpc, isAdmin,
-   getRecursiveReportIds. */
+   getRecursiveReportIds.
+   DCAA compliance: every submit/edit/approve/return writes a row to
+   time_card_audit_log via tkLogAudit(). */
 
   // ---------- Timekeeping ----------
-  var TK_TYPES = ['regular', 'overtime', 'pto', 'training', 'travel', 'admin', 'award'];
-  var TK_TYPE_LABELS = { regular:'Regular', overtime:'Overtime', pto:'PTO', training:'Training', travel:'Travel', admin:'Admin', award:'Award' };
-  var TK_SELECTABLE_TYPES = ['regular', 'pto', 'training', 'travel', 'admin', 'award']; // overtime is system-assigned only, never user-selectable
-  var TK_ANCHOR = new Date('2026-06-21T00:00:00');
   var TK_DAY_MS = 24 * 60 * 60 * 1000;
-  var tkCurrentPeriodOffset = 0;   // 0 = period containing today, -1 = prior period, etc. (Current Period tab)
-  var tkHistoryPeriodOffset = -1;  // History tab starts one period back
-  var TK_PROJECTS_CACHE = null;
+  // Week 1 = the first full Monday-Sunday week entirely inside January 2026
+  // (same "first full period inside January" convention the old biweekly
+  // scheme used) — Monday 1/5/2026. Offset 0 = Week 1.
+  var TK_WEEK_ANCHOR = new Date('2026-01-05T00:00:00');
+  var tkCurrentWeekOffset = 0;   // 0 = week containing today
+  var tkHistoryWeekOffset = -1;
+  var TK_TIME_CODES_CACHE = null;
+  var tkGridRowSeq = 0; // client-side unique suffix for dynamically-added blank rows
 
 
   function tkStatusPill(status){
@@ -26,23 +30,27 @@
     document.querySelectorAll('.tk-subscreen').forEach(function(s){ s.classList.remove('active'); });
     document.querySelectorAll('[data-tksubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.tksubtab === name); });
     document.getElementById('tk-' + name).classList.add('active');
-    if(name === 'current'){ loadTkPeriod('tk-current', tkCurrentPeriodOffset, true); }
+    if(name === 'current'){ loadTkWeek('tk-current', tkCurrentWeekOffset, true); }
     if(name === 'history'){ initTkHistory(); }
     if(name === 'ptorequest'){ loadPtoRequest(); }
     if(name === 'ptobalance'){ loadPtoBalance(); }
   }
 
-  // ---- Period math: TK_ANCHOR (6/21/2026) is offset 0; Period numbering
-  //      starts from the first period fully inside January (1/4/2026 -
-  //      1/17/2026 = Period 1), which sits 13 periods before TK_ANCHOR.
-  function tkPeriodBounds(offset){
-    var start = new Date(TK_ANCHOR.getTime() + offset * 14 * TK_DAY_MS);
-    var end = new Date(start.getTime() + 13 * TK_DAY_MS);
+  // ---- Week math ----
+  function tkWeekBounds(offset){
+    var start = new Date(TK_WEEK_ANCHOR.getTime() + offset * 7 * TK_DAY_MS);
+    var end = new Date(start.getTime() + 6 * TK_DAY_MS);
     return { start: start, end: end };
   }
 
-  function tkPeriodNumber(offset){
-    return offset + 13; // offset 0 (6/21-7/4) = Period 13; offset -12 (1/4-1/17) = Period 1
+  function tkWeekNumber(offset){
+    return offset + 1;
+  }
+
+  function tkWeekDays(startDate){
+    var days = [];
+    for(var i=0;i<7;i++){ days.push(new Date(startDate.getTime() + i*TK_DAY_MS)); }
+    return days;
   }
 
   function tkDateToISO(d){
@@ -51,27 +59,229 @@
 
   function tkOffsetForToday(){
     var todayUTC = new Date(new Date().toISOString().slice(0,10) + 'T00:00:00');
-    var diffDays = Math.round((todayUTC - TK_ANCHOR) / TK_DAY_MS);
-    return Math.floor(diffDays / 14);
+    var diffDays = Math.round((todayUTC - TK_WEEK_ANCHOR) / TK_DAY_MS);
+    return Math.floor(diffDays / 7);
   }
 
-  // Prints every pay period from Period 1 (1/4/2026) through the period
-  // containing today, to the browser console. Run printTkPeriods() from
+  // Prints every work week from Week 1 (1/5/2026) through the week
+  // containing today, to the browser console. Run printTkWeeks() from
   // devtools console to verify the calendar.
-  function printTkPeriods(){
+  function printTkWeeks(){
     var todayOffset = tkOffsetForToday();
-    var startOffset = -12; // Period 1
     var rows = [];
-    for(var o = startOffset; o <= todayOffset; o++){
-      var b = tkPeriodBounds(o);
-      rows.push({ period: tkPeriodNumber(o), start: tkDateToISO(b.start), end: tkDateToISO(b.end) });
+    for(var o = 0; o <= todayOffset; o++){
+      var b = tkWeekBounds(o);
+      rows.push({ week: tkWeekNumber(o), start: tkDateToISO(b.start), end: tkDateToISO(b.end) });
     }
     console.table(rows);
     return rows;
   }
 
+  // ---------- Time Codes (labor category / customer / CLIN-SLIN / indirect) ----------
+  async function tkGetTimeCodes(){
+    if(TK_TIME_CODES_CACHE){ return TK_TIME_CODES_CACHE; }
+    try{
+      TK_TIME_CODES_CACHE = await dbRequest('time_codes?active=eq.true&select=id,code,label,category&order=sort_order.asc,label.asc');
+    }catch(e){ TK_TIME_CODES_CACHE = []; console.error(e); }
+    return TK_TIME_CODES_CACHE;
+  }
+
+  // Vacation is a normal time code, but linked to the PTO Request/Balance
+  // system: entering it requires a covering pending/approved PTO request
+  // (see saveTkWeek's missing-PTO check). Identified by a fixed `code`
+  // value rather than by label so relabeling it in time_codes doesn't
+  // break the linkage.
+  function tkVacationCode(codes){
+    return codes.find(function(c){ return c.code === 'VACATION'; }) || null;
+  }
+
+  // ---------- Shared weekly grid (used by the employee's own Current/
+  //            History card and the My Team/Admin review card) ----------
+  function tkGroupEntriesByCode(entries){
+    var byCode = {};
+    entries.forEach(function(e){
+      var key = e.time_code_id || 'none';
+      if(!byCode[key]){ byCode[key] = { time_code_id: e.time_code_id, byDate: {} }; }
+      byCode[key].byDate[e.work_date] = e;
+    });
+    return byCode;
+  }
+
+  function tkSortRowsByCodeOrder(rows, timeCodes){
+    var sortIndex = {};
+    timeCodes.forEach(function(c,i){ sortIndex[c.id] = i; });
+    return rows.sort(function(a,b){
+      return (sortIndex[a.time_code_id] != null ? sortIndex[a.time_code_id] : 999) - (sortIndex[b.time_code_id] != null ? sortIndex[b.time_code_id] : 999);
+    });
+  }
+
+  function tkRowTotal(row, days){
+    var total = 0;
+    days.forEach(function(d){
+      var e = row.byDate[tkDateToISO(d)];
+      if(e && e.hours != null && e.status !== 'rejected' && e.status !== 'cancelled_by_submitter'){ total += parseFloat(e.hours) || 0; }
+    });
+    return total;
+  }
+
+  function tkDayTotals(rows, days){
+    return days.map(function(d){
+      var iso = tkDateToISO(d);
+      var sum = 0;
+      rows.forEach(function(row){
+        var e = row.byDate[iso];
+        if(e && e.hours != null && e.status !== 'rejected' && e.status !== 'cancelled_by_submitter'){ sum += parseFloat(e.hours) || 0; }
+      });
+      return sum;
+    });
+  }
+
+  // Half-hour dropdown, 0-12hrs — guarantees a valid value, no loose minutes.
+  function tkHoursOptionsHtml(selected){
+    var opts = ['<option value="">—</option>'];
+    for(var h=0; h<=12; h+=0.5){
+      opts.push('<option value="' + h + '"' + (String(h) === String(selected) ? ' selected' : '') + '>' + h + '</option>');
+    }
+    return opts.join('');
+  }
+
+  // rowsIn: array of {time_code_id, byDate} from tkGroupEntriesByCode. days:
+  // 7 Date objects Mon-Sun. opts.editable=true for the employee's own
+  // Current week; false renders a read-only grid (History, My Team/Admin).
+  // opts.showFlagToggle/opts.scope/opts.employeeId/opts.flaggedDates are
+  // only used in My Team/Admin review mode (flags a whole day-column).
+  function tkRenderGridTable(rowsIn, days, timeCodes, opts){
+    var idBase = opts.rowIdBase;
+    var editable = !!opts.editable;
+    var vacation = tkVacationCode(timeCodes);
+    var codesById = {};
+    timeCodes.forEach(function(c){ codesById[c.id] = c; });
+
+    var headerCells = days.map(function(d){
+      var iso = tkDateToISO(d);
+      var flagged = opts.flaggedDates && opts.flaggedDates[iso];
+      var flagBtn = opts.showFlagToggle
+        ? '<br><button class="tk-now-btn" type="button" onclick="teamTkToggleFlag(\'' + opts.scope + '\',\'' + opts.employeeId + '\',\'' + iso + '\')">' + (flagged ? 'Unflag' : 'Flag') + '</button>'
+        : '';
+      return '<th' + (flagged ? ' class="tk-day-flagged"' : '') + '>' + d.toLocaleDateString('en-US',{weekday:'short'}) + '<br>' + d.toLocaleDateString('en-US',{month:'numeric',day:'numeric'}) + flagBtn + '</th>';
+    }).join('');
+
+    var bodyRows = rowsIn.map(function(row, idx){
+      var rowId = idBase + '-' + idx;
+      var codeVal = row.time_code_id || '';
+      var isVacationRow = !!(vacation && codeVal === vacation.id);
+      var rowLocked = isVacationRow; // Vacation rows come from the PTO Request flow / the inline request prompt, never hand-edited once created
+      var rowEditable = editable && !rowLocked;
+      var hasAnySavedEntry = Object.keys(row.byDate).length > 0;
+
+      var codeCell = editable
+        ? ('<button class="tk-now-btn" type="button" onclick="tkAddGridRow(\'' + idBase + '\')" title="Add time code row">+</button> '
+          + '<select class="tk-grid-input" style="display:inline-block;width:calc(100% - 34px);" id="tkg-code-' + rowId + '" ' + ((hasAnySavedEntry || rowLocked) ? 'disabled' : '') + '>'
+          + '<option value="">Select time code…</option>'
+          + timeCodes.map(function(c){ return '<option value="' + c.id + '"' + (c.id === codeVal ? ' selected' : '') + '>' + c.label + '</option>'; }).join('')
+          + '</select>')
+        : '<span>' + (codesById[codeVal] ? codesById[codeVal].label : '—') + '</span>';
+
+      var dayCells = days.map(function(d){
+        var iso = tkDateToISO(d);
+        var e = row.byDate[iso];
+        var hours = e && e.hours != null ? e.hours : '';
+        var cellHtml;
+        if(editable){
+          cellHtml = '<select class="tk-grid-input" id="tkg-hours-' + rowId + '-' + iso + '" data-entry-id="' + (e ? e.id : '') + '" data-entry-hours="' + hours + '" ' + (rowEditable ? '' : 'disabled') + ' onchange="tkOnCellChange(\'' + idBase + '\')">'
+            + tkHoursOptionsHtml(hours)
+            + '</select>';
+        } else {
+          cellHtml = '<span>' + (hours === '' ? '—' : hours) + '</span>' + (e && e.status && e.status !== 'approved' ? '<br>' + tkStatusPill(e.status) : '');
+        }
+        return '<td>' + cellHtml + '</td>';
+      }).join('');
+
+      var removeBtn = (editable && !hasAnySavedEntry && !rowLocked)
+        ? '<button class="tk-now-btn" type="button" onclick="tkRemoveGridRow(\'' + rowId + '\')" title="Remove row">&minus;</button>'
+        : '';
+
+      return '<tr data-rowid="' + rowId + '">'
+        + '<td>' + codeCell + '</td>'
+        + dayCells
+        + '<td class="tk-hours-cell">' + tkRowTotal(row, days).toFixed(2) + '</td>'
+        + '<td>' + removeBtn + '</td>'
+        + '</tr>';
+    }).join('');
+
+    var dayTotals = tkDayTotals(rowsIn, days);
+    var footerCells = dayTotals.map(function(t){ return '<td class="tk-hours-cell">' + t.toFixed(2) + '</td>'; }).join('');
+    var weekTotal = dayTotals.reduce(function(a,b){ return a+b; }, 0);
+
+    return '<div class="tk-grid-table-wrap"><table class="tk-grid-table" id="' + idBase + '-table"><thead><tr>'
+      + '<th>Time Code</th>' + headerCells + '<th>Total</th><th></th>'
+      + '</tr></thead><tbody id="' + idBase + '-tbody">' + bodyRows + '</tbody>'
+      + (editable ? '' : '<tfoot><tr><td><strong>Day Total</strong></td>' + footerCells + '<td class="tk-hours-cell"><strong>' + weekTotal.toFixed(2) + '</strong></td><td></td></tr></tfoot>')
+      + '</table></div>';
+  }
+
+  function tkAddGridRow(idBase){
+    var tbody = document.getElementById(idBase + '-tbody');
+    if(!tbody){ return; }
+    tkGridRowSeq++;
+    var rowId = idBase + '-new' + tkGridRowSeq;
+    var days = tbody.dataset.days ? JSON.parse(tbody.dataset.days) : [];
+    var timeCodesJson = tbody.dataset.timeCodes ? JSON.parse(tbody.dataset.timeCodes) : [];
+
+    var codeOptions = '<option value="">Select time code…</option>' + timeCodesJson.map(function(c){ return '<option value="' + c.id + '">' + c.label + '</option>'; }).join('');
+    var dayCells = days.map(function(iso){
+      return '<td><select class="tk-grid-input" id="tkg-hours-' + rowId + '-' + iso + '" data-entry-id="" data-entry-hours="" onchange="tkOnCellChange(\'' + idBase + '\')">' + tkHoursOptionsHtml('') + '</select></td>';
+    }).join('');
+
+    var rowHtml = '<tr data-rowid="' + rowId + '">'
+      + '<td><button class="tk-now-btn" type="button" onclick="tkAddGridRow(\'' + idBase + '\')" title="Add time code row">+</button> '
+      + '<select class="tk-grid-input" style="display:inline-block;width:calc(100% - 34px);" id="tkg-code-' + rowId + '">' + codeOptions + '</select></td>'
+      + dayCells
+      + '<td class="tk-hours-cell">0.00</td>'
+      + '<td><button class="tk-now-btn" type="button" onclick="tkRemoveGridRow(\'' + rowId + '\')" title="Remove row">&minus;</button></td>'
+      + '</tr>';
+    tbody.insertAdjacentHTML('beforeend', rowHtml);
+  }
+
+  function tkRemoveGridRow(rowId){
+    var tr = document.querySelector('tr[data-rowid="' + rowId + '"]');
+    if(tr){ tr.remove(); }
+  }
+
+  function tkOnCellChange(idBase){
+    var tbody = document.getElementById(idBase + '-tbody');
+    if(!tbody){ return; }
+    tbody.querySelectorAll('tr[data-rowid]').forEach(function(tr){
+      var total = 0;
+      tr.querySelectorAll('select[id^="tkg-hours-"]').forEach(function(sel){ total += parseFloat(sel.value) || 0; });
+      var totalCell = tr.children[tr.children.length - 2];
+      if(totalCell){ totalCell.textContent = total.toFixed(2); }
+    });
+  }
+
+  // ---------- DCAA audit log (time_card_audit_log) ----------
+  async function tkLogAudit(employeeId, weekOrDateISO, timeCodeId, action, fieldChanges, reason){
+    var session = getSession();
+    var changes = (fieldChanges && fieldChanges.length) ? fieldChanges : [{ field:null, oldVal:null, newVal:null }];
+    for(var i=0;i<changes.length;i++){
+      try{
+        await dbWrite('time_card_audit_log', 'POST', {
+          employee_id: employeeId,
+          week_start_date: weekOrDateISO,
+          time_code_id: timeCodeId || null,
+          action: action,
+          field_changed: changes[i].field,
+          old_value: changes[i].oldVal != null ? String(changes[i].oldVal) : null,
+          new_value: changes[i].newVal != null ? String(changes[i].newVal) : null,
+          performed_by: session.user.id,
+          reason: reason || null
+        });
+      }catch(e){ console.error(e); } // an audit-log write failure must never block the underlying timekeeping action
+    }
+  }
+
   // ---------- My Team (manager/admin review) ----------
-  var myTeamFlagged = {}; // { employeeId: Set of dates flagged for return } — keyed by employee id only; ids are unique company-wide so no scope collision risk
+  var myTeamFlagged = {}; // { employeeId: { iso: true } } — flags a whole day-column for return, keyed by employee id only; ids are unique company-wide so no scope collision risk
 
   var teamTkReports = { myteam: [], admin: [] };
   var teamTkIndex = { myteam: 0, admin: 0 };
@@ -104,7 +314,7 @@
       }
 
       var todayOffset = tkOffsetForToday();
-      var bounds = tkPeriodBounds(todayOffset);
+      var bounds = tkWeekBounds(todayOffset);
       teamTkStartISO[scope] = tkDateToISO(bounds.start);
       teamTkEndISO[scope] = tkDateToISO(bounds.end);
       if(teamTkIndex[scope] >= teamTkReports[scope].length){ teamTkIndex[scope] = 0; }
@@ -123,7 +333,7 @@
     var endISO = teamTkEndISO[scope];
 
     var navHtml = '<div class="myteam-tk-header-row">'
-      + '<div class="tk-period-label">Pay Period ' + tkPeriodNumber(tkOffsetForToday()) + '</div>'
+      + '<div class="tk-period-label">Week ' + tkWeekNumber(tkOffsetForToday()) + '</div>'
       + '<div class="tk-period-dates">' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div>'
       + '<button class="tk-period-nav-btn" ' + (teamTkIndex[scope] === 0 ? 'disabled' : '') + ' onclick="teamTkNavEmployee(\'' + scope + '\',-1)">&larr; Prev</button>'
       + '<div class="myteam-nav-count">Employee ' + (teamTkIndex[scope]+1) + ' of ' + teamTkReports[scope].length + '</div>'
@@ -143,62 +353,29 @@
   }
 
   async function teamTkRenderCard(employee, startISO, endISO, scope){
-    var projects = await tkGetProjects();
-    var rows = await dbRequest('time_entries?employee_id=eq.' + employee.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
-    var byDate = {};
-    rows.forEach(function(r){ byDate[r.work_date] = r; });
-
-    var days = [];
-    var startDate = new Date(startISO + 'T00:00:00');
-    for(var i=0;i<14;i++){
-      days.push(new Date(startDate.getTime() + i*TK_DAY_MS));
-    }
+    var timeCodes = await tkGetTimeCodes();
+    var entries = await dbRequest('time_entries?employee_id=eq.' + employee.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
+    var rows = tkSortRowsByCodeOrder(Object.values(tkGroupEntriesByCode(entries)), timeCodes);
+    var days = tkWeekDays(new Date(startISO + 'T00:00:00'));
 
     if(!myTeamFlagged[employee.id]){ myTeamFlagged[employee.id] = {}; }
     var flaggedForThis = myTeamFlagged[employee.id];
-
-    var weekTotals = [0,0];
-    var rowsHtml = '';
-    days.forEach(function(d, idx){
-      var iso = tkDateToISO(d);
-      var row = byDate[iso];
-      var weekIdx = idx < 7 ? 0 : 1;
-      var dayLabel = d.toLocaleDateString('en-US', { weekday:'long' }) + ', ' + formatDate(iso);
-      var earningType = row && row.earning_type ? row.earning_type : null;
-      var hours = row && row.hours != null ? row.hours : 0;
-      weekTotals[weekIdx] += hours;
-      var isFlagged = !!flaggedForThis[iso];
-      var rowClass = (idx === 6) ? 'tk-week-divider' : '';
-      if(isFlagged){ rowClass += ' tk-day-flagged'; }
-      var hasEntry = !!row;
-
-      rowsHtml += '<tr class="' + rowClass + '" data-date="' + iso + '" data-emp="' + employee.id + '">'
-        + '<td>' + dayLabel + '</td>'
-        + '<td>' + (row && row.day_start ? row.day_start.slice(0,5) : '—') + '</td>'
-        + '<td>' + (row && row.day_end ? row.day_end.slice(0,5) : '—') + '</td>'
-        + '<td>' + (row && row.project_id ? (projects.find(function(p){ return p.id === row.project_id; }) || {}).name || '—' : '—') + '</td>'
-        + '<td>' + (earningType ? TK_TYPE_LABELS[earningType] : '—') + '</td>'
-        + '<td>' + (hours || '—') + '</td>'
-        + '<td>' + (hasEntry ? '<button class="tk-now-btn" type="button" onclick="teamTkToggleFlag(\'' + scope + '\',\'' + employee.id + '\',\'' + iso + '\')">' + (isFlagged ? 'Unflag' : 'Flag') + '</button>' : '—') + '</td>'
-        + '</tr>';
-    });
-
-    var anyFlagged = Object.keys(flaggedForThis).some(function(k){ return flaggedForThis[k]; });
     var cardId = 'myteam-card-' + employee.id;
+
+    var tableHtml = rows.length
+      ? tkRenderGridTable(rows, days, timeCodes, { editable:false, rowIdBase: cardId, scope: scope, employeeId: employee.id, flaggedDates: flaggedForThis, showFlagToggle: true })
+      : '<div class="tk-empty">No time entries submitted for this week yet.</div>';
+
+    var weekTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
+    var anyFlagged = Object.keys(flaggedForThis).some(function(k){ return flaggedForThis[k]; });
 
     return '<div class="tk-entry-card" id="' + cardId + '">'
       + '<div class="myteam-employee-header">'
       + '<div class="myteam-employee-name">' + (employee.full_name || 'Unknown') + '</div>'
       + '<div class="myteam-employee-title">' + (employee.job_title || '—') + '</div>'
       + '</div>'
-      + '<table class="tk-grid-table"><thead><tr>'
-      + '<th>Day / Date</th><th>Start</th><th>Stop</th><th>Project</th><th>Status</th><th>Hours</th><th>Flag</th>'
-      + '</tr></thead><tbody>' + rowsHtml + '</tbody></table>'
-      + '<div class="tk-grid-footer">'
-      + '<div class="tk-grid-footer-item">Week 1: <span>' + weekTotals[0].toFixed(2) + ' hrs</span></div>'
-      + '<div class="tk-grid-footer-item">Week 2: <span>' + weekTotals[1].toFixed(2) + ' hrs</span></div>'
-      + '<div class="tk-grid-footer-item">Total: <span>' + (weekTotals[0]+weekTotals[1]).toFixed(2) + ' hrs</span></div>'
-      + '</div>'
+      + tableHtml
+      + '<div class="tk-grid-footer"><div class="tk-grid-footer-item">Week Total: <span>' + weekTotal.toFixed(2) + ' hrs</span></div></div>'
       + '<div id="myteam-return-panel-' + employee.id + '"></div>'
       + '<div class="tk-grid-actions">'
       + '<div class="login-error" id="myteam-error-' + employee.id + '" style="margin-top:0;flex:1;"></div>'
@@ -218,7 +395,7 @@
     var errorEl = document.getElementById('myteam-error-' + employeeId);
     errorEl.textContent = '';
     try{
-      var rows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=id,earning_type');
+      var rows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=id,time_code_id');
       var session = getSession();
       for(var i=0;i<rows.length;i++){
         await dbWrite('time_entries?id=eq.' + rows[i].id, 'PATCH', {
@@ -226,8 +403,9 @@
           approved_by: session.user.id,
           approved_at: new Date().toISOString()
         });
+        await tkLogAudit(employeeId, startISO, rows[i].time_code_id, 'approve', null, null);
       }
-      // Accrue PTO once per employee per approved period, not per-row
+      // Accrue PTO once per employee per approved week, not per-row
       try{ await dbRpc('accrue_pto', { p_employee_id: employeeId }); }catch(e){ console.error(e); }
       delete myTeamFlagged[employeeId];
       teamTkRenderCurrentCard(scope);
@@ -245,11 +423,11 @@
     if(flaggedDates.length){
       fieldsHtml = flaggedDates.map(function(iso){
         return '<div style="margin-bottom:10px;"><label class="field-label">' + formatDate(iso) + '</label>'
-          + '<input type="text" class="field-input" id="myteam-note-' + employeeId + '-' + iso + '" placeholder="Reason for returning this entry"></div>';
+          + '<input type="text" class="field-input" id="myteam-note-' + employeeId + '-' + iso + '" placeholder="Reason for returning this date"></div>';
       }).join('');
     } else {
       fieldsHtml = '<div style="margin-bottom:10px;"><label class="field-label">Note for this submission</label>'
-        + '<input type="text" class="field-input" id="myteam-note-' + employeeId + '-general" placeholder="Reason for returning this period"></div>';
+        + '<input type="text" class="field-input" id="myteam-note-' + employeeId + '-general" placeholder="Reason for returning this week"></div>';
     }
 
     panel.innerHTML = '<div class="myteam-return-box">'
@@ -271,20 +449,21 @@
           var iso = flaggedDates[i];
           var noteEl = document.getElementById('myteam-note-' + employeeId + '-' + iso);
           var note = noteEl ? noteEl.value : '';
-          var existing = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=eq.' + iso + '&select=id');
-          if(existing.length){
-            await dbWrite('time_entries?id=eq.' + existing[0].id, 'PATCH', {
+          var existing = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=eq.' + iso + '&select=id,time_code_id');
+          for(var e=0;e<existing.length;e++){
+            await dbWrite('time_entries?id=eq.' + existing[e].id, 'PATCH', {
               status: 'rejected',
               notes: formatDate(iso) + ': ' + note,
               approved_by: session.user.id,
               approved_at: new Date().toISOString()
             });
+            await tkLogAudit(employeeId, startISO, existing[e].time_code_id, 'return', [{ field:'status', oldVal:'submitted', newVal:'rejected' }], note);
           }
         }
       } else {
         var noteEl2 = document.getElementById('myteam-note-' + employeeId + '-general');
         var note2 = noteEl2 ? noteEl2.value : '';
-        var rows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=id');
+        var rows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=id,time_code_id');
         for(var j=0;j<rows.length;j++){
           await dbWrite('time_entries?id=eq.' + rows[j].id, 'PATCH', {
             status: 'rejected',
@@ -292,6 +471,7 @@
             approved_by: session.user.id,
             approved_at: new Date().toISOString()
           });
+          await tkLogAudit(employeeId, startISO, rows[j].time_code_id, 'return', [{ field:'status', oldVal:'submitted', newVal:'rejected' }], note2);
         }
       }
       delete myTeamFlagged[employeeId];
@@ -303,182 +483,101 @@
   }
 
 
-  async function tkGetProjects(){
-    if(TK_PROJECTS_CACHE){ return TK_PROJECTS_CACHE; }
-    try{
-      TK_PROJECTS_CACHE = await dbRequest('projects?active=eq.true&select=id,name&order=name.asc');
-    }catch(e){ TK_PROJECTS_CACHE = []; console.error(e); }
-    return TK_PROJECTS_CACHE;
-  }
-
-  function tkHoursFromTimes(startVal, endVal){
-    if(!startVal || !endVal){ return null; }
-    var sParts = startVal.split(':'); var eParts = endVal.split(':');
-    var sMin = parseInt(sParts[0],10)*60 + parseInt(sParts[1],10);
-    var eMin = parseInt(eParts[0],10)*60 + parseInt(eParts[1],10);
-    if(eMin <= sMin){ return 'error'; }
-    var rawHours = Math.round(((eMin - sMin) / 60) * 100) / 100;
-    // Demo placeholder: flat 30-min lunch deduction on exactly an 8hr shift.
-    // Real lunch/break rules are unknown until client scope is confirmed —
-    // this is a stand-in, not a policy.
-    if(rawHours === 8){ return 7.5; }
-    return rawHours;
-  }
-
-  // ---- Shared period loader: editable=true for Current Period, false for History.
-  //      showNav=true shows Prev/Next arrows (Current Period); false hides them
-  //      because History is driven by year/period dropdowns instead.
-  async function loadTkPeriod(containerId, offset, editable, showNav){
+  // ---- Shared week loader: editable=true for Current week, false for History.
+  //      showNav=true shows Prev/Next arrows (Current week); false hides them
+  //      because History is driven by year/week dropdowns instead.
+  async function loadTkWeek(containerId, offset, editable, showNav){
     if(showNav === undefined){ showNav = editable; }
     var container = document.getElementById(containerId);
     var session = getSession();
     if(!session || !session.user){ return; }
-    var bounds = tkPeriodBounds(offset);
+    var bounds = tkWeekBounds(offset);
     var startISO = tkDateToISO(bounds.start);
     var endISO = tkDateToISO(bounds.end);
-    var projects = await tkGetProjects();
+    var timeCodes = await tkGetTimeCodes();
 
     try{
-      var rows = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
-      var byDate = {};
-      rows.forEach(function(r){ byDate[r.work_date] = r; });
+      var entries = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
+      var rows = tkSortRowsByCodeOrder(Object.values(tkGroupEntriesByCode(entries)), timeCodes);
+      var days = tkWeekDays(bounds.start);
 
-      var days = [];
-      for(var i=0;i<14;i++){
-        days.push(new Date(bounds.start.getTime() + i*TK_DAY_MS));
-      }
-
-      // Current Period: only the period containing today is actually editable.
-      // Future periods are viewable (so people can see what's coming) but
-      // locked for entry until that period arrives. History stays read-only
+      // Current week: only the week containing today is actually editable.
+      // Future weeks are viewable (so people can see what's coming) but
+      // locked for entry until that week arrives. History stays read-only
       // regardless (editable param is false for History from the start).
       var todayOffset = tkOffsetForToday();
-      var isFuturePeriod = editable && offset > todayOffset;
-      var gridEditable = editable && !isFuturePeriod;
+      var isFutureWeek = editable && offset > todayOffset;
+      var gridEditable = editable && !isFutureWeek;
+
+      if(gridEditable && rows.length === 0){
+        rows = [{ time_code_id: '', byDate: {} }]; // one blank row by default on a brand-new week
+      }
 
       var navHtml = '';
       if(showNav){
-        var showPrev = offset > todayOffset; // only appears once they've moved forward past today's period
+        var showPrev = offset > todayOffset; // only appears once they've moved forward past today's week
         var showToday = offset !== todayOffset;
         navHtml = '<div class="tk-period-nav">'
-          + (showPrev ? '<button class="tk-period-nav-btn" onclick="tkNavPeriod(\'' + containerId + '\',' + (editable?1:0) + ',-1)">&larr; Prev</button>' : '')
-          + (showToday ? '<button class="tk-period-nav-btn" onclick="tkGoToCurrentPeriod(\'' + containerId + '\')">Today</button>' : '')
-          + '<button class="tk-period-nav-btn" onclick="tkNavPeriod(\'' + containerId + '\',' + (editable?1:0) + ',1)">Next &rarr;</button>'
+          + (showPrev ? '<button class="tk-period-nav-btn" onclick="tkNavWeek(\'' + containerId + '\',' + (editable?1:0) + ',-1)">&larr; Prev</button>' : '')
+          + (showToday ? '<button class="tk-period-nav-btn" onclick="tkGoToCurrentWeek(\'' + containerId + '\')">Today</button>' : '')
+          + '<button class="tk-period-nav-btn" onclick="tkNavWeek(\'' + containerId + '\',' + (editable?1:0) + ',1)">Next &rarr;</button>'
           + '</div>';
       }
 
+      var idBase = containerId + '-grid';
+      var tableHtml = tkRenderGridTable(rows, days, timeCodes, { editable: gridEditable, rowIdBase: idBase });
+      var weekTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
+
       var html = '<div class="tk-entry-card">'
         + '<div class="tk-period-header">'
-        + '<div><div class="tk-period-label">Pay Period ' + tkPeriodNumber(offset) + (isFuturePeriod ? ' <span class="tk-status-pill draft" style="margin-left:6px;">Upcoming — view only</span>' : '') + '</div>'
+        + '<div><div class="tk-period-label">Week ' + tkWeekNumber(offset) + (isFutureWeek ? ' <span class="tk-status-pill draft" style="margin-left:6px;">Upcoming — view only</span>' : '') + '</div>'
         + '<div class="tk-period-dates">' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div></div>'
         + navHtml
         + '</div>'
-        + '<table class="tk-grid-table"><thead><tr>'
-        + '<th>Day / Date</th><th>Start</th><th>Stop</th><th>Project</th><th>Status</th><th>Hours</th>'
-        + '</tr></thead><tbody>';
-
-      var weekTotals = [0,0];
-      days.forEach(function(d, idx){
-        var iso = tkDateToISO(d);
-        var row = byDate[iso];
-        var weekIdx = idx < 7 ? 0 : 1;
-        var dayLabel = d.toLocaleDateString('en-US', { weekday:'long' }) + ', ' + formatDate(iso);
-        var earningType = row && row.earning_type ? row.earning_type : 'regular';
-        var isLockedType = row && (row.earning_type === 'pto'); // PTO rows come from the PTO Request flow, not hand-edited here
-        var rowClass = (idx === 6) ? 'tk-week-divider' : '';
-        if(isLockedType){ rowClass += ' tk-day-pto'; }
-
-        var startVal = row && row.day_start ? row.day_start.slice(0,5) : '';
-        var endVal = row && row.day_end ? row.day_end.slice(0,5) : '';
-        var projectVal = row && row.project_id ? row.project_id : '';
-        var hours = row && row.hours != null ? row.hours : 0;
-        weekTotals[weekIdx] += hours;
-
-        var rowEditable = gridEditable && !isLockedType;
-        var inputAttrs = rowEditable ? '' : 'disabled';
-
-        var projectSelect = '<select class="tk-grid-input" id="tkg-proj-' + iso + '" ' + (rowEditable ? '' : 'disabled') + '>'
-          + '<option value="">—</option>'
-          + projects.map(function(p){ return '<option value="' + p.id + '"' + (p.id === projectVal ? ' selected' : '') + '>' + p.name + '</option>'; }).join('')
-          + '</select>';
-
-        var statusOptions = earningType === 'overtime'
-          ? '<option value="overtime" selected>Overtime (system-assigned)</option>'
-          : TK_SELECTABLE_TYPES.map(function(t){ return '<option value="' + t + '"' + (t === earningType ? ' selected' : '') + '>' + TK_TYPE_LABELS[t] + '</option>'; }).join('');
-        var statusSelect = '<select class="tk-grid-input" id="tkg-type-' + iso + '" ' + (rowEditable && earningType !== 'overtime' ? '' : 'disabled') + '>'
-          + statusOptions
-          + '</select>';
-
-        var startCell = rowEditable
-          ? '<input type="time" class="tk-grid-input" id="tkg-start-' + iso + '" value="' + startVal + '" onchange="tkRecalcRow(\'' + iso + '\')">'
-            + '<button class="tk-now-btn" type="button" onclick="tkFillNow(\'' + iso + '\',\'start\')" title="Fill current time">Now</button>'
-          : '<input type="time" class="tk-grid-input" id="tkg-start-' + iso + '" value="' + startVal + '" disabled>';
-
-        var endCell = rowEditable
-          ? '<input type="time" class="tk-grid-input" id="tkg-end-' + iso + '" value="' + endVal + '" onchange="tkRecalcRow(\'' + iso + '\')">'
-            + '<button class="tk-now-btn" type="button" onclick="tkFillNow(\'' + iso + '\',\'end\')" title="Fill current time">Now</button>'
-          : '<input type="time" class="tk-grid-input" id="tkg-end-' + iso + '" value="' + endVal + '" disabled>';
-
-        html += '<tr class="' + rowClass + '" data-date="' + iso + '">'
-          + '<td>' + dayLabel + (row && row.status === 'approved' ? ' <span class="tk-status-pill approved" style="margin-left:6px;">Approved</span>' : '') + '</td>'
-          + '<td><div class="tk-time-cell">' + startCell + '</div></td>'
-          + '<td><div class="tk-time-cell">' + endCell + '</div></td>'
-          + '<td>' + projectSelect + '</td>'
-          + '<td>' + statusSelect + '</td>'
-          + '<td><span class="tk-hours-cell" id="tkg-hours-' + iso + '">' + (hours || '—') + '</span><div class="tk-grid-row-error" id="tkg-error-' + iso + '"></div></td>'
-          + '</tr>';
-      });
-
-      html += '</tbody></table>'
-        + '<div class="tk-grid-footer">'
-        + '<div class="tk-grid-footer-item">Week 1: <span>' + weekTotals[0].toFixed(2) + ' hrs</span></div>'
-        + '<div class="tk-grid-footer-item">Week 2: <span>' + weekTotals[1].toFixed(2) + ' hrs</span></div>'
-        + '<div class="tk-grid-footer-item">Total: <span>' + (weekTotals[0]+weekTotals[1]).toFixed(2) + ' hrs</span></div>'
-        + '</div>';
+        + tableHtml
+        + (gridEditable ? '' : '<div class="tk-grid-footer"><div class="tk-grid-footer-item">Week Total: <span>' + weekTotal.toFixed(2) + ' hrs</span></div></div>')
+        + '<div id="tkg-missing-pto-panel"></div>';
 
       if(gridEditable){
         html += '<div class="tk-grid-actions">'
           + '<div class="login-error" id="tkg-save-error" style="margin-top:0;flex:1;"></div>'
-          + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="saveTkPeriod(\'' + startISO + '\',\'' + endISO + '\')">Save Period</button>'
+          + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="saveTkWeek(\'' + startISO + '\',\'' + endISO + '\',\'' + containerId + '\')">Save Week</button>'
           + '</div>';
       }
-
       html += '</div>';
       container.innerHTML = html;
+
+      var tbody = document.getElementById(idBase + '-tbody');
+      if(tbody){
+        tbody.dataset.days = JSON.stringify(days.map(tkDateToISO));
+        tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label }; }));
+      }
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load timekeeping</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
   }
 
-  function tkFillNow(iso, which){
-    var el = document.getElementById('tkg-' + which + '-' + iso);
-    if(!el || el.disabled){ return; }
-    var now = new Date();
-    el.value = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-    tkRecalcRow(iso);
+  function tkNavWeek(containerId, editableFlag, dir){
+    // Only Current week uses this now — History is driven entirely by
+    // the year/week dropdowns (initTkHistory / tkHistoryWeekChanged).
+    tkCurrentWeekOffset += dir;
+    loadTkWeek(containerId, tkCurrentWeekOffset, true);
   }
 
-  function tkNavPeriod(containerId, editableFlag, dir){
-    // Only Current Period uses this now — History is driven entirely by
-    // the year/period dropdowns (initTkHistory / tkHistoryPeriodChanged).
-    tkCurrentPeriodOffset += dir;
-    loadTkPeriod(containerId, tkCurrentPeriodOffset, true);
+  function tkGoToCurrentWeek(containerId){
+    tkCurrentWeekOffset = tkOffsetForToday();
+    loadTkWeek(containerId, tkCurrentWeekOffset, true);
   }
 
-  function tkGoToCurrentPeriod(containerId){
-    tkCurrentPeriodOffset = tkOffsetForToday();
-    loadTkPeriod(containerId, tkCurrentPeriodOffset, true);
-  }
-
-  // ---- History: year + period dropdowns drive which period's grid renders ----
-  function tkPeriodsForYear(year){
-    // Returns offsets for every period whose start date falls in the given year
+  // ---- History: year + week dropdowns drive which week's grid renders ----
+  function tkWeeksForYear(year){
+    // Returns offsets for every week whose start date falls in the given year
     var list = [];
-    var o = -12; // Period 1 (1/4/2026)
+    var o = 0; // Week 1 (1/5/2026)
     var todayOffset = tkOffsetForToday();
-    while(o <= todayOffset + 26){ // generous upper bound so future years resolve too
-      var b = tkPeriodBounds(o);
+    while(o <= todayOffset + 53){ // generous upper bound so future years resolve too
+      var b = tkWeekBounds(o);
       if(b.start.getFullYear() === year){ list.push(o); }
       if(b.start.getFullYear() > year){ break; }
       o++;
@@ -489,7 +588,7 @@
   function initTkHistory(){
     var container = document.getElementById('tk-history');
     var todayOffset = tkOffsetForToday();
-    var currentYear = tkPeriodBounds(todayOffset).start.getFullYear();
+    var currentYear = tkWeekBounds(todayOffset).start.getFullYear();
     var years = [currentYear]; // demo data only spans this year so far
 
     container.innerHTML = '<div class="tk-entry-card" style="margin-bottom:16px;">'
@@ -497,152 +596,201 @@
       + '<div><label class="field-label" for="tkh-year">Year</label><select id="tkh-year" class="field-input" onchange="tkHistoryYearChanged()">'
       + years.map(function(y){ return '<option value="' + y + '">' + y + '</option>'; }).join('')
       + '</select></div>'
-      + '<div><label class="field-label" for="tkh-period">Pay Period</label><select id="tkh-period" class="field-input" onchange="tkHistoryPeriodChanged()"></select></div>'
+      + '<div><label class="field-label" for="tkh-week">Week</label><select id="tkh-week" class="field-input" onchange="tkHistoryWeekChanged()"></select></div>'
       + '</div>'
       + '</div>'
       + '<div id="tkh-grid-wrap"></div>';
 
-    tkPopulateHistoryPeriodOptions(currentYear);
-    tkHistoryPeriodOffset = todayOffset; // default to most recent period on load
-    var periodSelect = document.getElementById('tkh-period');
-    periodSelect.value = String(todayOffset);
-    loadTkPeriod('tkh-grid-wrap', todayOffset, false, false);
+    tkPopulateHistoryWeekOptions(currentYear);
+    tkHistoryWeekOffset = todayOffset; // default to most recent week on load
+    var weekSelect = document.getElementById('tkh-week');
+    weekSelect.value = String(todayOffset);
+    loadTkWeek('tkh-grid-wrap', todayOffset, false, false);
   }
 
-  function tkPopulateHistoryPeriodOptions(year){
-    var offsets = tkPeriodsForYear(year);
-    var select = document.getElementById('tkh-period');
+  function tkPopulateHistoryWeekOptions(year){
+    var offsets = tkWeeksForYear(year);
+    var select = document.getElementById('tkh-week');
     select.innerHTML = offsets.map(function(o){
-      var b = tkPeriodBounds(o);
-      return '<option value="' + o + '">Period ' + tkPeriodNumber(o) + ' (' + formatDate(tkDateToISO(b.start)) + ' – ' + formatDate(tkDateToISO(b.end)) + ')</option>';
+      var b = tkWeekBounds(o);
+      return '<option value="' + o + '">Week ' + tkWeekNumber(o) + ' (' + formatDate(tkDateToISO(b.start)) + ' – ' + formatDate(tkDateToISO(b.end)) + ')</option>';
     }).join('');
   }
 
   function tkHistoryYearChanged(){
     var year = parseInt(document.getElementById('tkh-year').value, 10);
-    tkPopulateHistoryPeriodOptions(year);
-    tkHistoryPeriodChanged();
+    tkPopulateHistoryWeekOptions(year);
+    tkHistoryWeekChanged();
   }
 
-  function tkHistoryPeriodChanged(){
-    var offset = parseInt(document.getElementById('tkh-period').value, 10);
-    tkHistoryPeriodOffset = offset;
-    loadTkPeriod('tkh-grid-wrap', offset, false, false);
+  function tkHistoryWeekChanged(){
+    var offset = parseInt(document.getElementById('tkh-week').value, 10);
+    tkHistoryWeekOffset = offset;
+    loadTkWeek('tkh-grid-wrap', offset, false, false);
   }
 
-  function tkRecalcRow(iso){
-    var startEl = document.getElementById('tkg-start-' + iso);
-    var endEl = document.getElementById('tkg-end-' + iso);
-    var hoursEl = document.getElementById('tkg-hours-' + iso);
-    var errorEl = document.getElementById('tkg-error-' + iso);
-    if(!startEl || !endEl){ return; }
-    errorEl.textContent = '';
-    startEl.classList.remove('tk-input-error');
-    endEl.classList.remove('tk-input-error');
-
-    var result = tkHoursFromTimes(startEl.value, endEl.value);
-    if(result === 'error'){
-      errorEl.textContent = 'Stop must be after Start.';
-      startEl.classList.add('tk-input-error');
-      endEl.classList.add('tk-input-error');
-      hoursEl.textContent = '—';
-      hoursEl.dataset.invalid = '1';
-    } else {
-      hoursEl.textContent = result == null ? '—' : result;
-      delete hoursEl.dataset.invalid;
-    }
-  }
-
-  async function saveTkPeriod(startISO, endISO){
+  async function saveTkWeek(startISO, endISO, containerId){
     var session = getSession();
     var saveErrorEl = document.getElementById('tkg-save-error');
-    saveErrorEl.textContent = '';
+    if(saveErrorEl){ saveErrorEl.textContent = ''; }
+    var missingPtoPanel = document.getElementById('tkg-missing-pto-panel');
+    if(missingPtoPanel){ missingPtoPanel.innerHTML = ''; }
 
-    var rows = document.querySelectorAll('#tk-current tr[data-date]');
-    var hasError = false;
+    var gridIdBase = containerId + '-grid';
+    var timeCodes = await tkGetTimeCodes();
+    var vacation = tkVacationCode(timeCodes);
+    var codesById = {};
+    timeCodes.forEach(function(c){ codesById[c.id] = c; });
 
-    rows.forEach(function(tr){
-      var iso = tr.dataset.date;
-      var hoursEl = document.getElementById('tkg-hours-' + iso);
-      if(hoursEl && hoursEl.dataset.invalid){ hasError = true; }
+    var rowEls = document.querySelectorAll('#' + gridIdBase + '-tbody tr[data-rowid]');
+    var days = tkWeekDays(new Date(startISO + 'T00:00:00'));
+
+    // Block the save if any row has hours entered but no Time Code picked —
+    // otherwise those hours would silently be dropped rather than saved.
+    var codelessButHasHours = false;
+    rowEls.forEach(function(tr){
+      var codeSel = document.getElementById('tkg-code-' + tr.dataset.rowid);
+      if(codeSel && !codeSel.value){
+        days.forEach(function(d){
+          var cellEl = document.getElementById('tkg-hours-' + tr.dataset.rowid + '-' + tkDateToISO(d));
+          if(cellEl && cellEl.value !== '' && parseFloat(cellEl.value) > 0){ codelessButHasHours = true; }
+        });
+      }
     });
-
-    if(hasError){
-      saveErrorEl.textContent = 'Fix invalid Start/Stop times before saving (Stop must be after Start).';
+    if(codelessButHasHours){
+      if(saveErrorEl){ saveErrorEl.textContent = 'Select a Time Code for every row that has hours entered.'; }
       return;
     }
 
-    var payload = [];
-    rows.forEach(function(tr){
-      var iso = tr.dataset.date;
-      var startEl = document.getElementById('tkg-start-' + iso);
-      var endEl = document.getElementById('tkg-end-' + iso);
-      var projEl = document.getElementById('tkg-proj-' + iso);
-      var typeEl = document.getElementById('tkg-type-' + iso);
-      if(!startEl || startEl.disabled){ return; } // skip locked rows (e.g. PTO from request flow), untouched
-      if(!startEl.value && !endEl.value){ return; } // skip empty days
-      var hoursResult = tkHoursFromTimes(startEl.value, endEl.value);
-      if(hoursResult === 'error' || hoursResult == null){ return; }
-      payload.push({
-        work_date: iso,
-        day_start: startEl.value,
-        day_end: endEl.value,
-        project_id: projEl.value || null,
-        hours: hoursResult,
-        earning_type: typeEl ? typeEl.value : 'regular'
+    var writes = []; // {action: insert|update|delete, id, work_date, time_code_id, hours, oldHours}
+    var missingPto = []; // Vacation entries with no covering PTO request yet
+
+    rowEls.forEach(function(tr){
+      var rowId = tr.dataset.rowid;
+      var codeSel = document.getElementById('tkg-code-' + rowId);
+      if(!codeSel || !codeSel.value){ return; }
+      var codeId = codeSel.value;
+      var isVacation = !!(vacation && codeId === vacation.id);
+
+      days.forEach(function(d){
+        var iso = tkDateToISO(d);
+        var cellEl = document.getElementById('tkg-hours-' + rowId + '-' + iso);
+        if(!cellEl || cellEl.disabled){ return; }
+        var existingId = cellEl.dataset.entryId || '';
+        var existingHours = cellEl.dataset.entryHours || '';
+        var val = cellEl.value;
+        if(val === existingHours){ return; } // unchanged
+        if(val === '' || parseFloat(val) === 0){
+          if(existingId){ writes.push({ action:'delete', id: existingId, work_date: iso, time_code_id: codeId, oldHours: existingHours }); }
+          return;
+        }
+        if(isVacation && !existingId){
+          missingPto.push({ iso: iso, hours: val });
+          return;
+        }
+        writes.push({ action: existingId ? 'update' : 'insert', id: existingId, work_date: iso, time_code_id: codeId, hours: parseFloat(val), oldHours: existingHours });
       });
     });
 
-    // System determines regular vs overtime: only rows marked 'regular' count
-    // toward the 40hr/week threshold. Other types (PTO/training/travel/
-    // admin/award) are excluded from OT math entirely.
-    var weekRegularTotal = [0,0];
-    payload.forEach(function(p){
-      if(p.earning_type !== 'regular'){ return; }
-      var dayIdx = Math.round((new Date(p.work_date + 'T00:00:00') - new Date(startISO + 'T00:00:00')) / TK_DAY_MS);
-      var weekIdx = dayIdx < 7 ? 0 : 1;
-      weekRegularTotal[weekIdx] += p.hours;
+    if(missingPto.length){
+      renderMissingPtoPanel(missingPto, containerId);
+      if(saveErrorEl){ saveErrorEl.textContent = 'Some Vacation entries need a PTO request before they can be saved (see below).'; }
+      return;
+    }
+
+    // System determines regular vs overtime for billable (gov_contract /
+    // commercial_customer) time codes only — indirect codes (B&P, BD,
+    // Holiday, Vacation, etc.) never generate OT. Whole-day granularity: a
+    // row that pushes the week's billable regular hours past 40 is flagged
+    // overtime in full, same rule as the old biweekly system used per-week.
+    writes.sort(function(a,b){ return a.work_date < b.work_date ? -1 : (a.work_date > b.work_date ? 1 : 0); });
+    var runningBillableHours = 0;
+    writes.forEach(function(w){
+      if(w.action === 'delete'){ w.earning_type = null; return; }
+      var code = codesById[w.time_code_id];
+      var billable = code && (code.category === 'gov_contract' || code.category === 'commercial_customer');
+      if(!billable){ w.earning_type = null; return; }
+      var before = runningBillableHours;
+      var after = before + w.hours;
+      w.earning_type = (before >= 40 || after > 40) ? 'overtime' : 'regular';
+      runningBillableHours = after;
     });
 
     try{
-      var runningWeekHours = [0,0];
-      for(var i=0;i<payload.length;i++){
-        var p = payload[i];
-        var dayIdx = Math.round((new Date(p.work_date + 'T00:00:00') - new Date(startISO + 'T00:00:00')) / TK_DAY_MS);
-        var weekIdx = dayIdx < 7 ? 0 : 1;
-        var finalType = p.earning_type;
-
-        if(p.earning_type === 'regular'){
-          var before = runningWeekHours[weekIdx];
-          var after = before + p.hours;
-          if(before >= 40){
-            finalType = 'overtime'; // entire day past the 40hr line
-          } else if(after > 40){
-            finalType = 'overtime'; // day pushes the week past 40 — flagged OT (whole-day granularity, no hour-splitting)
-          }
-          runningWeekHours[weekIdx] = after;
-        }
-
-        var existing = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=eq.' + p.work_date + '&select=id');
-        var body = {
-          employee_id: session.user.id,
-          work_date: p.work_date,
-          day_start: p.day_start,
-          day_end: p.day_end,
-          project_id: p.project_id,
-          hours: p.hours,
-          earning_type: finalType,
-          status: 'submitted'
-        };
-        if(existing.length){
-          await dbWrite('time_entries?id=eq.' + existing[0].id, 'PATCH', body);
+      for(var i=0;i<writes.length;i++){
+        var w = writes[i];
+        if(w.action === 'delete'){
+          await dbWrite('time_entries?id=eq.' + w.id, 'DELETE');
+          await tkLogAudit(session.user.id, startISO, w.time_code_id, 'edit', [{ field:'hours', oldVal: w.oldHours, newVal: null }]);
+        } else if(w.action === 'update'){
+          await dbWrite('time_entries?id=eq.' + w.id, 'PATCH', { hours: w.hours, earning_type: w.earning_type, status: 'submitted' });
+          await tkLogAudit(session.user.id, startISO, w.time_code_id, 'edit', [{ field:'hours', oldVal: w.oldHours, newVal: w.hours }]);
         } else {
-          await dbWrite('time_entries', 'POST', body);
+          await dbWrite('time_entries', 'POST', {
+            employee_id: session.user.id,
+            work_date: w.work_date,
+            time_code_id: w.time_code_id,
+            hours: w.hours,
+            earning_type: w.earning_type,
+            status: 'submitted'
+          });
+          await tkLogAudit(session.user.id, startISO, w.time_code_id, 'submit', [{ field:'hours', oldVal: null, newVal: w.hours }]);
         }
       }
-      loadTkPeriod('tk-current', tkCurrentPeriodOffset, true);
+      loadTkWeek(containerId, tkCurrentWeekOffset, true);
     }catch(e){
-      saveErrorEl.textContent = 'Could not save period — try again.';
+      if(saveErrorEl){ saveErrorEl.textContent = 'Could not save week — try again.'; }
+      console.error(e);
+    }
+  }
+
+  function renderMissingPtoPanel(missingPto, containerId){
+    var panel = document.getElementById('tkg-missing-pto-panel');
+    if(!panel){ return; }
+    panel.innerHTML = '<div class="myteam-return-box">'
+      + '<div class="tk-section-title">Vacation Needs a PTO Request</div>'
+      + '<div class="tk-empty" style="padding:0 0 10px;">These Vacation entries don\'t have an approved or pending PTO request covering them yet. Submit a request for each date to continue, or clear the entry and save without it.</div>'
+      + missingPto.map(function(m, idx){
+          return '<div style="display:flex;gap:10px;align-items:end;margin-bottom:10px;">'
+            + '<div><label class="field-label">' + formatDate(m.iso) + '</label><input type="text" inputmode="decimal" class="field-input" id="mpto-hours-' + idx + '" value="' + m.hours + '" style="width:80px;"></div>'
+            + '<button class="btn btn-primary" style="width:auto;padding:9px 16px;" onclick="submitInlinePtoRequest(\'' + m.iso + '\',' + idx + ',\'' + containerId + '\')">Submit PTO Request</button>'
+            + '<div class="login-error" id="mpto-error-' + idx + '" style="margin-top:0;"></div>'
+            + '</div>';
+        }).join('')
+      + '</div>';
+  }
+
+  async function submitInlinePtoRequest(iso, idx, containerId){
+    var hoursEl = document.getElementById('mpto-hours-' + idx);
+    var errorEl = document.getElementById('mpto-error-' + idx);
+    var hours = parseFloat(hoursEl.value);
+    errorEl.textContent = '';
+    if(!hours || hours <= 0){ errorEl.textContent = 'Enter valid hours.'; return; }
+
+    var session = getSession();
+    if(!hoursEl.dataset.confirmedAnyway){
+      var warning = await tkCheckPtoBalance(hours);
+      if(warning){
+        errorEl.innerHTML = warning + ' <button class="tk-now-btn" type="button" onclick="submitInlinePtoRequest(\'' + iso + '\',' + idx + ',\'' + containerId + '\')">Submit Anyway</button>';
+        hoursEl.dataset.confirmedAnyway = '1';
+        return;
+      }
+    }
+    try{
+      var timeCodes = await tkGetTimeCodes();
+      var vacation = tkVacationCode(timeCodes);
+      if(!vacation){ errorEl.textContent = 'Vacation time code is not configured — contact an admin.'; return; }
+      await dbWrite('time_entries', 'POST', {
+        employee_id: session.user.id,
+        work_date: iso,
+        time_code_id: vacation.id,
+        hours: hours,
+        status: 'pending'
+      });
+      await tkLogAudit(session.user.id, iso, vacation.id, 'submit', [{ field:'hours', oldVal:null, newVal:hours }], 'Inline PTO request submitted from time card');
+      loadTkWeek(containerId, tkCurrentWeekOffset, true);
+    }catch(e){
+      errorEl.textContent = 'Could not submit request — try again.';
       console.error(e);
     }
   }
@@ -667,6 +815,7 @@
         + '<div class="tk-pto-form-grid">'
         + '<div><label class="field-label" for="pto-start">Start Date</label><input type="date" id="pto-start" class="field-input"></div>'
         + '<div><label class="field-label" for="pto-end">End Date</label><input type="date" id="pto-end" class="field-input"></div>'
+        + '<div><label class="field-label" for="pto-hours-per-day">Hours/day</label><input type="text" inputmode="decimal" id="pto-hours-per-day" class="field-input" value="8" style="width:90px;"></div>'
         + '<button class="btn btn-primary" style="width:auto;padding:12px 20px;white-space:nowrap;" onclick="submitPtoRequest()">Submit Request</button>'
         + '</div>'
         + '<div class="login-error" id="pto-request-error"></div>'
@@ -682,9 +831,12 @@
   }
 
   async function tkRenderUpcomingPtoTable(employeeId){
+    var timeCodes = await tkGetTimeCodes();
+    var vacation = tkVacationCode(timeCodes);
+    if(!vacation){ return '<div class="tk-empty">Vacation time code not configured.</div>'; }
     var todayISO = new Date().toISOString().slice(0,10);
-    var pendingRows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&earning_type=eq.pto&status=eq.pending&order=work_date.asc&select=id,work_date,hours,status');
-    var approvedUpcoming = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&earning_type=eq.pto&status=eq.approved&work_date=gte.' + todayISO + '&order=work_date.asc&select=id,work_date,hours,status');
+    var pendingRows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&time_code_id=eq.' + vacation.id + '&status=eq.pending&order=work_date.asc&select=id,work_date,hours,status');
+    var approvedUpcoming = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&time_code_id=eq.' + vacation.id + '&status=eq.approved&work_date=gte.' + todayISO + '&order=work_date.asc&select=id,work_date,hours,status');
     var rows = pendingRows.concat(approvedUpcoming).sort(function(a,b){ return a.work_date < b.work_date ? -1 : 1; });
 
     if(!rows.length){
@@ -709,10 +861,32 @@
     }
   }
 
-  async function tkGetTotalPendingPtoHours(excludeNew){
+  async function tkGetTotalPendingPtoHours(){
     var session = getSession();
-    var rows = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&earning_type=eq.pto&status=eq.pending&select=hours');
+    var timeCodes = await tkGetTimeCodes();
+    var vacation = tkVacationCode(timeCodes);
+    if(!vacation){ return 0; }
+    var rows = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&time_code_id=eq.' + vacation.id + '&status=eq.pending&select=hours');
     return rows.reduce(function(sum,r){ return sum + (parseFloat(r.hours)||0); }, 0);
+  }
+
+  // Shared negative-balance warning, used by both the main Request PTO form
+  // and the inline "submit a PTO request now" prompt triggered from the
+  // time card's Vacation guard. Per user's call: negative-balance requests
+  // are still allowed via "Submit Anyway" — no hard block — pending a
+  // policy decision from the team.
+  async function tkCheckPtoBalance(requestedHours){
+    var session = getSession();
+    try{
+      var profRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=pto_balance_hours');
+      var currentBalance = profRows.length ? (parseFloat(profRows[0].pto_balance_hours) || 0) : 0;
+      var existingPending = await tkGetTotalPendingPtoHours();
+      var resultingBalance = currentBalance - existingPending - requestedHours;
+      if(resultingBalance < 0){
+        return 'This request (' + requestedHours.toFixed(1) + ' hrs) would put your PTO balance at ' + resultingBalance.toFixed(1) + ' hrs — below zero.';
+      }
+    }catch(e){ console.error(e); } // if the check itself fails, fall through and let submission proceed
+    return null;
   }
 
   async function submitPtoRequest(skipNegativeCheck){
@@ -720,6 +894,7 @@
     var session = getSession();
     var startVal = document.getElementById('pto-start').value;
     var endVal = document.getElementById('pto-end').value;
+    var hoursPerDayVal = parseFloat(document.getElementById('pto-hours-per-day').value);
     errorEl.textContent = '';
     errorEl.innerHTML = '';
 
@@ -731,46 +906,45 @@
       errorEl.textContent = 'End date must be on or after start date.';
       return;
     }
+    if(!hoursPerDayVal || hoursPerDayVal <= 0){
+      errorEl.textContent = 'Enter valid hours per day.';
+      return;
+    }
 
     var d = new Date(startVal + 'T00:00:00');
     var end = new Date(endVal + 'T00:00:00');
     var requestedDays = 0;
     while(d <= end){ requestedDays++; d = new Date(d.getTime() + TK_DAY_MS); }
-    var requestedHours = requestedDays * 8;
+    var requestedHours = requestedDays * hoursPerDayVal;
 
     if(!skipNegativeCheck){
-      try{
-        var profRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=pto_balance_hours');
-        var currentBalance = profRows.length ? (parseFloat(profRows[0].pto_balance_hours) || 0) : 0;
-        var existingPending = await tkGetTotalPendingPtoHours();
-        var resultingBalance = currentBalance - existingPending - requestedHours;
-
-        if(resultingBalance < 0){
-          errorEl.style.color = 'var(--amber)';
-          errorEl.innerHTML = 'This request (' + requestedHours.toFixed(1) + ' hrs) would put your PTO balance at ' + resultingBalance.toFixed(1) + ' hrs — below zero.'
-            + ' <button class="tk-now-btn" type="button" onclick="submitPtoRequest(true)" style="margin-left:6px;">Submit Anyway</button>';
-          return;
-        }
-      }catch(e){
-        console.error(e); // if the check itself fails, fall through and let submission proceed
+      var warning = await tkCheckPtoBalance(requestedHours);
+      if(warning){
+        errorEl.style.color = 'var(--amber)';
+        errorEl.innerHTML = warning + ' <button class="tk-now-btn" type="button" onclick="submitPtoRequest(true)" style="margin-left:6px;">Submit Anyway</button>';
+        return;
       }
     }
 
     try{
+      var timeCodes = await tkGetTimeCodes();
+      var vacation = tkVacationCode(timeCodes);
+      if(!vacation){ errorEl.textContent = 'Vacation time code is not configured — contact an admin.'; return; }
       var d2 = new Date(startVal + 'T00:00:00');
       var inserts = [];
       while(d2 <= end){
         inserts.push({
           employee_id: session.user.id,
           work_date: tkDateToISO(d2),
-          hours: 8,
-          earning_type: 'pto',
+          time_code_id: vacation.id,
+          hours: hoursPerDayVal,
           status: 'pending'
         });
         d2 = new Date(d2.getTime() + TK_DAY_MS);
       }
       for(var i=0;i<inserts.length;i++){
         await dbWrite('time_entries', 'POST', inserts[i]);
+        await tkLogAudit(session.user.id, inserts[i].work_date, vacation.id, 'submit', [{ field:'hours', oldVal:null, newVal:hoursPerDayVal }]);
       }
       document.getElementById('pto-start').value = '';
       document.getElementById('pto-end').value = '';
@@ -791,22 +965,32 @@
     var currentBalance = parseFloat(prof.pto_balance_hours) || 0;
     var accrualRate = parseFloat(prof.pto_accrual_rate) || 0;
 
-    var bounds = tkPeriodBounds(tkCurrentPeriodOffset);
+    var timeCodes = await tkGetTimeCodes();
+    var vacation = tkVacationCode(timeCodes);
+    var bounds = tkWeekBounds(tkCurrentWeekOffset);
     var startISO = tkDateToISO(bounds.start);
     var endISO = tkDateToISO(bounds.end);
-    var ptoRows = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&earning_type=eq.pto&status=eq.pending&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=hours');
-    var pendingPtoHours = ptoRows.reduce(function(sum,r){ return sum + (parseFloat(r.hours)||0); }, 0);
+    var pendingPtoHours = 0;
+    if(vacation){
+      var ptoRows = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&time_code_id=eq.' + vacation.id + '&status=eq.pending&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=hours');
+      pendingPtoHours = ptoRows.reduce(function(sum,r){ return sum + (parseFloat(r.hours)||0); }, 0);
+    }
     var pendingBalance = currentBalance - pendingPtoHours;
 
     var todayOffset = tkOffsetForToday();
     var yearEnd = new Date(new Date().getFullYear() + '-12-31T00:00:00');
-    var periodsRemaining = 0;
+    var weeksRemaining = 0;
     var cursorOffset = todayOffset;
-    while(tkPeriodBounds(cursorOffset).end <= yearEnd){
-      periodsRemaining++;
+    while(tkWeekBounds(cursorOffset).end <= yearEnd){
+      weeksRemaining++;
       cursorOffset++;
     }
-    var projectedEarn = periodsRemaining * accrualRate;
+    // NOTE: pto_accrual_rate previously meant "hours per (biweekly) pay
+    // period." Periods are now weekly — if that column still holds the old
+    // biweekly rate, this projection will overstate accrual by 2x. Confirm
+    // with payroll/HR whether pto_accrual_rate needs to be halved as part
+    // of this rollout (flagged in ssp-log.md).
+    var projectedEarn = weeksRemaining * accrualRate;
     var projectedTotal = currentBalance + projectedEarn;
 
     return {
@@ -826,7 +1010,11 @@
 
     try{
       var stats = await tkComputePtoStats();
-      var allPtoRows = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&earning_type=eq.pto&order=work_date.desc&select=work_date,hours,status');
+      var timeCodes = await tkGetTimeCodes();
+      var vacation = tkVacationCode(timeCodes);
+      var allPtoRows = vacation
+        ? await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&time_code_id=eq.' + vacation.id + '&order=work_date.desc&select=work_date,hours,status')
+        : [];
 
       var logRows = allPtoRows.length
         ? '<table class="tk-grid-table"><thead><tr><th>Date</th><th>Hours</th><th>Status</th></tr></thead><tbody>'
@@ -840,8 +1028,8 @@
         + '<div class="tk-section-title">PTO Balance</div>'
         + '<div class="tk-pto-balance-grid">'
         + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Current Balance</div><div class="tk-pto-stat-val">' + stats.currentBalance.toFixed(2) + '</div><div class="tk-pto-stat-sub">hours available</div></div>'
-        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Pending Balance</div><div class="tk-pto-stat-val">' + stats.pendingBalance.toFixed(2) + '</div><div class="tk-pto-stat-sub">after current period\'s unapproved PTO</div></div>'
-        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Accrual Rate</div><div class="tk-pto-stat-val">' + stats.accrualRate.toFixed(2) + '</div><div class="tk-pto-stat-sub">hours per pay period</div></div>'
+        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Pending Balance</div><div class="tk-pto-stat-val">' + stats.pendingBalance.toFixed(2) + '</div><div class="tk-pto-stat-sub">after current week\'s unapproved PTO</div></div>'
+        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Accrual Rate</div><div class="tk-pto-stat-val">' + stats.accrualRate.toFixed(2) + '</div><div class="tk-pto-stat-sub">hours per week</div></div>'
         + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Projected by Dec 31</div><div class="tk-pto-stat-val">+' + stats.projectedEarn.toFixed(2) + '</div><div class="tk-pto-stat-sub">projected total: ' + stats.projectedTotal.toFixed(2) + ' hrs</div></div>'
         + '</div>'
         + '</div>'

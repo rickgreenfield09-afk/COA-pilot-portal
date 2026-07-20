@@ -300,11 +300,15 @@
   .tk-period-nav-btn:hover{border-color:var(--teal);color:var(--teal);}
   .tk-period-nav-btn:disabled{opacity:0.4;cursor:default;}
 
-  /* Period grid */
-  .tk-grid-table{width:100%;border-collapse:collapse;}
+  /* Weekly grid (Time Code x Mon-Sun matrix) */
+  .tk-grid-table-wrap{overflow-x:auto;}
+  .tk-grid-table{width:100%;min-width:820px;border-collapse:collapse;}
   .tk-grid-table th{text-align:left;font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--border);}
   .tk-grid-table td{font-size:13px;color:var(--text);padding:8px 10px;border-bottom:1px solid var(--border);}
   .tk-grid-table tr.tk-week-divider td{border-bottom:1px solid var(--teal);}
+  .tk-grid-table th:first-child,.tk-grid-table td:first-child{min-width:180px;}
+  .tk-grid-table td select.tk-grid-input{min-width:64px;}
+  .tk-grid-table tfoot td{border-top:2px solid var(--teal);border-bottom:none;font-weight:600;padding-top:10px;}
   .tk-grid-input{width:100%;background:var(--raised);border:1px solid var(--border);border-radius:4px;padding:6px 8px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;}
   .tk-grid-input:focus{border-color:var(--teal);}
   .tk-grid-input.tk-input-error{border-color:var(--red);}

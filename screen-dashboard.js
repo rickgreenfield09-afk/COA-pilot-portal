@@ -2,8 +2,8 @@
    Home screen (screen-home): greeting header, news, quick time entry,
    shortcut tiles, and the "coming soon" summary cards.
    Depends on app-core.js (getSession, dbRequest, dbWrite, getInitials) and
-   on TK_SELECTABLE_TYPES / TK_TYPE_LABELS from screen-timekeeping.js — load
-   order in index.html keeps this file after screen-timekeeping.js. */
+   on tkGetTimeCodes() from screen-timekeeping.js — load order in index.html
+   keeps this file after screen-timekeeping.js. */
 
   // ---------- Dashboard ----------
   var DASH_NEWS_ITEMS = [
@@ -37,9 +37,9 @@
       var p = rows.length ? rows[0] : {};
       var greetName = p.preferred_name || (p.full_name ? p.full_name.split(' ')[0] : '');
 
-      var projectRows = [];
-      try{ projectRows = await dbRequest('projects?active=eq.true&select=id,name&order=name.asc'); }catch(e){ console.error(e); }
-      var projectOptions = projectRows.map(function(pr){ return '<option value="' + pr.id + '">' + pr.name + '</option>'; }).join('');
+      var timeCodes = [];
+      try{ timeCodes = await tkGetTimeCodes(); }catch(e){ console.error(e); }
+      var timeCodeOptions = timeCodes.map(function(c){ return '<option value="' + c.id + '">' + c.label + '</option>'; }).join('');
 
       var upcomingTravelHtml = '<div class="dash-card-empty">No travel data connected yet.</div>';
       try{ upcomingTravelHtml = await buildUpcomingTravelHtml([session.user.id]); }catch(e){ console.error(e); }
@@ -75,12 +75,10 @@
         + '<div class="dash-card">'
         + '<div class="dash-card-title">Quick Time Entry</div>'
         + '<div class="quick-entry-row">'
-        + '<div><label class="field-label" for="qte-hours">Hours</label><input type="text" inputmode="decimal" id="qte-hours" class="field-input qte-hours-input" maxlength="2" placeholder="8"></div>'
-        + '<div><label class="field-label" for="qte-status">Status</label><select id="qte-status" class="field-input">'
-        + TK_SELECTABLE_TYPES.map(function(t){ return '<option value="' + t + '">' + TK_TYPE_LABELS[t] + '</option>'; }).join('')
-        + '</select></div>'
-        + '<div><label class="field-label" for="qte-project">Project</label><select id="qte-project" class="field-input">'
-        + projectOptions
+        + '<div><label class="field-label" for="qte-hours">Hours</label><input type="text" inputmode="decimal" id="qte-hours" class="field-input qte-hours-input" maxlength="4" placeholder="8"></div>'
+        + '<div><label class="field-label" for="qte-timecode">Time Code</label><select id="qte-timecode" class="field-input">'
+        + '<option value="">Select…</option>'
+        + timeCodeOptions
         + '</select></div>'
         + '<button class="btn btn-primary" onclick="submitQuickTimeEntry()">Log Today</button>'
         + '</div>'
@@ -117,24 +115,32 @@
     var errorEl = document.getElementById('qte-error');
     var session = getSession();
     var hoursVal = document.getElementById('qte-hours').value;
-    var statusVal = document.getElementById('qte-status').value;
-    var projectVal = document.getElementById('qte-project').value;
+    var timeCodeVal = document.getElementById('qte-timecode').value;
     errorEl.textContent = '';
 
     if(!hoursVal || isNaN(parseFloat(hoursVal)) || parseFloat(hoursVal) <= 0){
       errorEl.textContent = 'Enter a valid number of hours.';
       return;
     }
+    if(!timeCodeVal){
+      errorEl.textContent = 'Select a time code.';
+      return;
+    }
 
     try{
-      await dbWrite('time_entries', 'POST', {
-        employee_id: session.user.id,
-        work_date: new Date().toISOString().slice(0,10),
-        hours: parseFloat(hoursVal),
-        earning_type: statusVal,
-        project_id: projectVal || null,
-        status: 'submitted'
-      });
+      var todayISO = new Date().toISOString().slice(0,10);
+      var existing = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=eq.' + todayISO + '&time_code_id=eq.' + timeCodeVal + '&select=id');
+      if(existing.length){
+        await dbWrite('time_entries?id=eq.' + existing[0].id, 'PATCH', { hours: parseFloat(hoursVal), status: 'submitted' });
+      } else {
+        await dbWrite('time_entries', 'POST', {
+          employee_id: session.user.id,
+          work_date: todayISO,
+          time_code_id: timeCodeVal,
+          hours: parseFloat(hoursVal),
+          status: 'submitted'
+        });
+      }
       document.getElementById('qte-hours').value = '';
       loadDashboard();
     }catch(e){

@@ -251,6 +251,69 @@ current behavior) rather than matching the spreadsheet's apparent
 suppression. Flagged in coa_travel_backlog memory to confirm with the
 client which behavior they actually want.
 
+## 2026-07-20 — Timekeeping rebuilt: weekly Time Code matrix + DCAA audit log (AU-2/AU-3, AC-3)
+Replaced the biweekly start/stop-time timekeeping model with a weekly
+Time Code x Mon-Sun matrix per user direction: dropped `day_start`/`day_end`
+and the "Now" fill buttons entirely; time is entered directly in 0.5-hour
+increments (dropdown, no loose minutes); periods changed from 14-day pay
+periods to Monday-Sunday weeks (`TK_WEEK_ANCHOR` = Mon 1/5/2026 = Week 1,
+same "first full week entirely in January" convention the old biweekly
+scheme used for Period 1). Approval/return flows (`teamTkApproveAll`/
+`teamTkSubmitReturn`, screen-timekeeping.js) carry over unchanged in
+substance, just re-pointed at weekly bounds; the per-day Flag toggle moved
+to a day-COLUMN toggle since rows are now Time Codes, not days.
+
+New `time_codes` table replaces `projects`/earning_type as the thing
+selected per row (labor category / customer / CLIN-SLIN / indirect, e.g.
+Bid & Proposal, Business Development, Holiday, Vacation). `earning_type`
+is kept on `time_entries`, now populated only for billable
+(gov_contract/commercial_customer) rows, system-computed regular-vs-
+overtime past 40 billable hrs/week — indirect codes never generate OT.
+
+New `time_card_audit_log` table (DCAA compliance): every submit/edit/
+approve/return writes a row via `tkLogAudit()` (screen-timekeeping.js) —
+employee, week, time code, action, field/old/new value, performed_by/at,
+reason. Append-only from the app's side; no UPDATE/DELETE should ever be
+granted on this table at the DB level.
+
+Vacation/PTO integration (explicit design discussion with user before
+building): Vacation is a normal, selectable Time Code, but linked to the
+existing PTO Request/Balance system — entering Vacation hours on a date
+with no covering pending/approved PTO request blocks that cell's save and
+prompts an inline single-date PTO request (`submitInlinePtoRequest`) with
+editable hours. Per user's explicit calls: (1) PTO requests now support a
+custom "Hours per day" (previously hardcoded to 8), (2) pending Vacation
+entries count toward the day/week total until denied, (3) requests that
+would put the PTO balance negative are still allowed via "Submit Anyway" —
+no hard block — pending an actual policy answer from the team.
+
+Status: Implemented at UI level only (client-side Supabase POC, no RLS).
+Gap/follow-up:
+- Requires user-run Supabase SQL (provided to user, not committed to this
+  repo — no other SQL lives in-repo for this project) to create
+  `time_codes`, `time_card_audit_log`, and alter `time_entries`
+  (drop day_start/day_end, add time_code_id, new unique constraint on
+  employee_id+work_date+time_code_id). Not yet applied as of this entry.
+- `time_card_audit_log` has no RLS/append-only enforcement yet — a direct
+  API call could bypass tkLogAudit() or tamper with existing rows in the
+  current POC. Must be enforced (INSERT-only policy, no UPDATE/DELETE
+  grants) before this satisfies DCAA in any environment with live data.
+- Pre-existing `time_entries` test rows (from before this change) have no
+  `time_code_id` and will render oddly grouped under one blank row in the
+  new matrix — not data-migrated, since this is demo/POC data only
+  (flagged to user; recommend truncating test data before trying the new
+  screen).
+- `pto_accrual_rate` on `profiles` may still represent a biweekly rate;
+  the projection math in `tkComputePtoStats()` now assumes hours/week —
+  needs confirming with payroll/HR before this number is trusted.
+- Old `project_id` column on `time_entries` is no longer written by the
+  app but was not dropped, pending the customer/contract data-model
+  cleanup noted below.
+- BACKLOG (explicitly deferred, not solved this session): unifying
+  `projects`/`gov_contracts`/commercial customers into one real
+  customer/contract/CLIN-SLIN data model — `time_codes.gov_contract_id`
+  is a nullable placeholder link, not a resolved design.
+
 ## 2026-07-16 — Travel Estimate print rebuilt to match spreadsheet groupings (no control impact)
 Rewrote `buildTePrintHtml()` (screen-travel-estimate.js) — previously a
 6-line summary of rolled-up totals only — to mirror the source
