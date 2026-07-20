@@ -53,6 +53,10 @@ Standing guardrails:
 - Auth and credential handling get extra scrutiny
 - Scope creep that bloats any single file gets called out
 - Give patch notes for every new/changed file, for GitHub commit messages
+- UI/frontend changes: do not spin up local servers or browser-test the
+  build yourself. Push the change and let the user verify live after
+  deploy. Static analysis (read-through, no dangling references) is
+  sufficient before calling a UI change done.
 
 Session discipline:
 - Confirm build scope at session start before any code is written

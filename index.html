@@ -96,10 +96,9 @@
       </div>
       <div class="screen" id="screen-timekeeping">
         <div class="subtab-bar">
-          <button class="subtab-btn active" data-tksubtab="current" onclick="switchTkSubtab('current')">Current Period</button>
+          <button class="subtab-btn active" data-tksubtab="current" onclick="switchTkSubtab('current')">Current Week</button>
           <button class="subtab-btn" data-tksubtab="history" onclick="switchTkSubtab('history')">History</button>
-          <button class="subtab-btn" data-tksubtab="ptorequest" onclick="switchTkSubtab('ptorequest')">Request PTO</button>
-          <button class="subtab-btn" data-tksubtab="ptobalance" onclick="switchTkSubtab('ptobalance')">PTO Balance</button>
+          <button class="subtab-btn" data-tksubtab="pto" onclick="switchTkSubtab('pto')">PTO</button>
         </div>
         <div class="tk-subscreen active" id="tk-current">
           <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
@@ -107,10 +106,7 @@
         <div class="tk-subscreen" id="tk-history">
           <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
         </div>
-        <div class="tk-subscreen" id="tk-ptorequest">
-          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
-        </div>
-        <div class="tk-subscreen" id="tk-ptobalance">
+        <div class="tk-subscreen" id="tk-pto">
           <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
         </div>
       </div>

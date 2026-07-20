@@ -32,8 +32,7 @@
     document.getElementById('tk-' + name).classList.add('active');
     if(name === 'current'){ loadTkWeek('tk-current', tkCurrentWeekOffset, true); }
     if(name === 'history'){ initTkHistory(); }
-    if(name === 'ptorequest'){ loadPtoRequest(); }
-    if(name === 'ptobalance'){ loadPtoBalance(); }
+    if(name === 'pto'){ loadPtoTab(); }
   }
 
   // ---- Week math ----
@@ -197,7 +196,7 @@
         return '<td>' + cellHtml + '</td>';
       }).join('');
 
-      var removeBtn = (editable && !hasAnySavedEntry && !rowLocked)
+      var removeBtn = (editable && idx > 0 && !hasAnySavedEntry && !rowLocked)
         ? '<button class="tk-now-btn" type="button" onclick="tkRemoveGridRow(\'' + rowId + '\')" title="Remove row">&minus;</button>'
         : '';
 
@@ -795,67 +794,136 @@
     }
   }
 
-  // ---- PTO Request ----
-  async function loadPtoRequest(){
-    var container = document.getElementById('tk-ptorequest');
+  // ---- PTO (merged Request + Balance: stat row + 75/25 request/gallery split) ----
+  var tkPtoSelectedId = null; // gallery item id shown in detail view; null = the new-request builder
+  var tkPtoDayRowSeq = 0;
+
+  async function loadPtoTab(){
+    var container = document.getElementById('tk-pto');
     var session = getSession();
     if(!session || !session.user){ return; }
 
     try{
       var stats = await tkComputePtoStats();
+      tkPtoSelectedId = null;
       container.innerHTML = '<div class="tk-entry-card">'
-        + '<div class="tk-pto-summary-row" style="margin-bottom:4px;">'
+        + '<div class="tk-pto-summary-row">'
         + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Current Balance</div><div class="tk-pto-stat-val">' + stats.currentBalance.toFixed(2) + '</div></div>'
         + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Pending Balance</div><div class="tk-pto-stat-val">' + stats.pendingBalance.toFixed(2) + '</div></div>'
+        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Accrual Rate</div><div class="tk-pto-stat-val">' + stats.accrualRate.toFixed(2) + '</div><div class="tk-pto-stat-sub">hours per week</div></div>'
         + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Projected by Dec 31</div><div class="tk-pto-stat-val">' + stats.projectedTotal.toFixed(2) + '</div></div>'
         + '</div>'
         + '</div>'
-        + '<div class="tk-entry-card">'
-        + '<div class="tk-section-title">Request PTO</div>'
-        + '<div class="tk-pto-form-grid">'
-        + '<div><label class="field-label" for="pto-start">Start Date</label><input type="date" id="pto-start" class="field-input"></div>'
-        + '<div><label class="field-label" for="pto-end">End Date</label><input type="date" id="pto-end" class="field-input"></div>'
-        + '<div><label class="field-label" for="pto-hours-per-day">Hours/day</label><input type="text" inputmode="decimal" id="pto-hours-per-day" class="field-input" value="8" style="width:90px;"></div>'
-        + '<button class="btn btn-primary" style="width:auto;padding:12px 20px;white-space:nowrap;" onclick="submitPtoRequest()">Submit Request</button>'
-        + '</div>'
-        + '<div class="login-error" id="pto-request-error"></div>'
-        + '</div>'
-        + '<div class="tk-entry-card">'
-        + '<div class="tk-section-title">Pending &amp; Upcoming PTO</div>'
-        + (await tkRenderUpcomingPtoTable(session.user.id))
+        + '<div class="tk-pto-layout">'
+        + '<div id="tk-pto-main"></div>'
+        + '<div class="tk-entry-card" id="tk-pto-gallery"><div class="tk-section-title">PTO Requests</div><div id="tk-pto-gallery-list"></div></div>'
         + '</div>';
+
+      renderPtoRequestBuilder();
+      await renderPtoGallery(session.user.id);
     }catch(e){
-      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load PTO request</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load PTO</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
   }
 
-  async function tkRenderUpcomingPtoTable(employeeId){
+  // Gallery lists individual PTO day-entries (pending/approved/historical),
+  // not grouped multi-day "requests" — the data model stores one row per
+  // employee/date/time_code, and a free-form request can span non-
+  // contiguous days, so there's no natural request-level grouping key yet.
+  async function renderPtoGallery(employeeId){
+    var listEl = document.getElementById('tk-pto-gallery-list');
+    if(!listEl){ return; }
     var timeCodes = await tkGetTimeCodes();
     var vacation = tkVacationCode(timeCodes);
-    if(!vacation){ return '<div class="tk-empty">Vacation time code not configured.</div>'; }
-    var todayISO = new Date().toISOString().slice(0,10);
-    var pendingRows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&time_code_id=eq.' + vacation.id + '&status=eq.pending&order=work_date.asc&select=id,work_date,hours,status');
-    var approvedUpcoming = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&time_code_id=eq.' + vacation.id + '&status=eq.approved&work_date=gte.' + todayISO + '&order=work_date.asc&select=id,work_date,hours,status');
-    var rows = pendingRows.concat(approvedUpcoming).sort(function(a,b){ return a.work_date < b.work_date ? -1 : 1; });
+    var rows = vacation
+      ? await dbRequest('time_entries?employee_id=eq.' + employeeId + '&time_code_id=eq.' + vacation.id + '&order=work_date.desc&select=id,work_date,hours,status')
+      : [];
 
     if(!rows.length){
-      return '<div class="tk-empty">No pending or upcoming approved PTO.</div>';
+      listEl.innerHTML = '<div class="tk-empty">No PTO requests submitted yet.</div>';
+      return;
     }
-    return '<table class="tk-grid-table"><thead><tr><th>Date</th><th>Hours</th><th>Status</th><th></th></tr></thead><tbody>'
-      + rows.map(function(r){
-          var action = r.status === 'pending'
-            ? '<button class="tk-now-btn" type="button" onclick="cancelPtoRequest(\'' + r.id + '\')">Cancel</button>'
-            : '';
-          return '<tr><td>' + formatDate(r.work_date) + '</td><td>' + r.hours + '</td><td>' + tkStatusPill(r.status) + '</td><td>' + action + '</td></tr>';
-        }).join('')
-      + '</tbody></table>';
+    listEl.innerHTML = rows.map(function(r){
+      var selected = tkPtoSelectedId === r.id;
+      return '<div class="tk-pto-gallery-item' + (selected ? ' selected' : '') + '" onclick="selectPtoGalleryItem(\'' + r.id + '\')">'
+        + '<div class="tk-pto-gallery-date">' + formatDate(r.work_date) + '</div>'
+        + '<div class="tk-pto-gallery-meta">' + r.hours + ' hrs ' + tkStatusPill(r.status) + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  async function selectPtoGalleryItem(rowId){
+    tkPtoSelectedId = rowId;
+    var session = getSession();
+    await renderPtoGallery(session.user.id);
+
+    var rows = await dbRequest('time_entries?id=eq.' + rowId + '&select=id,work_date,hours,status');
+    var row = rows[0];
+    var mainEl = document.getElementById('tk-pto-main');
+    if(!row || !mainEl){ return; }
+
+    mainEl.innerHTML = '<div class="tk-entry-card">'
+      + '<div class="tk-section-title">PTO Request Detail</div>'
+      + '<div class="tk-pto-detail-row"><span>Date</span><strong>' + formatDate(row.work_date) + '</strong></div>'
+      + '<div class="tk-pto-detail-row"><span>Hours</span><strong>' + row.hours + '</strong></div>'
+      + '<div class="tk-pto-detail-row"><span>Status</span>' + tkStatusPill(row.status) + '</div>'
+      + '<div class="tk-grid-actions" style="margin-top:16px;">'
+      + '<button class="tk-now-btn" type="button" onclick="clearPtoSelection()">New Request</button>'
+      + (row.status === 'pending' ? '<button class="btn-logout" style="width:auto;" onclick="cancelPtoRequest(\'' + row.id + '\')">Cancel Request</button>' : '')
+      + '</div>'
+      + '</div>';
+  }
+
+  function clearPtoSelection(){
+    tkPtoSelectedId = null;
+    var session = getSession();
+    renderPtoGallery(session.user.id);
+    renderPtoRequestBuilder();
+  }
+
+  // Free-form day builder: add/remove (date, hours) rows so a single
+  // request can cover non-contiguous days with different hours each
+  // (e.g. 4hrs today, 8hrs Tue/Wed, 4hrs Thu). One blank row by default;
+  // the first row can't be removed (same rule as the timesheet grid).
+  function renderPtoRequestBuilder(){
+    var mainEl = document.getElementById('tk-pto-main');
+    if(!mainEl){ return; }
+    tkPtoDayRowSeq = 0;
+    mainEl.innerHTML = '<div class="tk-entry-card">'
+      + '<div class="tk-section-title">Request PTO</div>'
+      + '<table class="tk-grid-table"><thead><tr><th>Date</th><th>Hours</th><th></th></tr></thead>'
+      + '<tbody id="pto-day-rows"></tbody></table>'
+      + '<button class="tk-now-btn" type="button" style="margin-top:10px;" onclick="addPtoDayRow()">+ Add Day</button>'
+      + '<div class="login-error" id="pto-request-error" style="margin-top:12px;"></div>'
+      + '<div class="tk-grid-actions"><button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="submitPtoRequest()">Submit Request</button></div>'
+      + '</div>';
+    addPtoDayRow();
+  }
+
+  function addPtoDayRow(){
+    var tbody = document.getElementById('pto-day-rows');
+    if(!tbody){ return; }
+    tkPtoDayRowSeq++;
+    var rowId = 'ptoday-' + tkPtoDayRowSeq;
+    var isFirst = tbody.children.length === 0;
+    var rowHtml = '<tr data-rowid="' + rowId + '">'
+      + '<td><input type="date" class="field-input" id="' + rowId + '-date"></td>'
+      + '<td><input type="text" inputmode="decimal" class="field-input" id="' + rowId + '-hours" value="8" style="width:80px;"></td>'
+      + '<td>' + (isFirst ? '' : '<button class="tk-now-btn" type="button" onclick="removePtoDayRow(\'' + rowId + '\')">&minus;</button>') + '</td>'
+      + '</tr>';
+    tbody.insertAdjacentHTML('beforeend', rowHtml);
+  }
+
+  function removePtoDayRow(rowId){
+    var tr = document.querySelector('#pto-day-rows tr[data-rowid="' + rowId + '"]');
+    if(tr){ tr.remove(); }
   }
 
   async function cancelPtoRequest(rowId){
     try{
       await dbWrite('time_entries?id=eq.' + rowId, 'PATCH', { status: 'cancelled_by_submitter' });
-      loadPtoRequest();
+      loadPtoTab();
     }catch(e){
       console.error(e);
     }
@@ -892,30 +960,31 @@
   async function submitPtoRequest(skipNegativeCheck){
     var errorEl = document.getElementById('pto-request-error');
     var session = getSession();
-    var startVal = document.getElementById('pto-start').value;
-    var endVal = document.getElementById('pto-end').value;
-    var hoursPerDayVal = parseFloat(document.getElementById('pto-hours-per-day').value);
     errorEl.textContent = '';
     errorEl.innerHTML = '';
 
-    if(!startVal || !endVal){
-      errorEl.textContent = 'Enter a start and end date.';
+    var dayRowEls = document.querySelectorAll('#pto-day-rows tr[data-rowid]');
+    var days = [];
+    var hasInvalid = false;
+    dayRowEls.forEach(function(tr){
+      var rowId = tr.dataset.rowid;
+      var dateVal = document.getElementById(rowId + '-date').value;
+      var hoursVal = parseFloat(document.getElementById(rowId + '-hours').value);
+      if(!dateVal || !hoursVal || hoursVal <= 0){ hasInvalid = true; return; }
+      days.push({ date: dateVal, hours: hoursVal });
+    });
+
+    if(!days.length || hasInvalid){
+      errorEl.textContent = 'Enter a valid date and hours for each day.';
       return;
     }
-    if(new Date(endVal) < new Date(startVal)){
-      errorEl.textContent = 'End date must be on or after start date.';
-      return;
-    }
-    if(!hoursPerDayVal || hoursPerDayVal <= 0){
-      errorEl.textContent = 'Enter valid hours per day.';
-      return;
+    var seenDates = {};
+    for(var k=0;k<days.length;k++){
+      if(seenDates[days[k].date]){ errorEl.textContent = 'Each day can only appear once in a request.'; return; }
+      seenDates[days[k].date] = true;
     }
 
-    var d = new Date(startVal + 'T00:00:00');
-    var end = new Date(endVal + 'T00:00:00');
-    var requestedDays = 0;
-    while(d <= end){ requestedDays++; d = new Date(d.getTime() + TK_DAY_MS); }
-    var requestedHours = requestedDays * hoursPerDayVal;
+    var requestedHours = days.reduce(function(sum,d){ return sum + d.hours; }, 0);
 
     if(!skipNegativeCheck){
       var warning = await tkCheckPtoBalance(requestedHours);
@@ -930,26 +999,17 @@
       var timeCodes = await tkGetTimeCodes();
       var vacation = tkVacationCode(timeCodes);
       if(!vacation){ errorEl.textContent = 'Vacation time code is not configured — contact an admin.'; return; }
-      var d2 = new Date(startVal + 'T00:00:00');
-      var inserts = [];
-      while(d2 <= end){
-        inserts.push({
+      for(var i=0;i<days.length;i++){
+        await dbWrite('time_entries', 'POST', {
           employee_id: session.user.id,
-          work_date: tkDateToISO(d2),
+          work_date: days[i].date,
           time_code_id: vacation.id,
-          hours: hoursPerDayVal,
+          hours: days[i].hours,
           status: 'pending'
         });
-        d2 = new Date(d2.getTime() + TK_DAY_MS);
+        await tkLogAudit(session.user.id, days[i].date, vacation.id, 'submit', [{ field:'hours', oldVal:null, newVal:days[i].hours }]);
       }
-      for(var i=0;i<inserts.length;i++){
-        await dbWrite('time_entries', 'POST', inserts[i]);
-        await tkLogAudit(session.user.id, inserts[i].work_date, vacation.id, 'submit', [{ field:'hours', oldVal:null, newVal:hoursPerDayVal }]);
-      }
-      document.getElementById('pto-start').value = '';
-      document.getElementById('pto-end').value = '';
-      errorEl.style.color = 'var(--teal)';
-      errorEl.textContent = 'PTO request submitted for manager approval.';
+      loadPtoTab();
     }catch(e){
       errorEl.style.color = 'var(--red)';
       errorEl.textContent = 'Could not submit request — try again.';
@@ -1000,46 +1060,5 @@
       projectedEarn: projectedEarn,
       projectedTotal: projectedTotal
     };
-  }
-
-  // ---- PTO Balance ----
-  async function loadPtoBalance(){
-    var container = document.getElementById('tk-ptobalance');
-    var session = getSession();
-    if(!session || !session.user){ return; }
-
-    try{
-      var stats = await tkComputePtoStats();
-      var timeCodes = await tkGetTimeCodes();
-      var vacation = tkVacationCode(timeCodes);
-      var allPtoRows = vacation
-        ? await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&time_code_id=eq.' + vacation.id + '&order=work_date.desc&select=work_date,hours,status')
-        : [];
-
-      var logRows = allPtoRows.length
-        ? '<table class="tk-grid-table"><thead><tr><th>Date</th><th>Hours</th><th>Status</th></tr></thead><tbody>'
-          + allPtoRows.map(function(r){
-              return '<tr><td>' + formatDate(r.work_date) + '</td><td>' + r.hours + '</td><td>' + tkStatusPill(r.status) + '</td></tr>';
-            }).join('')
-          + '</tbody></table>'
-        : '<div class="tk-empty">No PTO requests submitted yet.</div>';
-
-      container.innerHTML = '<div class="tk-entry-card">'
-        + '<div class="tk-section-title">PTO Balance</div>'
-        + '<div class="tk-pto-balance-grid">'
-        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Current Balance</div><div class="tk-pto-stat-val">' + stats.currentBalance.toFixed(2) + '</div><div class="tk-pto-stat-sub">hours available</div></div>'
-        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Pending Balance</div><div class="tk-pto-stat-val">' + stats.pendingBalance.toFixed(2) + '</div><div class="tk-pto-stat-sub">after current week\'s unapproved PTO</div></div>'
-        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Accrual Rate</div><div class="tk-pto-stat-val">' + stats.accrualRate.toFixed(2) + '</div><div class="tk-pto-stat-sub">hours per week</div></div>'
-        + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Projected by Dec 31</div><div class="tk-pto-stat-val">+' + stats.projectedEarn.toFixed(2) + '</div><div class="tk-pto-stat-sub">projected total: ' + stats.projectedTotal.toFixed(2) + ' hrs</div></div>'
-        + '</div>'
-        + '</div>'
-        + '<div class="tk-entry-card">'
-        + '<div class="tk-section-title">PTO Request Log</div>'
-        + logRows
-        + '</div>';
-    }catch(e){
-      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load PTO balance</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
-      console.error(e);
-    }
   }
 
