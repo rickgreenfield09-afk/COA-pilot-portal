@@ -819,7 +819,7 @@
         + '<div class="tk-entry-card" id="tk-pto-gallery"><div class="tk-section-title">PTO Requests</div><div id="tk-pto-gallery-list"></div></div>'
         + '</div>';
 
-      renderPtoRequestBuilder();
+      await renderPtoRequestBuilder();
       await renderPtoGallery(session.user.id);
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load PTO</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
@@ -875,26 +875,43 @@
       + '</div>';
   }
 
-  function clearPtoSelection(){
+  async function clearPtoSelection(){
     tkPtoSelectedId = null;
     var session = getSession();
-    renderPtoGallery(session.user.id);
-    renderPtoRequestBuilder();
+    await renderPtoGallery(session.user.id);
+    await renderPtoRequestBuilder();
   }
 
   // Free-form day builder: add/remove (date, hours) rows so a single
   // request can cover non-contiguous days with different hours each
   // (e.g. 4hrs today, 8hrs Tue/Wed, 4hrs Thu). One blank row by default;
   // the first row can't be removed (same rule as the timesheet grid).
-  function renderPtoRequestBuilder(){
+  // tkPtoBuilderBaseline caches the balance figures needed to live-update
+  // the Total Hours / Balance After Approval boxes as rows change, without
+  // re-querying Supabase on every keystroke.
+  var tkPtoBuilderBaseline = { currentBalance: 0, existingPending: 0 };
+
+  async function renderPtoRequestBuilder(){
     var mainEl = document.getElementById('tk-pto-main');
     if(!mainEl){ return; }
     tkPtoDayRowSeq = 0;
+
+    var session = getSession();
+    try{
+      var profRows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=pto_balance_hours');
+      tkPtoBuilderBaseline.currentBalance = profRows.length ? (parseFloat(profRows[0].pto_balance_hours) || 0) : 0;
+      tkPtoBuilderBaseline.existingPending = await tkGetTotalPendingPtoHours();
+    }catch(e){ console.error(e); }
+
     mainEl.innerHTML = '<div class="tk-entry-card">'
       + '<div class="tk-section-title">Request PTO</div>'
-      + '<table class="tk-grid-table"><thead><tr><th>Date</th><th>Hours</th><th></th></tr></thead>'
+      + '<table class="tk-grid-table"><thead><tr><th>Date</th><th>Hours</th></tr></thead>'
       + '<tbody id="pto-day-rows"></tbody></table>'
       + '<button class="tk-now-btn" type="button" style="margin-top:10px;" onclick="addPtoDayRow()">+ Add Day</button>'
+      + '<div class="tk-pto-request-totals">'
+      + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Total Hours Requested</div><div class="tk-pto-stat-val" id="pto-request-total-hours">0.00</div></div>'
+      + '<div class="tk-pto-stat-box"><div class="tk-pto-stat-label">Balance After Approval</div><div class="tk-pto-stat-val" id="pto-request-balance-after">' + tkPtoBuilderBaseline.currentBalance.toFixed(2) + '</div></div>'
+      + '</div>'
       + '<div class="login-error" id="pto-request-error" style="margin-top:12px;"></div>'
       + '<div class="tk-grid-actions"><button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="submitPtoRequest()">Submit Request</button></div>'
       + '</div>';
@@ -909,15 +926,33 @@
     var isFirst = tbody.children.length === 0;
     var rowHtml = '<tr data-rowid="' + rowId + '">'
       + '<td><input type="date" class="field-input" id="' + rowId + '-date"></td>'
-      + '<td><input type="text" inputmode="decimal" class="field-input" id="' + rowId + '-hours" value="8" style="width:80px;"></td>'
-      + '<td>' + (isFirst ? '' : '<button class="tk-now-btn" type="button" onclick="removePtoDayRow(\'' + rowId + '\')">&minus;</button>') + '</td>'
+      + '<td><div class="tk-pto-hours-cell"><input type="text" inputmode="decimal" class="field-input" id="' + rowId + '-hours" value="8" style="width:80px;" oninput="recalcPtoRequestTotals()">'
+        + (isFirst ? '' : '<button class="tk-now-btn" type="button" onclick="removePtoDayRow(\'' + rowId + '\')">&minus;</button>')
+        + '</div></td>'
       + '</tr>';
     tbody.insertAdjacentHTML('beforeend', rowHtml);
+    recalcPtoRequestTotals();
   }
 
   function removePtoDayRow(rowId){
     var tr = document.querySelector('#pto-day-rows tr[data-rowid="' + rowId + '"]');
     if(tr){ tr.remove(); }
+    recalcPtoRequestTotals();
+  }
+
+  function recalcPtoRequestTotals(){
+    var totalEl = document.getElementById('pto-request-total-hours');
+    var balanceEl = document.getElementById('pto-request-balance-after');
+    if(!totalEl || !balanceEl){ return; }
+    var total = 0;
+    document.querySelectorAll('#pto-day-rows tr[data-rowid]').forEach(function(tr){
+      var hoursEl = document.getElementById(tr.dataset.rowid + '-hours');
+      if(hoursEl){ total += parseFloat(hoursEl.value) || 0; }
+    });
+    var balanceAfter = tkPtoBuilderBaseline.currentBalance - tkPtoBuilderBaseline.existingPending - total;
+    totalEl.textContent = total.toFixed(2);
+    balanceEl.textContent = balanceAfter.toFixed(2);
+    balanceEl.style.color = balanceAfter < 0 ? 'var(--red)' : '';
   }
 
   async function cancelPtoRequest(rowId){

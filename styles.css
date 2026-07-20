@@ -371,8 +371,17 @@
   .tk-pto-stat-sub{font-size:11px;color:var(--sub);margin-top:4px;}
   @media (max-width:700px){.tk-pto-summary-row{grid-template-columns:1fr 1fr;}}
 
-  .tk-pto-layout{display:grid;grid-template-columns:75% 25%;gap:20px;align-items:start;}
+  /* fr units (not %) so the 20px gap is subtracted from the tracks instead
+     of added on top of them — % + gap here overflowed the container by the
+     gap width, pushing the gallery card past the row of cards above it. */
+  .tk-pto-layout{display:grid;grid-template-columns:3fr 1fr;gap:20px;align-items:start;}
   @media (max-width:900px){.tk-pto-layout{grid-template-columns:1fr;}}
+
+  .tk-pto-request-totals{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;}
+  @media (max-width:500px){.tk-pto-request-totals{grid-template-columns:1fr;}}
+
+  .tk-pto-hours-cell{display:flex;gap:6px;align-items:center;}
+  .tk-pto-hours-cell input.field-input{flex:none;}
   .tk-pto-gallery-item{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;cursor:pointer;}
   .tk-pto-gallery-item:hover{border-color:var(--teal);}
   .tk-pto-gallery-item.selected{border-color:var(--teal);background:rgba(42,184,166,0.08);}
