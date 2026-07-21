@@ -16,7 +16,11 @@
   // (same "first full period inside January" convention the old biweekly
   // scheme used) — Monday 1/5/2026. Offset 0 = Week 1.
   var TK_WEEK_ANCHOR = new Date('2026-01-05T00:00:00');
-  var tkCurrentWeekOffset = 0;   // 0 = week containing today
+  // tkOffsetForToday() is a function declaration (hoisted), so it's safe to
+  // call here even though it's defined later in this file — this was
+  // previously hardcoded to 0 (Week 1), which only looked right by
+  // coincidence if TK_WEEK_ANCHOR happened to match "today" at build time.
+  var tkCurrentWeekOffset = tkOffsetForToday();
   var tkHistoryWeekOffset = -1;
   var TK_TIME_CODES_CACHE = null;
   var tkGridRowSeq = 0; // client-side unique suffix for dynamically-added blank rows
@@ -197,7 +201,7 @@
       }).join('');
 
       var removeBtn = (editable && idx > 0 && !hasAnySavedEntry && !rowLocked)
-        ? '<button class="tk-now-btn" type="button" onclick="tkRemoveGridRow(\'' + rowId + '\')" title="Remove row">&minus;</button>'
+        ? '<button class="tk-now-btn tk-remove-btn" type="button" onclick="tkRemoveGridRow(\'' + rowId + '\')" title="Remove row">&minus;</button>'
         : '';
 
       return '<tr data-rowid="' + rowId + '">'
@@ -237,7 +241,7 @@
       + '<select class="tk-grid-input" style="display:inline-block;width:calc(100% - 34px);" id="tkg-code-' + rowId + '">' + codeOptions + '</select></td>'
       + dayCells
       + '<td class="tk-hours-cell">0.00</td>'
-      + '<td><button class="tk-now-btn" type="button" onclick="tkRemoveGridRow(\'' + rowId + '\')" title="Remove row">&minus;</button></td>'
+      + '<td><button class="tk-now-btn tk-remove-btn" type="button" onclick="tkRemoveGridRow(\'' + rowId + '\')" title="Remove row">&minus;</button></td>'
       + '</tr>';
     tbody.insertAdjacentHTML('beforeend', rowHtml);
   }
@@ -927,7 +931,7 @@
     var rowHtml = '<tr data-rowid="' + rowId + '">'
       + '<td><input type="date" class="field-input" id="' + rowId + '-date"></td>'
       + '<td><div class="tk-pto-hours-cell"><input type="text" inputmode="decimal" class="field-input" id="' + rowId + '-hours" value="8" style="width:80px;" oninput="recalcPtoRequestTotals()">'
-        + (isFirst ? '' : '<button class="tk-now-btn" type="button" onclick="removePtoDayRow(\'' + rowId + '\')">&minus;</button>')
+        + (isFirst ? '' : '<button class="tk-now-btn tk-remove-btn" type="button" onclick="removePtoDayRow(\'' + rowId + '\')">&minus;</button>')
         + '</div></td>'
       + '</tr>';
     tbody.insertAdjacentHTML('beforeend', rowHtml);

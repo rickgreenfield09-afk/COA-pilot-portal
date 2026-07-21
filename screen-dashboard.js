@@ -2,10 +2,11 @@
    Home screen (screen-home): greeting header, news, quick time entry,
    shortcut tiles, and the "coming soon" summary cards.
    Depends on app-core.js (getSession, dbRequest, dbWrite, getInitials) and
-   on tkGetTimeCodes() from screen-timekeeping.js — load order in index.html
-   keeps this file after screen-timekeeping.js. */
+   on tkGetTimeCodes()/tkHoursOptionsHtml() from screen-timekeeping.js —
+   load order in index.html keeps this file after screen-timekeeping.js. */
 
   // ---------- Dashboard ----------
+  var qteRowSeq = 0; // client-side unique suffix for Quick Time Entry rows
   var DASH_NEWS_ITEMS = [
     {title:'Q3 Town Hall — Save the Date', date:'2026-07-15', body:'All-hands town hall scheduled for July 15th. Details to follow via email.'},
     {title:'New Benefits Enrollment Window', date:'2026-07-01', body:'Open enrollment opens July 1st and closes July 21st. Check your email for the portal link.'},
@@ -39,7 +40,6 @@
 
       var timeCodes = [];
       try{ timeCodes = await tkGetTimeCodes(); }catch(e){ console.error(e); }
-      var timeCodeOptions = timeCodes.map(function(c){ return '<option value="' + c.id + '">' + c.label + '</option>'; }).join('');
 
       var upcomingTravelHtml = '<div class="dash-card-empty">No travel data connected yet.</div>';
       try{ upcomingTravelHtml = await buildUpcomingTravelHtml([session.user.id]); }catch(e){ console.error(e); }
@@ -74,15 +74,11 @@
         + '<div class="alert-stack">'
         + '<div class="dash-card">'
         + '<div class="dash-card-title">Quick Time Entry</div>'
-        + '<div class="quick-entry-row">'
-        + '<div><label class="field-label" for="qte-hours">Hours</label><input type="text" inputmode="decimal" id="qte-hours" class="field-input qte-hours-input" maxlength="4" placeholder="8"></div>'
-        + '<div><label class="field-label" for="qte-timecode">Time Code</label><select id="qte-timecode" class="field-input">'
-        + '<option value="">Select…</option>'
-        + timeCodeOptions
-        + '</select></div>'
-        + '<button class="btn btn-primary" onclick="submitQuickTimeEntry()">Log Today</button>'
-        + '</div>'
-        + '<div class="login-error" id="qte-error"></div>'
+        + '<table class="tk-grid-table"><thead><tr><th>Time Code</th><th>Date</th><th>Hours</th></tr></thead>'
+        + '<tbody id="qte-rows"></tbody></table>'
+        + '<button class="tk-now-btn" type="button" style="margin-top:10px;" onclick="addQteRow()">+ Add Line</button>'
+        + '<div class="login-error" id="qte-error" style="margin-top:10px;"></div>'
+        + '<div class="tk-grid-actions"><button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="submitQuickTimeEntry()">Log Today</button></div>'
         + '</div>'
         + '</div>'
         + '</div>'
@@ -105,43 +101,118 @@
         + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel</div>' + upcomingTravelHtml + '</div>'
         + '<div class="dash-card"><div class="dash-card-title">Assets In Your Care<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Asset tracker coming next session.</div></div>'
         + '</div>';
+
+      await renderQteRows(timeCodes);
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load dashboard</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
   }
 
+  // Mirrors the Current Week timesheet grid's row pattern (time code +
+  // hours dropdown, add/remove rows) but collapsed to a single day —
+  // today. Pre-populates from any entries already logged today so this
+  // doesn't silently duplicate/orphan rows created from the main grid.
+  async function renderQteRows(timeCodes){
+    var tbody = document.getElementById('qte-rows');
+    if(!tbody){ return; }
+    var session = getSession();
+    var todayISO = new Date().toISOString().slice(0,10);
+    var todayLabel = new Date(todayISO + 'T00:00:00').toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' });
+
+    tbody.dataset.date = todayISO;
+    tbody.dataset.dateLabel = todayLabel;
+    tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label }; }));
+    tbody.innerHTML = '';
+    qteRowSeq = 0;
+
+    var entries = [];
+    try{ entries = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=eq.' + todayISO + '&select=id,time_code_id,hours'); }catch(e){ console.error(e); }
+
+    if(entries.length){
+      entries.forEach(function(e){ addQteRow(e); });
+    } else {
+      addQteRow();
+    }
+  }
+
+  function addQteRow(existing){
+    var tbody = document.getElementById('qte-rows');
+    if(!tbody){ return; }
+    qteRowSeq++;
+    var rowId = 'qte-' + qteRowSeq;
+    var isFirst = tbody.children.length === 0;
+    var timeCodes = tbody.dataset.timeCodes ? JSON.parse(tbody.dataset.timeCodes) : [];
+    var dateLabel = tbody.dataset.dateLabel || '';
+    var codeVal = existing ? existing.time_code_id : '';
+    var hoursVal = existing && existing.hours != null ? existing.hours : '';
+    var hasSaved = !!(existing && existing.id);
+
+    var codeOptions = '<option value="">Select time code…</option>'
+      + timeCodes.map(function(c){ return '<option value="' + c.id + '"' + (c.id === codeVal ? ' selected' : '') + '>' + c.label + '</option>'; }).join('');
+
+    var rowHtml = '<tr data-rowid="' + rowId + '">'
+      + '<td><select class="tk-grid-input" id="' + rowId + '-code" ' + (hasSaved ? 'disabled' : '') + '>' + codeOptions + '</select></td>'
+      + '<td>' + dateLabel + '</td>'
+      + '<td><div class="tk-pto-hours-cell"><select class="tk-grid-input" id="' + rowId + '-hours" style="width:80px;">' + tkHoursOptionsHtml(hoursVal) + '</select>'
+        + (isFirst ? '' : '<button class="tk-now-btn tk-remove-btn" type="button" onclick="removeQteRow(\'' + rowId + '\')">&minus;</button>')
+        + '</div></td>'
+      + '</tr>';
+    tbody.insertAdjacentHTML('beforeend', rowHtml);
+  }
+
+  function removeQteRow(rowId){
+    var tr = document.querySelector('#qte-rows tr[data-rowid="' + rowId + '"]');
+    if(tr){ tr.remove(); }
+  }
+
   async function submitQuickTimeEntry(){
     var errorEl = document.getElementById('qte-error');
     var session = getSession();
-    var hoursVal = document.getElementById('qte-hours').value;
-    var timeCodeVal = document.getElementById('qte-timecode').value;
+    var tbody = document.getElementById('qte-rows');
+    var todayISO = tbody && tbody.dataset.date ? tbody.dataset.date : new Date().toISOString().slice(0,10);
     errorEl.textContent = '';
 
-    if(!hoursVal || isNaN(parseFloat(hoursVal)) || parseFloat(hoursVal) <= 0){
-      errorEl.textContent = 'Enter a valid number of hours.';
+    var rowEls = document.querySelectorAll('#qte-rows tr[data-rowid]');
+    var writes = [];
+    var hasInvalid = false;
+    rowEls.forEach(function(tr){
+      var rowId = tr.dataset.rowid;
+      var codeSel = document.getElementById(rowId + '-code');
+      var hoursSel = document.getElementById(rowId + '-hours');
+      if(!codeSel || !hoursSel){ return; }
+      var codeVal = codeSel.value;
+      var hoursVal = hoursSel.value;
+      if(!codeVal && !hoursVal){ return; } // fully blank row, skip
+      if(!codeVal || !hoursVal || parseFloat(hoursVal) <= 0){ hasInvalid = true; return; }
+      writes.push({ time_code_id: codeVal, hours: parseFloat(hoursVal) });
+    });
+
+    if(hasInvalid){
+      errorEl.textContent = 'Select a time code and valid hours for every line.';
       return;
     }
-    if(!timeCodeVal){
-      errorEl.textContent = 'Select a time code.';
+    if(!writes.length){
+      errorEl.textContent = 'Add at least one time code and hours.';
       return;
     }
 
     try{
-      var todayISO = new Date().toISOString().slice(0,10);
-      var existing = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=eq.' + todayISO + '&time_code_id=eq.' + timeCodeVal + '&select=id');
-      if(existing.length){
-        await dbWrite('time_entries?id=eq.' + existing[0].id, 'PATCH', { hours: parseFloat(hoursVal), status: 'submitted' });
-      } else {
-        await dbWrite('time_entries', 'POST', {
-          employee_id: session.user.id,
-          work_date: todayISO,
-          time_code_id: timeCodeVal,
-          hours: parseFloat(hoursVal),
-          status: 'submitted'
-        });
+      for(var i=0;i<writes.length;i++){
+        var w = writes[i];
+        var existing = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=eq.' + todayISO + '&time_code_id=eq.' + w.time_code_id + '&select=id');
+        if(existing.length){
+          await dbWrite('time_entries?id=eq.' + existing[0].id, 'PATCH', { hours: w.hours, status: 'submitted' });
+        } else {
+          await dbWrite('time_entries', 'POST', {
+            employee_id: session.user.id,
+            work_date: todayISO,
+            time_code_id: w.time_code_id,
+            hours: w.hours,
+            status: 'submitted'
+          });
+        }
       }
-      document.getElementById('qte-hours').value = '';
       loadDashboard();
     }catch(e){
       errorEl.textContent = 'Could not submit entry — try again.';

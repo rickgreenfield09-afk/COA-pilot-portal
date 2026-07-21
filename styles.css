@@ -180,13 +180,6 @@
   .news-item.expanded .news-item-body{display:block;}
   .alert-stack{display:flex;flex-direction:column;gap:0;}
 
-  /* ---------- Quick time entry card (narrow column, in alert-stack) ---------- */
-  .quick-entry-row{display:grid;grid-template-columns:60px 1fr 1fr auto;gap:10px;align-items:end;}
-  .quick-entry-row .field-label{margin-bottom:6px;}
-  .quick-entry-row select.field-input,.quick-entry-row input.field-input{margin-bottom:0;}
-  .quick-entry-row button{white-space:nowrap;padding:11px 16px;}
-  .qte-hours-input{text-align:center;}
-  @media (max-width:500px){.quick-entry-row{grid-template-columns:1fr;}}
 
   @media (max-width:900px){
     .shortcuts-grid{grid-template-columns:repeat(2,1fr);}
@@ -380,8 +373,13 @@
   .tk-pto-request-totals{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;}
   @media (max-width:500px){.tk-pto-request-totals{grid-template-columns:1fr;}}
 
-  .tk-pto-hours-cell{display:flex;gap:6px;align-items:center;}
+  .tk-pto-hours-cell{display:flex;gap:20px;align-items:center;}
   .tk-pto-hours-cell input.field-input{flex:none;}
+
+  /* Row-remove buttons (PTO day builder + timesheet grid): red, not the
+     default teal action color, so "remove" reads distinctly from "add". */
+  .tk-remove-btn{color:var(--red);}
+  .tk-remove-btn:hover{border-color:var(--red);}
   .tk-pto-gallery-item{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;cursor:pointer;}
   .tk-pto-gallery-item:hover{border-color:var(--teal);}
   .tk-pto-gallery-item.selected{border-color:var(--teal);background:rgba(42,184,166,0.08);}
