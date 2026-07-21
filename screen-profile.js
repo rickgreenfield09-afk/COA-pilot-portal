@@ -73,13 +73,19 @@
       ? '<div class="bio-box"><div class="info-label">Bio</div><textarea class="info-edit-input" id="edit-bio" rows="3">' + (p.bio || '') + '</textarea></div>'
       : '<div class="bio-box"><div class="info-label">Bio</div><div class="info-val">' + (p.bio || 'No bio added yet.') + '</div></div>';
 
-    var photoBlock = '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>';
+    var photoBlock = p.photo_url
+      ? '<img src="' + escAttr(p.photo_url) + '" class="profile-photo-img" alt="">'
+      : '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>';
+
+    var photoControlsBlock = '<label class="photo-upload-btn" for="profile-photo-input" title="Change photo">&#9998;</label>'
+      + '<input type="file" id="profile-photo-input" accept="image/*" style="display:none;" onchange="uploadProfilePhoto(this.files)">'
+      + (p.photo_url ? '<button type="button" class="photo-remove-btn" title="Remove photo" onclick="removeProfilePhoto()">&times;</button>' : '');
 
     container.innerHTML =
       '<div class="profile-card">'
       + '<div class="profile-top">'
-      + '<div class="photo-wrap">' + photoBlock + '</div>'
-      + '<div>' + nameBlock + titleBlock + '</div>'
+      + '<div class="photo-wrap">' + photoBlock + photoControlsBlock + '</div>'
+      + '<div>' + nameBlock + titleBlock + '<span class="save-status" id="photo-upload-status"></span></div>'
       + '</div>'
       + '<div class="profile-grid">'
       + '<div class="info-box"><div class="info-label">Work Email</div><div class="info-val">' + (p.email || '—') + '</div></div>'
@@ -123,6 +129,78 @@
 
   function editProfile(){
     renderProfile(currentProfile, currentSupervisorName, true);
+  }
+
+  // ---------- Profile photo upload (Supabase Storage 'profile-photos' bucket) ----------
+  var PROFILE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+
+  // Best-effort cleanup of the previous photo file after a replace/remove —
+  // failures are swallowed (console-logged only) so a storage hiccup never
+  // blocks the profiles.photo_url update the user is actually waiting on.
+  function deleteProfilePhotoFile(fileUrl){
+    var path = fileUrl && fileUrl.split('/storage/v1/object/public/profile-photos/')[1];
+    if(!path){ return; }
+    var session = getSession();
+    fetch(SUPABASE_URL + '/storage/v1/object/profile-photos/' + encodeURIComponent(path), {
+      method: 'DELETE',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + session.access_token }
+    }).catch(function(e){ console.error(e); });
+  }
+
+  async function uploadProfilePhoto(files){
+    if(!files || !files.length || !currentProfile){ return; }
+    var file = files[0];
+    var statusEl = document.getElementById('photo-upload-status');
+    if(file.type.indexOf('image/') !== 0){
+      if(statusEl){ statusEl.textContent = 'Please choose an image file.'; }
+      return;
+    }
+    if(file.size > PROFILE_PHOTO_MAX_BYTES){
+      if(statusEl){ statusEl.textContent = 'Image must be smaller than 5MB.'; }
+      return;
+    }
+
+    var session = getSession();
+    var oldUrl = currentProfile.photo_url;
+    // Path is prefixed with the uploader's own user id — required by the
+    // Storage RLS policy (self can only write under their own id/ folder;
+    // admin policy allows any path). Timestamp avoids collisions/caching
+    // issues if the same filename is uploaded twice.
+    var path = session.user.id + '/' + Date.now() + '-' + file.name;
+    if(statusEl){ statusEl.textContent = 'Uploading...'; }
+    try{
+      var res = await fetch(SUPABASE_URL + '/storage/v1/object/profile-photos/' + encodeURIComponent(path), {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + session.access_token,
+          'Content-Type': file.type
+        },
+        body: file
+      });
+      if(!res.ok){ throw new Error('Upload failed: ' + res.status); }
+      var publicUrl = SUPABASE_URL + '/storage/v1/object/public/profile-photos/' + path;
+      await dbWrite('profiles?id=eq.' + currentProfile.id, 'PATCH', { photo_url: publicUrl });
+      // Old file is only deleted after the new URL is safely saved, so a
+      // failed PATCH never leaves the profile pointing at a deleted file.
+      if(oldUrl){ deleteProfilePhotoFile(oldUrl); }
+      loadProfile();
+    }catch(e){
+      if(statusEl){ statusEl.textContent = 'Upload failed — try again.'; }
+      console.error(e);
+    }
+  }
+
+  // Reverts to the initials fallback (clears photo_url) rather than just
+  // deleting the storage file, so the UI has a defined empty state.
+  async function removeProfilePhoto(){
+    if(!currentProfile || !currentProfile.photo_url){ return; }
+    var oldUrl = currentProfile.photo_url;
+    try{
+      await dbWrite('profiles?id=eq.' + currentProfile.id, 'PATCH', { photo_url: null });
+      deleteProfilePhotoFile(oldUrl);
+      loadProfile();
+    }catch(e){ console.error(e); }
   }
 
   function requestCancelEdit(){
