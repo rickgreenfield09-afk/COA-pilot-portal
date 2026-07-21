@@ -334,3 +334,20 @@ Cost (ODC)" line matches `teCalc()`'s own `odcInternal`/`odcCustomer`
 values exactly (both true) for a test scenario, confirming the
 per-line-item math is internally consistent with the stored totals.
 No access-control implications — display/print layout only.
+
+## 2026-07-21 — Profile photo upload (SC-13 / SC-28, storage)
+Added employee profile photo upload on My Profile > Overview
+(screen-profile.js: `uploadProfilePhoto`, `removeProfilePhoto`,
+`deleteProfilePhotoFile`). Uploads write to a new Supabase Storage
+bucket `profile-photos` (public-read, path-scoped by `auth.uid()`),
+then PATCH `profiles.photo_url`. Client-side validation: image
+MIME type only, 5MB max. Replacing a photo deletes the prior storage
+object. Requires a `photo_url` text column on `profiles` and storage
+policies (self-scoped insert/delete by path prefix, plus admin
+insert/delete) — schema/bucket/policy SQL provided to user to run in
+Supabase directly (no DB credentials available to the assistant).
+Status: Implemented at UI level (client-side MIME/size checks only,
+Supabase POC — no server-side file-type validation yet, matching the
+travel-receipts precedent). Gap/follow-up: storage policies must be
+applied before this is usable; RLS/policy enforcement still pending
+broader Postgres RLS pass called out elsewhere in this log.
