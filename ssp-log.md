@@ -351,3 +351,15 @@ Supabase POC — no server-side file-type validation yet, matching the
 travel-receipts precedent). Gap/follow-up: storage policies must be
 applied before this is usable; RLS/policy enforcement still pending
 broader Postgres RLS pass called out elsewhere in this log.
+
+## 2026-07-21 — Profile photo shown on Dashboard, Roster, Org Chart (no control impact)
+Extended the profile photo (added earlier this session) to render wherever
+an employee's avatar circle already appears: My Dashboard header,
+Directory > Roster rows, and Directory > Org Chart cards. Added a shared
+`avatarHtml()` helper in app-core.js (img when photo_url is set, initials
+circle fallback otherwise) instead of duplicating the conditional per
+screen. Directory's shared profile fetch (`dirFetchAllProfiles`) now also
+selects `photo_url`.
+Status: Implemented (display only — reuses the existing public
+'profile-photos' bucket and profiles.photo_url column set up earlier;
+no new data exposure since profile photos were already public-readable).

@@ -65,6 +65,17 @@
     return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
   }
 
+  // Shared avatar renderer — img when a profile has photo_url, initials
+  // circle fallback otherwise. Used anywhere an employee's photo appears
+  // (dashboard, directory roster, org chart, profile overview) so photo_url
+  // support doesn't have to be reimplemented per screen.
+  function avatarHtml(photoUrl, name, initialsClass, imgClass){
+    if(photoUrl){
+      return '<img src="' + escAttr(photoUrl) + '" class="' + imgClass + '" alt="">';
+    }
+    return '<div class="' + initialsClass + '">' + getInitials(name) + '</div>';
+  }
+
   // Plain YYYY-MM-DD strings (every date-only column in this app) must be
   // parsed as local calendar components, not UTC midnight — `new Date(d)`
   // on a date-only string parses as UTC, so anyone west of UTC sees every

@@ -1,6 +1,6 @@
 /* COA Employee Portal — screen-directory.js
    Company directory: roster list and org chart.
-   Depends on app-core.js: getSession, dbRequest, getInitials. */
+   Depends on app-core.js: getSession, dbRequest, avatarHtml. */
 
   var dirAllProfiles = [];
 
@@ -15,12 +15,10 @@
   // Shared fetch: all profiles + their department name in one round trip via PostgREST embed
   async function dirFetchAllProfiles(){
     if(dirAllProfiles.length){ return dirAllProfiles; }
-    var rows = await dbRequest('profiles?select=id,full_name,job_title,manager_id,department_id,org_position,email,phone,departments(name)&order=full_name.asc');
+    var rows = await dbRequest('profiles?select=id,full_name,job_title,manager_id,department_id,org_position,email,phone,photo_url,departments(name)&order=full_name.asc');
     dirAllProfiles = rows;
     return rows;
   }
-
-  function dirInitials(name){ return getInitials(name); }
 
   // ---- Roster subtab: flat searchable/filterable list ----
   async function loadDirectoryRoster(){
@@ -77,7 +75,7 @@
       var deptName = r.departments && r.departments.name ? r.departments.name : '—';
       var mgr = r.manager_id && byId[r.manager_id] ? byId[r.manager_id].full_name : '—';
       return '<div class="dir-roster-row" onclick="dirToggleRosterRow(this)">'
-        + '<div class="dir-roster-initials">' + dirInitials(r.full_name) + '</div>'
+        + avatarHtml(r.photo_url, r.full_name, 'dir-roster-initials', 'dir-roster-photo-img')
         + '<div style="flex:1;">'
         + '<div class="dir-roster-name">' + (r.full_name||'—') + '</div>'
         + '<div class="dir-roster-title">' + (r.job_title||'—') + '</div>'
@@ -141,7 +139,7 @@
         var cls = 'dir-chart-card' + (extraClass ? ' ' + extraClass : '') + (hasKids ? ' has-children' : '') + (isYou ? ' is-you' : '');
         var onclick = hasKids ? ' onclick="dirToggleCard(this)"' : '';
         return '<div class="' + cls + '" data-person-id="' + person.id + '"' + onclick + '>'
-          + '<div class="dir-chart-avatar">' + dirInitials(person.full_name) + '</div>'
+          + avatarHtml(person.photo_url, person.full_name, 'dir-chart-avatar', 'dir-chart-avatar-img')
           + '<div class="dir-chart-card-name">' + person.full_name + '</div>'
           + '<div class="dir-chart-card-title">' + (person.job_title||'') + '</div>'
           + '<div class="dir-chart-card-contact">' + (person.email||'') + (person.phone ? '<br>' + person.phone : '') + '</div>'

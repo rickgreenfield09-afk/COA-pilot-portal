@@ -1,7 +1,7 @@
 /* COA Employee Portal — screen-dashboard.js
    Home screen (screen-home): greeting header, news, quick time entry,
    shortcut tiles, and the "coming soon" summary cards.
-   Depends on app-core.js (getSession, dbRequest, dbWrite, getInitials) and
+   Depends on app-core.js (getSession, dbRequest, dbWrite, avatarHtml) and
    on tkGetTimeCodes()/tkHoursOptionsHtml() from screen-timekeeping.js —
    load order in index.html keeps this file after screen-timekeeping.js. */
 
@@ -46,7 +46,7 @@
 
       container.innerHTML =
         '<div class="dash-header-strip">'
-        + '<div class="profile-photo-initials">' + getInitials(p.full_name) + '</div>'
+        + avatarHtml(p.photo_url, p.full_name, 'profile-photo-initials', 'profile-photo-img')
         + '<div><div class="profile-name">Welcome' + (greetName ? ', ' + greetName : '') + '</div><div class="profile-role">' + (p.job_title || '—') + '</div></div>'
         + '<div class="dash-header-meta">'
         + '<div class="dash-meta-item">Department<span>' + (p.department || '—') + '</span></div>'
