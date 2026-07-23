@@ -261,6 +261,29 @@
     if(!res.ok){ throw new Error('RPC failed: ' + res.status); }
   }
 
+  // Calls a Supabase Edge Function (as opposed to a PostgREST table/rpc
+  // route) — used by screen-staffrecall.js. The function itself is the
+  // real authorization boundary (checks the caller's role server-side);
+  // this just forwards the caller's token the same way dbRequest/dbWrite do.
+  async function dbFunction(name, body){
+    var session = getSession();
+    var res = await fetch(SUPABASE_URL + '/functions/v1/' + name, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + (session ? session.access_token : SUPABASE_ANON_KEY),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    var data = null;
+    try{ data = await res.json(); }catch(e){ /* non-JSON response */ }
+    if(!res.ok){
+      throw new Error((data && data.error) || ('Request failed: ' + res.status));
+    }
+    return data;
+  }
+
   // ---------- Unsaved changes guard ----------
   function requestSwitchScreen(name){
     if(isEditingProfile || isEditingResume){
@@ -322,22 +345,27 @@
     }
   }
 
-  // Gates the Admin nav tab. Queries role directly rather than relying on
-  // currentProfile/isAdmin(), because currentProfile isn't populated until
-  // loadProfile() (screen-profile.js) runs, which only happens if/when the
-  // user visits the Profile screen — not guaranteed at login time. Fixes a
-  // prior gap where the Admin tab was visible to every signed-in user
+  // Gates the Admin nav tab (and the Directory > Staff Recall subtab, same
+  // role check, same round trip). Queries role directly rather than relying
+  // on currentProfile/isAdmin(), because currentProfile isn't populated
+  // until loadProfile() (screen-profile.js) runs, which only happens if/when
+  // the user visits the Profile screen — not guaranteed at login time. Fixes
+  // a prior gap where the Admin tab was visible to every signed-in user
   // regardless of role.
   async function checkAdminNavVisibility(){
     var session = getSession();
     if(!session || !session.user){ return; }
     var btn = document.getElementById('nav-btn-admin');
+    var staffRecallBtn = document.getElementById('dir-staffrecall-btn');
     try{
       var rows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
-      btn.style.display = (rows.length && rows[0].role === 'admin') ? '' : 'none';
+      var isAdminRole = rows.length && rows[0].role === 'admin';
+      btn.style.display = isAdminRole ? '' : 'none';
+      if(staffRecallBtn){ staffRecallBtn.style.display = isAdminRole ? '' : 'none'; }
     }catch(e){
       console.error(e);
       btn.style.display = 'none';
+      if(staffRecallBtn){ staffRecallBtn.style.display = 'none'; }
     }
   }
 

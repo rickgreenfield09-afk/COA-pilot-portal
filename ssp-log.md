@@ -402,3 +402,29 @@ refresh-token rotation — access tokens still just expire and require
 re-login; deferred since this whole flow is Supabase-POC-only and will be
 replaced by Entra ID Gov SSO. Idle timeout is currently hardcoded at 15
 minutes (IDLE_TIMEOUT_MS in app-core.js), not admin-configurable.
+
+## 2026-07-23 — Staff Recall broadcast (AC-3 / AU-2 / AU-3)
+Added Directory > Staff Recall (admin-only): broadcasts an email to every
+matching employee's work + home address (optionally filtered by a
+free-text substring match against profiles.location), with a per-recipient
+unique confirm-receipt link. New tables: `staff_recall_broadcasts` (who
+sent it, when, subject/message, location filter used, recipient count) and
+`staff_recall_recipients` (one row per person actually emailed, their
+ack_token, and acknowledged_at once they click the link). This is the
+first feature in the app with a real server-side component — a Supabase
+Edge Function (`supabase/functions/staff-recall`) — since browser JS can
+never safely hold an email-provider API key or send on behalf of "every
+employee" without a trusted authorization check. The function independently
+verifies the caller's role against `profiles.role` server-side before
+sending anything; this is notable because every other admin-only gate in
+the app so far (Admin nav tab, My Team, editable profile fields, etc.) is
+UI-only and technically bypassable by a direct API call, since there is no
+RLS yet. Email sent via Resend; confirmation clicks require no login (token
+in the URL is the only credential, matching common "click to confirm"
+patterns — not used for anything sensitive beyond marking receipt).
+Status: Implemented (demo-scoped, best-effort — no delivery guarantee, no
+SMS/Teams channel yet, deferred per user decision until the Entra ID/Azure
+crossover). Gap/follow-up: no RLS on the two new tables (matches every
+other table in this Supabase POC); location filtering is free-text
+substring match, not a structured field, per user's explicit choice to
+defer until office/location data entry conventions are confirmed.

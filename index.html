@@ -86,12 +86,18 @@
         <div class="subtab-bar">
           <button class="subtab-btn active" data-dirsubtab="roster" onclick="switchDirectorySubtab('roster')">Roster</button>
           <button class="subtab-btn" data-dirsubtab="orgchart" onclick="switchDirectorySubtab('orgchart')">Org Chart</button>
+          <button class="subtab-btn" id="dir-staffrecall-btn" data-dirsubtab="staffrecall" onclick="switchDirectorySubtab('staffrecall')" style="display:none;">Staff Recall</button>
         </div>
         <div class="dir-subscreen active" id="dir-roster">
           <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
         </div>
         <div class="dir-subscreen" id="dir-orgchart">
           <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="dir-subscreen" id="dir-staffrecall">
+          <div id="staffrecall-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
         </div>
       </div>
       <div class="screen" id="screen-timekeeping">
@@ -339,6 +345,7 @@
   <script src="screen-auth.js"></script>
   <script src="screen-profile.js"></script>
   <script src="screen-directory.js"></script>
+  <script src="screen-staffrecall.js"></script>
   <script src="screen-timekeeping.js"></script>
   <script src="screen-dashboard.js"></script>
   <script src="screen-travel.js"></script>

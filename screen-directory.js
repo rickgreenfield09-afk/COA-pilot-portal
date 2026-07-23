@@ -10,6 +10,7 @@
     document.getElementById('dir-' + name).classList.add('active');
     if(name === 'roster'){ loadDirectoryRoster(); }
     if(name === 'orgchart'){ loadDirectoryOrgChart(); }
+    if(name === 'staffrecall'){ loadStaffRecallScreen(); }
   }
 
   // Shared fetch: all profiles + their department name in one round trip via PostgREST embed
