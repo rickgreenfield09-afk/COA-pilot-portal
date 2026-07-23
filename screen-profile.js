@@ -24,8 +24,8 @@
       var supervisorName = '—';
       if(p.manager_id){
         try{
-          var mgrRows = await dbRequest('profiles?id=eq.' + p.manager_id + '&select=full_name');
-          if(mgrRows.length){ supervisorName = mgrRows[0].full_name; }
+          var mgrRows = await dbRequest('profiles?id=eq.' + p.manager_id + '&select=full_name,job_title');
+          if(mgrRows.length){ supervisorName = mgrRows[0].full_name + (mgrRows[0].job_title ? ' - ' + mgrRows[0].job_title : ''); }
         }catch(e){ console.error(e); }
       }
       currentSupervisorName = supervisorName;
@@ -799,12 +799,13 @@
     if(!q){ resultsEl.innerHTML = ''; return; }
     resultsEl.innerHTML = '<div class="info-val" style="color:var(--muted);">Searching...</div>';
     try{
-      var rows = await dbRequest('resumes?select=id,summary,skills,profiles(full_name,job_title)');
+      var rows = await dbRequest('resumes?select=id,summary,skills,profiles(full_name,job_title,department)');
       var matches = rows.filter(function(r){
         var name = (r.profiles && r.profiles.full_name || '').toLowerCase();
+        var department = (r.profiles && r.profiles.department || '').toLowerCase();
         var summary = (r.summary || '').toLowerCase();
         var skills = (r.skills || []).join(' ').toLowerCase();
-        return name.indexOf(q) !== -1 || summary.indexOf(q) !== -1 || skills.indexOf(q) !== -1;
+        return name.indexOf(q) !== -1 || department.indexOf(q) !== -1 || summary.indexOf(q) !== -1 || skills.indexOf(q) !== -1;
       });
       if(!matches.length){
         resultsEl.innerHTML = '<div class="info-val" style="color:var(--muted);">No matches.</div>';
@@ -844,6 +845,7 @@
   function renderResumeCart(){
     var listEl = document.getElementById('resume-cart-list');
     var btn = document.getElementById('print-cart-btn');
+    var clearBtn = document.getElementById('clear-cart-btn');
     if(!resumeCart.length){
       listEl.innerHTML = '<div class="resume-cart-empty">No resumes added yet.</div>';
     }else{
@@ -853,6 +855,14 @@
     }
     btn.textContent = 'Print Selected (' + resumeCart.length + ')';
     btn.disabled = resumeCart.length === 0;
+    clearBtn.disabled = resumeCart.length === 0;
+  }
+
+  function clearResumeCart(){
+    resumeCart = [];
+    resumeCartMeta = {};
+    renderResumeCart();
+    searchResumes();
   }
 
   function printableResumeHtml(r, owner){
@@ -1082,12 +1092,16 @@
       + '<div><label class="field-label">Photo URL</label><input type="text" id="ar-photo" class="field-input" placeholder="Link to a photo (upload coming soon)"></div>'
       + '</div>'
       + '<div style="margin-top:10px;"><label class="field-label">Notes</label><input type="text" id="ar-notes" class="field-input"></div>'
-      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;margin-top:10px;" onclick="submitAssetRequest()">Submit Request</button>'
+      + '<div style="display:flex;gap:10px;margin-top:10px;">'
+      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="submitAssetRequest(\'pending\')">Submit Request</button>'
+      + '<button class="btn-cancel" onclick="submitAssetRequest(\'draft\')">Save as Draft</button>'
+      + '<button class="btn-cancel" onclick="document.getElementById(\'asset-request-form-wrap\').innerHTML=\'\'">Cancel</button>'
+      + '</div>'
       + '<div class="login-error" id="asset-request-error"></div>'
       + '</div>';
   }
 
-  async function submitAssetRequest(){
+  async function submitAssetRequest(targetStatus){
     var errorEl = document.getElementById('asset-request-error');
     var session = getSession();
     var name = document.getElementById('ar-name').value;
@@ -1112,7 +1126,7 @@
         warranty_expiry: document.getElementById('ar-warranty').value || null,
         photo_url: document.getElementById('ar-photo').value || null,
         notes: document.getElementById('ar-notes').value || null,
-        status: 'pending'
+        status: targetStatus
       });
       loadProfileAssets();
     }catch(e){

@@ -262,12 +262,13 @@
         </div>
         <div class="admin-subscreen" id="admin-resumes">
           <div class="resume-search-wrap" id="resume-search-wrap">
-            <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract..." oninput="debounceSearchResumes()">
+            <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract, or department..." oninput="debounceSearchResumes()">
             <div id="resume-search-results"></div>
             <div class="resume-cart" style="width:100%;">
               <div class="resume-cart-title">Resume Export Cart</div>
               <div id="resume-cart-list"><div class="resume-cart-empty">No resumes added yet.</div></div>
               <button class="btn-edit" id="print-cart-btn" onclick="printResumeCart()" disabled style="margin-top:8px;">Print Selected (0)</button>
+              <button class="btn-cancel" id="clear-cart-btn" onclick="clearResumeCart()" disabled style="margin-top:8px;">Clear All</button>
             </div>
           </div>
           <div class="tk-entry-card" id="admin-resumes-team-panel">
