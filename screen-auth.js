@@ -21,6 +21,8 @@
     try{
       var data = await authRequest('token?grant_type=password', { email: email, password: password });
       saveSession(data);
+      recordActivity();
+      resetIdleLogoutTimer();
       showApp(data.user.email);
     }catch(e){
       errorEl.textContent = 'Incorrect email or password.';

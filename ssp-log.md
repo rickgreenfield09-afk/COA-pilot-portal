@@ -379,3 +379,26 @@ for in this pass.
 Status: Fixed at UI level. Gap/follow-up: same RLS caveat as the 2026-07-16
 entry above (admin-only field gating is UI-only, not enforced server-side
 in the current Supabase POC).
+
+## 2026-07-23 — Session restore on refresh + 15-minute idle auto-logout (AC-11 / AC-12)
+Fixed two gaps found while investigating a user report ("refresh logs me
+out", "info can't be shown, try refreshing"): (1) the app never checked for
+an existing valid session on page load — sessionStorage held a still-valid
+token, but the UI always reset to the login screen on refresh, since
+showApp() was only ever called from handleLogin(). (2) There was no session
+expiry/idle handling at all, so once the Supabase access token aged out
+(no refresh-token flow implemented), API calls started failing with 401s
+and users had no clear path back except to re-login manually.
+Added to app-core.js: tryRestoreSession() runs on DOMContentLoaded and
+restores the signed-in view if a session exists, its token hasn't expired
+(computed from a self-recorded `_savedAt` timestamp + `expires_in`, not
+trusting the API's `expires_at` format), and the user wasn't idle past 15
+minutes when the page was last open. A 15-minute idle timer
+(resetIdleLogoutTimer/handleUserActivity, listening on click/keydown/
+mousemove/scroll/touchstart) auto-logs-out via handleLogout('idle'), which
+now shows "Signed out after 15 minutes of inactivity." on the login screen.
+Status: Implemented (demo-scoped). Explicitly does not implement
+refresh-token rotation — access tokens still just expire and require
+re-login; deferred since this whole flow is Supabase-POC-only and will be
+replaced by Entra ID Gov SSO. Idle timeout is currently hardcoded at 15
+minutes (IDLE_TIMEOUT_MS in app-core.js), not admin-configurable.

@@ -25,7 +25,18 @@
     return data;
   }
 
+  // Session persistence + 15-minute idle auto-logout for the Supabase POC.
+  // Demo-only stand-in — Entra ID Gov will replace this whole auth flow, so
+  // this deliberately doesn't implement refresh-token rotation, just enough
+  // to (a) survive a page refresh without re-login as long as the existing
+  // token is still good and the user hasn't been idle too long, and (b) log
+  // out automatically after 15 minutes of no activity.
+  var IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+  var idleLogoutTimer = null;
+  var lastActivityPersistedAt = 0;
+
   function saveSession(session){
+    session._savedAt = Date.now();
     sessionStorage.setItem('coa_session', JSON.stringify(session));
   }
   function getSession(){
@@ -34,14 +45,72 @@
   }
   function clearSession(){
     sessionStorage.removeItem('coa_session');
+    sessionStorage.removeItem('coa_last_activity');
   }
 
-  function handleLogout(){
+  // The token response's own expires_in is trusted over any absolute
+  // expires_at field, since _savedAt is our own clock and avoids any
+  // ambiguity about what timezone/units the API's expires_at is in.
+  function sessionTokenExpired(session){
+    if(!session){ return true; }
+    var expiresAt = (session._savedAt || 0) + ((session.expires_in || 3600) * 1000);
+    return Date.now() >= expiresAt;
+  }
+
+  function sessionIdleExpired(){
+    var last = Number(sessionStorage.getItem('coa_last_activity') || 0);
+    if(!last){ return false; } // no activity recorded yet — freshly logged in
+    return (Date.now() - last) > IDLE_TIMEOUT_MS;
+  }
+
+  function recordActivity(){
+    var now = Date.now();
+    lastActivityPersistedAt = now;
+    sessionStorage.setItem('coa_last_activity', String(now));
+  }
+
+  function resetIdleLogoutTimer(){
+    clearTimeout(idleLogoutTimer);
+    idleLogoutTimer = setTimeout(function(){ handleLogout('idle'); }, IDLE_TIMEOUT_MS);
+  }
+
+  // Throttled so mousemove/scroll don't hammer sessionStorage — the timer
+  // itself still resets on every event, only the persisted timestamp (used
+  // to survive a refresh) is capped to once per 5s.
+  function handleUserActivity(){
+    if(!getSession()){ return; }
+    resetIdleLogoutTimer();
+    if(Date.now() - lastActivityPersistedAt > 5000){ recordActivity(); }
+  }
+
+  ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'].forEach(function(evt){
+    window.addEventListener(evt, handleUserActivity, { passive: true });
+  });
+
+  // Runs on every page load. Restores the signed-in view without a fresh
+  // login only if there's a session, its token hasn't expired, and the user
+  // wasn't idle past the timeout when the page was last open.
+  function tryRestoreSession(){
+    var session = getSession();
+    if(!session || !session.user){ return; }
+    if(sessionTokenExpired(session) || sessionIdleExpired()){
+      clearSession();
+      return;
+    }
+    recordActivity();
+    resetIdleLogoutTimer();
+    showApp(session.user.email);
+  }
+
+  function handleLogout(reason){
+    clearTimeout(idleLogoutTimer);
     clearSession();
     document.getElementById('app-shell').classList.remove('active');
     document.getElementById('login-wrap').style.display = 'flex';
     document.getElementById('login-email').value = '';
     document.getElementById('login-password').value = '';
+    var errorEl = document.getElementById('login-error');
+    if(errorEl){ errorEl.textContent = reason === 'idle' ? 'Signed out after 15 minutes of inactivity.' : ''; }
   }
 
   // ---------- Data REST calls (read-only, table access via PostgREST) ----------
@@ -298,3 +367,5 @@
       switchTravelSubtab('estimate');
     }
   }
+
+  document.addEventListener('DOMContentLoaded', tryRestoreSession);
