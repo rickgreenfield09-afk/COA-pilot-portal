@@ -86,7 +86,10 @@
 
   /* ---------- Resume screen ---------- */
   .resume-search-wrap{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:20px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;}
-  .resume-search-input{flex:1;min-width:220px;margin-bottom:0;}
+  .resume-search-input-wrap{position:relative;flex:1;min-width:220px;}
+  .resume-search-input{width:100%;margin-bottom:0;padding-right:34px;}
+  .resume-search-clear-btn{position:absolute;top:50%;right:6px;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:4px 6px;}
+  .resume-search-clear-btn:hover{color:var(--text);}
   #resume-search-results{width:100%;display:flex;flex-direction:column;gap:6px;margin-top:10px;}
   .search-result-row{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:10px 14px;cursor:pointer;transition:border-color .15s;}
   .search-result-row:hover{border-color:var(--teal);}

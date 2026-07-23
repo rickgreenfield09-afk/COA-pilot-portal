@@ -267,7 +267,10 @@
         </div>
         <div class="admin-subscreen" id="admin-resumes">
           <div class="resume-search-wrap" id="resume-search-wrap">
-            <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract, or department..." oninput="debounceSearchResumes()">
+            <div class="resume-search-input-wrap">
+              <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract, or department..." oninput="onResumeSearchInput()">
+              <button type="button" class="resume-search-clear-btn" id="resume-search-clear-btn" onclick="clearResumeSearch()" style="display:none;" aria-label="Clear search">&times;</button>
+            </div>
             <div id="resume-search-results"></div>
             <div class="resume-cart" style="width:100%;">
               <div class="resume-cart-title">Resume Export Cart</div>

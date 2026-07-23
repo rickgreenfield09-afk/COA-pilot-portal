@@ -793,6 +793,22 @@
     resumeSearchDebounce = setTimeout(searchResumes, 250);
   }
 
+  function onResumeSearchInput(){
+    var input = document.getElementById('resume-search-input');
+    var clearBtn = document.getElementById('resume-search-clear-btn');
+    if(clearBtn){ clearBtn.style.display = input.value ? '' : 'none'; }
+    debounceSearchResumes();
+  }
+
+  function clearResumeSearch(){
+    var input = document.getElementById('resume-search-input');
+    input.value = '';
+    document.getElementById('resume-search-results').innerHTML = '';
+    var clearBtn = document.getElementById('resume-search-clear-btn');
+    if(clearBtn){ clearBtn.style.display = 'none'; }
+    input.focus();
+  }
+
   async function searchResumes(){
     var q = document.getElementById('resume-search-input').value.trim().toLowerCase();
     var resultsEl = document.getElementById('resume-search-results');
@@ -820,7 +836,7 @@
         var title = (r.profiles && r.profiles.job_title) || '';
         var inCart = resumeCart.indexOf(r.id) !== -1;
         return '<div class="search-result-row">'
-          + '<div onclick="requestViewResume(\'' + r.id + '\')" style="cursor:pointer;flex:1;"><div class="resume-view-row-title">' + name + (title ? ' · ' + title : '') + '</div></div>'
+          + '<div onclick="selectTeamResumeEmployee(\'admin\',\'' + r.id + '\')" style="cursor:pointer;flex:1;"><div class="resume-view-row-title">' + name + (title ? ' · ' + title : '') + '</div></div>'
           + '<button type="button" class="btn-cart-add" ' + (inCart ? 'disabled' : '') + ' onclick="event.stopPropagation();addToResumeCart(\'' + r.id + '\',\'' + escAttr(name).replace(/'/g, "\\'") + '\')">' + (inCart ? 'Added' : '+ Add to cart') + '</button>'
           + '</div>';
       }).join('');
@@ -952,6 +968,8 @@
     if(scope === 'admin'){
       document.getElementById(ids.searchInputId).value = '';
       document.getElementById(ids.searchResultsId).innerHTML = '';
+      var clearBtn = document.getElementById('resume-search-clear-btn');
+      if(clearBtn){ clearBtn.style.display = 'none'; }
     }
     document.getElementById(ids.bannerId).innerHTML = '';
     document.getElementById(ids.contentId).innerHTML = '';
