@@ -54,9 +54,13 @@ function escapeHtml(v: string) {
 }
 
 function confirmPage(message: string) {
-  return "<div style=\"font-family:sans-serif;max-width:480px;margin:60px auto;text-align:center;\">"
+  return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+    + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    + "<title>Staff Recall Confirmation</title></head>"
+    + "<body style=\"font-family:sans-serif;max-width:480px;margin:60px auto;text-align:center;\">"
     + "<h1>" + message + "</h1>"
-    + "<p>You can close this window.</p></div>";
+    + "<p>You can close this window.</p>"
+    + "</body></html>";
 }
 
 Deno.serve(async (req) => {
