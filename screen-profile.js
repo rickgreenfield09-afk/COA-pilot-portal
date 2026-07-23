@@ -13,7 +13,7 @@
     if(!session || !session.user){ return; }
 
     try{
-      var rows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=*');
+      var rows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=*,departments(name)');
       if(!rows.length){
         container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No profile found</div><div class="placeholder-sub">This account has no profile record yet.</div></div>';
         return;
@@ -93,7 +93,7 @@
       + textField('phone', 'Work Phone', p.phone)
       + textField('home_email', 'Home Email', p.home_email)
       + textField('home_phone', 'Home Phone', p.home_phone)
-      + textField('department', 'Department', p.department)
+      + textField('department', 'Department', p.departments && p.departments.name)
       + textField('location', 'Location', p.location)
       + '<div class="info-box"><div class="info-label">Supervisor</div><div class="info-val">' + supervisorName + '</div></div>'
       + dateField('start_date', 'Start Date', p.start_date)
@@ -799,10 +799,14 @@
     if(!q){ resultsEl.innerHTML = ''; return; }
     resultsEl.innerHTML = '<div class="info-val" style="color:var(--muted);">Searching...</div>';
     try{
-      var rows = await dbRequest('resumes?select=id,summary,skills,profiles(full_name,job_title,department)');
+      var deptRows = await dbRequest('departments?select=id,name');
+      var deptNameById = {};
+      deptRows.forEach(function(d){ deptNameById[d.id] = d.name; });
+
+      var rows = await dbRequest('resumes?select=id,summary,skills,profiles(full_name,job_title,department_id)');
       var matches = rows.filter(function(r){
         var name = (r.profiles && r.profiles.full_name || '').toLowerCase();
-        var department = (r.profiles && r.profiles.department || '').toLowerCase();
+        var department = ((r.profiles && deptNameById[r.profiles.department_id]) || '').toLowerCase();
         var summary = (r.summary || '').toLowerCase();
         var skills = (r.skills || []).join(' ').toLowerCase();
         return name.indexOf(q) !== -1 || department.indexOf(q) !== -1 || summary.indexOf(q) !== -1 || skills.indexOf(q) !== -1;
@@ -975,7 +979,7 @@
           + depts.map(function(d){ return '<option value="' + d.id + '" ' + (currentFilter === d.id ? 'selected' : '') + '>' + d.name + '</option>'; }).join('')
           + '</select>';
       }
-      var query = 'profiles?id=neq.' + session.user.id + (teamDeptFilter.admin[context] ? '&department_id=eq.' + teamDeptFilter.admin[context] : '') + '&select=id,full_name,job_title&order=full_name.asc';
+      var query = 'profiles?select=id,full_name,job_title&order=full_name.asc' + (teamDeptFilter.admin[context] ? '&department_id=eq.' + teamDeptFilter.admin[context] : '');
       var employees = await dbRequest(query);
       renderTeamPanelList(listEl, employees, context, scope);
       return;
@@ -996,10 +1000,30 @@
     }
     listEl.innerHTML = employees.map(function(e){
       var action = context === 'resumes'
-        ? 'requestViewResume(\'' + e.id + '\')'
+        ? 'selectTeamResumeEmployee(\'' + scope + '\',\'' + e.id + '\')'
         : 'teamViewEmployeeAssets(\'' + scope + '\',\'' + e.id + '\')';
       return '<div class="news-item" onclick="' + action + '"><div class="news-item-title">' + (e.full_name||'Unknown') + '</div><div class="news-item-date">' + (e.job_title||'—') + '</div></div>';
     }).join('');
+  }
+
+  // Selecting an employee from the My Team/Admin resume panel collapses the
+  // panel to a narrow strip (with a Clear Selection button to reopen it)
+  // and scrolls the resume into view, so reviewers don't have to scroll
+  // past a long employee list to see what they just picked.
+  function selectTeamResumeEmployee(scope, employeeId){
+    requestViewResume(employeeId);
+    var panel = document.getElementById(scope + '-resumes-team-panel');
+    if(panel){ panel.classList.add('team-panel-collapsed'); }
+    var ctx = getActiveResumeContext();
+    var contentEl = document.getElementById(ctx.containerId);
+    if(contentEl){ contentEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  }
+
+  function clearTeamResumeSelection(scope){
+    var panel = document.getElementById(scope + '-resumes-team-panel');
+    if(!panel){ return; }
+    panel.classList.remove('team-panel-collapsed');
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function teamDeptFilterChanged(context, deptId){

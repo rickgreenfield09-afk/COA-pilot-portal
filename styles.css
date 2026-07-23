@@ -277,6 +277,13 @@
   .myteam-subscreen.active{display:block;}
   .tk-entry-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:24px;}
   .tk-section-title{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;}
+  .team-panel-header{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .team-panel-header .tk-section-title{margin-bottom:0;}
+  .team-panel-clear-btn{display:none;flex-shrink:0;padding:6px 14px;}
+  .team-panel-body{max-height:2000px;overflow:hidden;margin-top:12px;opacity:1;transition:max-height .2s ease,opacity .15s ease,margin-top .2s ease;}
+  .team-panel-collapsed{padding-bottom:14px;}
+  .team-panel-collapsed .team-panel-clear-btn{display:inline-block;}
+  .team-panel-collapsed .team-panel-body{max-height:0;margin-top:0;opacity:0;pointer-events:none;}
   .tk-status-pill{font-size:11px;font-family:'DM Mono',monospace;padding:3px 9px;border-radius:10px;display:inline-block;}
   .tk-status-pill.draft{background:var(--raised);color:var(--sub);}
   .tk-status-pill.submitted{background:rgba(232,184,75,0.12);color:var(--amber);}

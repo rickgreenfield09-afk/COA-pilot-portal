@@ -113,8 +113,14 @@
   // self-service; org placement, HR status, and clearance data are
   // admin-only (confirmed with user 2026-07-16, see ssp-log.md AC-3 entry).
   var employeeEditableFields = ['preferred_name', 'phone', 'home_email', 'home_phone', 'known_traveler_number'];
+  // 'department' is intentionally excluded here — profiles has no such
+  // column (only department_id, a departments FK, and a deprecated
+  // department_legacy_text). Including it made saveProfile()'s PATCH fail
+  // for every field whenever an admin edited a profile, since PostgREST
+  // rejects the whole request for one unknown column. Department is
+  // display-only on this card until a proper department_id picker exists.
   var adminEditableFields = employeeEditableFields.concat([
-    'full_name', 'job_title', 'department', 'location',
+    'full_name', 'job_title', 'location',
     'start_date', 'employment_status',
     'clearance_level', 'clearance_investigation_type', 'clearance_granted_date', 'clearance_expiration_date'
   ]);

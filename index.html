@@ -145,9 +145,14 @@
           <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
         </div>
         <div class="myteam-subscreen" id="myteam-resumes">
-          <div class="tk-entry-card" id="myteam-resumes-team-panel">
-            <div class="tk-section-title">My Team - Select an employee to view their resume</div>
-            <div id="myteam-resumes-employee-list"><div class="tk-empty">Loading...</div></div>
+          <div class="tk-entry-card team-panel" id="myteam-resumes-team-panel">
+            <div class="team-panel-header">
+              <div class="tk-section-title">My Team - Select an employee to view their resume</div>
+              <button type="button" class="btn-cancel team-panel-clear-btn" onclick="clearTeamResumeSelection('myteam')">Clear Selection</button>
+            </div>
+            <div class="team-panel-body">
+              <div id="myteam-resumes-employee-list"><div class="tk-empty">Loading...</div></div>
+            </div>
           </div>
           <div id="myteam-resume-viewing-banner"></div>
           <div id="myteam-resume-content"></div>
@@ -271,10 +276,15 @@
               <button class="btn-cancel" id="clear-cart-btn" onclick="clearResumeCart()" disabled style="margin-top:8px;">Clear All</button>
             </div>
           </div>
-          <div class="tk-entry-card" id="admin-resumes-team-panel">
-            <div class="tk-section-title">All Employees - Select an employee to view their resume</div>
-            <div id="admin-resumes-dept-filter-wrap"></div>
-            <div id="admin-resumes-employee-list"><div class="tk-empty">Loading...</div></div>
+          <div class="tk-entry-card team-panel" id="admin-resumes-team-panel">
+            <div class="team-panel-header">
+              <div class="tk-section-title">All Employees - Select an employee to view their resume</div>
+              <button type="button" class="btn-cancel team-panel-clear-btn" onclick="clearTeamResumeSelection('admin')">Clear Selection</button>
+            </div>
+            <div class="team-panel-body">
+              <div id="admin-resumes-dept-filter-wrap"></div>
+              <div id="admin-resumes-employee-list"><div class="tk-empty">Loading...</div></div>
+            </div>
           </div>
           <div id="admin-resume-viewing-banner"></div>
           <div id="admin-resume-content"></div>

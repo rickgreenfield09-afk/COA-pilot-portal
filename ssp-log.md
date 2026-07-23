@@ -363,3 +363,19 @@ selects `photo_url`.
 Status: Implemented (display only — reuses the existing public
 'profile-photos' bucket and profiles.photo_url column set up earlier;
 no new data exposure since profile photos were already public-readable).
+
+## 2026-07-23 — Profile field edit gate fix: removed nonexistent 'department' column (AC-3)
+Found while fixing an unrelated Department-display bug: `adminEditableFields`
+(app-core.js) listed `department` as an admin-editable profile field, but
+`profiles` has no `department` column (only `department_id`, a `departments`
+FK, and a deprecated `department_legacy_text`). Since `saveProfile()` bundles
+every editable field into a single PATCH, this caused PostgREST to reject
+the entire request — meaning **any admin edit of any My Profile > Overview
+field was failing**, not just Department. Removed `department` from
+`adminEditableFields`; the field is now display-only, rendering the resolved
+`departments.name` via `profiles.department_id`. No UI currently exists to
+change an employee's `department_id` from this card — deferred, not asked
+for in this pass.
+Status: Fixed at UI level. Gap/follow-up: same RLS caveat as the 2026-07-16
+entry above (admin-only field gating is UI-only, not enforced server-side
+in the current Supabase POC).
