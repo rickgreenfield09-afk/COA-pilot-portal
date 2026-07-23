@@ -157,6 +157,19 @@
   .subtab-btn:hover{color:var(--text);}
   .subtab-btn.active{color:var(--teal);border-bottom-color:var(--teal);}
   .training-subscreen{display:none;}
+
+  /* ---------- Staff Recall ---------- */
+  .sr-chip-gallery{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;}
+  .sr-chip{padding:8px 16px;border-radius:20px;border:1px solid var(--border);background:var(--raised);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;transition:border-color .15s,background .15s,color .15s;}
+  .sr-chip:hover{border-color:var(--teal);}
+  .sr-chip.selected{background:rgba(42,184,166,0.15);border-color:var(--teal);color:var(--teal);}
+  .sr-employee-gallery{max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-top:6px;}
+  .sr-employee-row{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;}
+  .sr-employee-row:last-child{border-bottom:none;}
+  .sr-employee-row:hover{background:var(--raised);}
+  .sr-employee-row.selected{background:rgba(42,184,166,0.12);}
+  .sr-recipient-box{background:var(--raised);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:14px 0;font-size:13px;color:var(--sub);line-height:1.5;}
+  .sr-recipient-count{color:var(--teal);font-weight:600;}
   .training-subscreen.active{display:block;}
 
   .shortcuts-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}

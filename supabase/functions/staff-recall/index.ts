@@ -1,7 +1,13 @@
 // COA Employee Portal — supabase/functions/staff-recall/index.ts
 // Staff Recall broadcast: admin-only mass email (work + home address) with
 // a per-recipient confirm-receipt link. Two entry points in one function:
-//   POST { subject, message, locationFilter } -> sends a new broadcast
+//   POST { subject, message, recipientMode, locations?, employeeIds? }
+//        -> sends a new broadcast. recipientMode is 'all' | 'region' |
+//           'handpick'; locations (exact-match location strings) is used
+//           for 'region', employeeIds for 'handpick'. The browser already
+//           knows the exact recipient list (it renders a live preview of
+//           it), so this just re-derives the same set server-side rather
+//           than trusting a list of IDs/addresses sent from the client.
 //   GET  ?token=<ack_token>                   -> marks that recipient's
 //                                                receipt confirmed, returns
 //                                                a plain HTML thank-you page
@@ -108,7 +114,13 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Admins only" }, 403);
   }
 
-  let payload: { subject?: string; message?: string; locationFilter?: string };
+  let payload: {
+    subject?: string;
+    message?: string;
+    recipientMode?: string;
+    locations?: string[];
+    employeeIds?: string[];
+  };
   try {
     payload = await req.json();
   } catch {
@@ -117,16 +129,30 @@ Deno.serve(async (req) => {
 
   const subject = (payload.subject || "").trim();
   const message = (payload.message || "").trim();
-  const locationFilter = (payload.locationFilter || "").trim();
+  const recipientMode = payload.recipientMode || "all";
+  const locations = (payload.locations || []).map((l) => l.trim()).filter(Boolean);
+  const employeeIds = (payload.employeeIds || []).filter(Boolean);
+
   if (!subject || !message) {
     return jsonResponse({ error: "Subject and message are required" }, 400);
+  }
+  if (!["all", "region", "handpick"].includes(recipientMode)) {
+    return jsonResponse({ error: "Invalid recipientMode" }, 400);
+  }
+  if (recipientMode === "region" && !locations.length) {
+    return jsonResponse({ error: "Select at least one region" }, 400);
+  }
+  if (recipientMode === "handpick" && !employeeIds.length) {
+    return jsonResponse({ error: "Select at least one employee" }, 400);
   }
 
   let profileQuery = admin
     .from("profiles")
     .select("id, full_name, email, home_email, location");
-  if (locationFilter) {
-    profileQuery = profileQuery.ilike("location", "%" + locationFilter + "%");
+  if (recipientMode === "region") {
+    profileQuery = profileQuery.in("location", locations);
+  } else if (recipientMode === "handpick") {
+    profileQuery = profileQuery.in("id", employeeIds);
   }
   const { data: targets, error: targetsErr } = await profileQuery;
   if (targetsErr) return jsonResponse({ error: "Couldn't load recipients" }, 500);
@@ -136,13 +162,16 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "No matching employees have an email on file" }, 400);
   }
 
+  const filterSummary = recipientMode === "region" ? locations.join("; ") : null;
+
   const { data: broadcast, error: broadcastErr } = await admin
     .from("staff_recall_broadcasts")
     .insert({
       sent_by: userData.user.id,
       subject,
       message,
-      location_filter: locationFilter || null,
+      recipient_mode: recipientMode,
+      filter_summary: filterSummary,
       recipient_count: recipients.length
     })
     .select()

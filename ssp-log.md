@@ -428,3 +428,25 @@ crossover). Gap/follow-up: no RLS on the two new tables (matches every
 other table in this Supabase POC); location filtering is free-text
 substring match, not a structured field, per user's explicit choice to
 defer until office/location data entry conventions are confirmed.
+
+## 2026-07-23 — Staff Recall recipient selection UI (AU-2 / AU-3, before first use)
+Reworked Staff Recall's recipient selection before its first real send (no
+broadcasts had been sent yet, so this was a clean schema change, not a
+migration). Replaced the single free-text location-substring filter with
+three explicit modes: Email All, Select Region (a clickable gallery of the
+exact distinct location values found on file — exact match, not substring,
+since the gallery only ever offers values that actually exist), and
+Hand-Pick Staff (a checkbox list of individual employees). Hand-Pick exists
+specifically so a deliberate, individually-selected send is distinguishable
+in the audit trail from a broader filtered blast — user's own reasoning for
+wanting it was "so it's logged that the communication went out" to those
+specific people.
+Schema: staff_recall_broadcasts.location_filter renamed to filter_summary;
+added recipient_mode (check constraint: all/region/handpick). Recipient
+matching still happens both client-side (for the live "N employees will be
+contacted" preview, shown above the Subject field per user's UI request)
+and independently server-side in the Edge Function (re-derives the same set
+from recipientMode/locations/employeeIds rather than trusting a recipient
+list posted from the browser).
+Status: Implemented (demo-scoped, pre-first-use). Gap/follow-up unchanged
+from the prior entry — no RLS yet on either table.
