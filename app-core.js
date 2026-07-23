@@ -289,6 +289,6 @@
       switchMyTeamSubtab('dashboard');
     }
     if(name === 'travel'){
-      switchTravelSubtab('request');
+      switchTravelSubtab('estimate');
     }
   }

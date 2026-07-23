@@ -14,7 +14,7 @@
     if(name === 'timekeeping'){ loadTeamTimekeeping('myteam'); }
     if(name === 'resumes'){ loadTeamResumes('myteam'); }
     if(name === 'assets'){ loadTeamAssets('myteam'); }
-    if(name === 'travel'){ switchTeamTravelSubtab('myteam', 'request'); }
+    if(name === 'travel'){ switchTeamTravelSubtab('myteam', 'estimate'); }
   }
 
   // ---------- My Team Dashboard ----------

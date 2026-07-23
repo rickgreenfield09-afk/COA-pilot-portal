@@ -15,7 +15,7 @@
     if(name === 'timekeeping'){ loadTeamTimekeeping('admin'); }
     if(name === 'resumes'){ loadTeamResumes('admin'); }
     if(name === 'assets'){ loadTeamAssets('admin'); }
-    if(name === 'travel'){ switchTeamTravelSubtab('admin', 'request'); }
+    if(name === 'travel'){ switchTeamTravelSubtab('admin', 'estimate'); }
   }
 
   // ---------- Admin Dashboard (team overview) ----------
