@@ -60,11 +60,6 @@
         + '<div><div class="danger-box-title">Action needed within 30 days</div>'
         + '<div class="danger-box-text">Security clearance investigation renewal is due soon.<span class="demo-tag">Example — not live</span></div></div>'
         + '</div>'
-        + '<div class="warning-box">'
-        + '<div class="warning-box-icon">&#9888;</div>'
-        + '<div><div class="warning-box-title">Action Needed: Training Survey</div>'
-        + '<div class="warning-box-text">Completed training is awaiting your feedback. <a href="#">Fill out survey</a><span class="demo-tag">Example — not live</span></div></div>'
-        + '</div>'
 
         + '<div class="dash-top-row">'
         + '<div class="dash-card">'
@@ -97,7 +92,6 @@
 
         + '<div class="dash-grid">'
         + '<div class="dash-card"><div class="dash-card-title">Upcoming Training Deadlines<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No training data connected yet.</div></div>'
-        + '<div class="dash-card"><div class="dash-card-title">Action Needed<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">No surveys pending yet.</div></div>'
         + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel</div>' + upcomingTravelHtml + '</div>'
         + '<div class="dash-card"><div class="dash-card-title">Assets In Your Care<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Asset tracker coming next session.</div></div>'
         + '</div>';

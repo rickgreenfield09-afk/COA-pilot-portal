@@ -450,3 +450,22 @@ from recipientMode/locations/employeeIds rather than trusting a recipient
 list posted from the browser).
 Status: Implemented (demo-scoped, pre-first-use). Gap/follow-up unchanged
 from the prior entry — no RLS yet on either table.
+
+## 2026-07-31 — Data model cleanup: onboarding + survey removal (CM-2/CM-3)
+User directed removal of two unfinished concepts ahead of vendor decisions:
+(1) `check_onboarding_status` table — no code in this repo ever referenced
+it (no schema/migration files live in this repo; the table exists only in
+the live Postgres/Supabase instance). Drafted `drop-check_onboarding_status.sql`
+(FK-dependency check + `DROP TABLE ... CASCADE`) for the user to review and
+run themselves — no DB access from this session. Onboarding flow to be
+rebuilt once a payroll processor is selected. (2) Survey concept — no
+tables or data-layer code existed, only four placeholder UI stubs (a
+dashboard warning box and three "Surveys Due" dash-cards marked
+Soon/Coming-soon). Removed all four from screen-dashboard.js, screen-admin.js,
+and screen-myteam.js; survey functionality is moving to Microsoft tools
+instead of this app.
+Status: Implemented (UI removal) / Planned (DB drop — SQL drafted, not yet
+run). Gap/follow-up: user must execute drop-check_onboarding_status.sql
+against the target Postgres/Supabase instance; confirm no other environment
+(e.g. a separate prod-tier DB) still references the table before applying
+there.

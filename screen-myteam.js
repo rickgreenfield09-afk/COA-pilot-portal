@@ -73,7 +73,6 @@
         + '<div class="dash-card"><div class="dash-card-title">Out Today (Approved PTO)</div>' + outTodayHtml + '</div>'
         + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel</div>' + upcomingTravelHtml + '</div>'
         + '<div class="dash-card"><div class="dash-card-title">Training Requirements<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Coming soon.</div></div>'
-        + '<div class="dash-card"><div class="dash-card-title">Surveys Due<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Coming soon.</div></div>'
         + '</div>';
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load team dashboard</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
