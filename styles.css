@@ -13,22 +13,43 @@
      alerts/active-state signals, off-white/white carry the rest. --void
      keeps its role as "the color that contrasts an accent button's text"
      (dark: near-black text on a light-teal button; light: near-white text
-     on a navy button) so button/badge rules below don't need to change. */
-  [data-theme="light"]{--void:#F7F6F2;--surface:#FFFFFF;--raised:#EEF1F6;--teal:#122A54;--amber:#8A5A00;--red:#C42430;--purple:#7A3FD1;--header:#122A54;--text:#1B1D22;--sub:#5C6472;--muted:#767C8A;--border:#E1E1DA;}
+     on a navy button) so button/badge rules below don't need to change.
+     --void is also the page background, and --surface (card background) is
+     pure white — deliberately a step apart, not near-identical, so cards
+     read as distinct surfaces instead of white-on-white. */
+  [data-theme="light"]{--void:#EBEAE3;--surface:#FFFFFF;--raised:#EEF1F6;--teal:#122A54;--amber:#8A5A00;--red:#C42430;--purple:#7A3FD1;--header:#122A54;--text:#1B1D22;--sub:#5C6472;--muted:#767C8A;--border:#D7D7CD;}
 
-  /* The top <header>/<nav> bar's background is itself the accent color
-     (--header) in both themes, so foreground text there can't use --teal/
-     --sub/--text the way every other card can — in dark mode --teal is a
-     light color sitting on a muted-dark header, but in light mode --teal
-     is now dark navy, the same color as the header background. These
-     overrides keep header/nav foreground legible without touching the
-     shared header/nav rules that every other theme reuses correctly. */
+  /* Card-style surfaces (background:var(--surface) + a 1px border) get a
+     soft shadow in light mode so they lift off the page background instead
+     of relying on the border alone — a light border on a light page reads
+     as almost no separation at all. Skips nav (a full-width bar, not a
+     card) and .info-edit-input (a form field, not a card). */
+  [data-theme="light"] .login-card,
+  [data-theme="light"] .placeholder-card,
+  [data-theme="light"] .profile-card,
+  [data-theme="light"] .modal-box,
+  [data-theme="light"] .resume-search-wrap,
+  [data-theme="light"] .skill-bank-panel,
+  [data-theme="light"] .resume-cart,
+  [data-theme="light"] .dash-header-strip,
+  [data-theme="light"] .shortcut-tile,
+  [data-theme="light"] .dash-card,
+  [data-theme="light"] .dir-chart-card,
+  [data-theme="light"] .tk-entry-card{box-shadow:0 1px 2px rgba(18,26,43,0.05),0 4px 14px rgba(18,26,43,0.06);}
+
+  /* <header> (logo/sign-out, navy background in both themes via --header)
+     and <nav> (the tab row directly below it) are separate elements with
+     separate backgrounds — nav uses var(--surface), which is white in
+     light mode, not navy. Only .logo/.user-email/.btn-logout/
+     .photo-upload-btn actually sit on the navy --header background and
+     need light foreground colors; .nav-btn sits on the white nav bar and
+     is left on its normal (dark-on-light) token colors. The active tab's
+     underline is switched to red as a deliberate light-theme accent touch,
+     independent of that background fix. */
   [data-theme="light"] .logo{color:#FFFFFF;}
   [data-theme="light"] .user-email{color:#AEB8CC;}
   [data-theme="light"] .btn-logout{background:rgba(255,255,255,0.14);border-color:rgba(255,255,255,0.24);color:#FFFFFF;}
-  [data-theme="light"] .nav-btn{color:#B9C2D6;}
-  [data-theme="light"] .nav-btn:hover{color:#FFFFFF;}
-  [data-theme="light"] .nav-btn.active{color:#FFFFFF;border-bottom-color:var(--red);}
+  [data-theme="light"] .nav-btn.active{border-bottom-color:var(--red);}
   [data-theme="light"] .photo-upload-btn{color:#FFFFFF;}
 
   /* Selectors below hardcode teal/amber/purple as literal rgba() tints
