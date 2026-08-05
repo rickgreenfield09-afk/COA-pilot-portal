@@ -1,9 +1,61 @@
 /* COA Employee Portal — styles.css
    All app styling. Design tokens locked at session 1 (dark mode default,
    teal accent). Do not deviate from :root token values without an explicit
-   design-change approval. */
+   design-change approval. Light theme (approved 2026-08-05, "Option A —
+   Navy Lead, Red Accent" from the CYBER logo) is layered on via
+   [data-theme="light"] token overrides below — it never edits the :root
+   (dark) values themselves. Toggled from Profile > Overview; see
+   app-core.js applyTheme() and screen-profile.js setThemePreference(). */
 
   :root{--void:#0D1117;--surface:#161C26;--raised:#1E2733;--teal:#2AB8A6;--amber:#E8B84B;--red:#E05252;--purple:#BF5FFF;--header:#3E4E6C;--text:#F2EDE4;--sub:#8E92B0;--muted:#5C607E;--border:#2E3440;}
+
+  /* Light theme — navy (was teal's role) leads, logo red is rationed to
+     alerts/active-state signals, off-white/white carry the rest. --void
+     keeps its role as "the color that contrasts an accent button's text"
+     (dark: near-black text on a light-teal button; light: near-white text
+     on a navy button) so button/badge rules below don't need to change. */
+  [data-theme="light"]{--void:#F7F6F2;--surface:#FFFFFF;--raised:#EEF1F6;--teal:#122A54;--amber:#8A5A00;--red:#C42430;--purple:#7A3FD1;--header:#122A54;--text:#1B1D22;--sub:#5C6472;--muted:#767C8A;--border:#E1E1DA;}
+
+  /* The top <header>/<nav> bar's background is itself the accent color
+     (--header) in both themes, so foreground text there can't use --teal/
+     --sub/--text the way every other card can — in dark mode --teal is a
+     light color sitting on a muted-dark header, but in light mode --teal
+     is now dark navy, the same color as the header background. These
+     overrides keep header/nav foreground legible without touching the
+     shared header/nav rules that every other theme reuses correctly. */
+  [data-theme="light"] .logo{color:#FFFFFF;}
+  [data-theme="light"] .user-email{color:#AEB8CC;}
+  [data-theme="light"] .btn-logout{background:rgba(255,255,255,0.14);border-color:rgba(255,255,255,0.24);color:#FFFFFF;}
+  [data-theme="light"] .nav-btn{color:#B9C2D6;}
+  [data-theme="light"] .nav-btn:hover{color:#FFFFFF;}
+  [data-theme="light"] .nav-btn.active{color:#FFFFFF;border-bottom-color:var(--red);}
+  [data-theme="light"] .photo-upload-btn{color:#FFFFFF;}
+
+  /* Selectors below hardcode teal/amber/purple as literal rgba() tints
+     (instead of var()) for translucent hover/selected backgrounds — these
+     mirror them at the light-theme token values so tints don't stay
+     dark-teal-colored on a white page. */
+  [data-theme="light"] .sr-chip.selected{background:rgba(18,42,84,0.10);}
+  [data-theme="light"] .sr-employee-row.selected{background:rgba(18,42,84,0.08);}
+  [data-theme="light"] .dir-chart-card.is-you{box-shadow:0 0 0 1px rgba(18,42,84,0.25);}
+  [data-theme="light"] .tk-status-pill.approved{background:rgba(18,42,84,0.10);}
+  [data-theme="light"] .tk-status-pill.paid{background:rgba(18,42,84,0.10);}
+  [data-theme="light"] .tk-pto-gallery-item.selected{background:rgba(18,42,84,0.06);}
+  [data-theme="light"] .warning-box{background:rgba(138,90,0,0.10);}
+  [data-theme="light"] .tk-status-pill.submitted{background:rgba(138,90,0,0.12);}
+  [data-theme="light"] .tk-status-pill.pending{background:rgba(138,90,0,0.12);}
+  [data-theme="light"] .tk-status-pill.returned{background:rgba(122,63,209,0.12);}
+  [data-theme="light"] .tk-status-pill.expensed{background:rgba(122,63,209,0.12);}
+
+  /* Appearance toggle — Profile > Overview */
+  .theme-toggle-wrap{margin-left:auto;display:flex;align-items:center;gap:10px;}
+  .theme-toggle-label{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+  .theme-toggle-switch{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+  .theme-toggle-btn{background:var(--raised);border:none;padding:7px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--sub);cursor:pointer;transition:all 0.15s;}
+  .theme-toggle-btn+.theme-toggle-btn{border-left:1px solid var(--border);}
+  .theme-toggle-btn:hover{color:var(--text);}
+  .theme-toggle-btn.active{background:var(--teal);color:var(--void);cursor:default;}
+
   *{margin:0;padding:0;box-sizing:border-box;}
   body{background:var(--void);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;flex-direction:column;}
 

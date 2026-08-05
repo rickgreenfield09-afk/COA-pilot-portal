@@ -165,6 +165,19 @@
     return (v == null ? '' : String(v)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  // Applies the Dark/Light Appearance preference (profiles.theme_preference)
+  // by toggling data-theme on <html> — styles.css keys its [data-theme="light"]
+  // token overrides off this attribute. Also caches the choice in localStorage
+  // so index.html's inline head script can apply it before first paint on the
+  // next load, avoiding a flash of the wrong theme. Called from
+  // screen-profile.js: loadProfile() (on login/profile load) and
+  // setThemePreference() (on toggle click).
+  function applyTheme(pref){
+    var isLight = pref === 'light';
+    document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+    try{ localStorage.setItem('coa_theme', isLight ? 'light' : 'dark'); }catch(e){ /* private mode, etc. */ }
+  }
+
   var pendingNavTarget = null; // used by the unsaved-changes guard below
 
   // NOTE: isAdmin() reads currentProfile, which is declared and populated in

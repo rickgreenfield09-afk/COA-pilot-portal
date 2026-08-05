@@ -6,6 +6,19 @@
 <title>COA Employee Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<script>
+  // Applies the last-used Appearance preference before first paint, so a
+  // light-mode user doesn't see a flash of dark on refresh while the
+  // profile (the source of truth) is still loading. app-core.js reconciles
+  // this cached guess against profiles.theme_preference once it arrives.
+  (function(){
+    try{
+      if(localStorage.getItem('coa_theme') === 'light'){
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    }catch(e){ /* localStorage unavailable (private mode, etc.) — default dark is fine */ }
+  })();
+</script>
 </head>
 </head>
 <body>

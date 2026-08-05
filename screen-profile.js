@@ -20,6 +20,7 @@
       }
       var p = rows[0];
       currentProfile = p;
+      applyTheme(p.theme_preference);
 
       var supervisorName = '—';
       if(p.manager_id){
@@ -111,6 +112,7 @@
       + (editMode
           ? '<button class="btn-save" onclick="saveProfile()">Save</button><button class="btn-cancel" onclick="requestCancelEdit()">Cancel</button><span class="save-status" id="save-status"></span>'
           : '<button class="btn-edit" onclick="editProfile()">Edit Profile</button>')
+      + themeToggleHtml(p.theme_preference)
       + '</div>'
       + '</div>'
       + '<div class="profile-card" id="travel-info-card"><div class="placeholder-sub">Loading travel info...</div></div>';
@@ -129,6 +131,37 @@
 
   function editProfile(){
     renderProfile(currentProfile, currentSupervisorName, true);
+  }
+
+  // ---------- Appearance (Dark/Light) toggle ----------
+  // Separate from the Edit/Save profile-fields flow above: writes
+  // profiles.theme_preference immediately on click rather than requiring
+  // Edit -> Save, since it's a UI setting, not profile data.
+  function themeToggleButtonsHtml(pref){
+    var isLight = pref === 'light';
+    return '<button type="button" class="theme-toggle-btn' + (isLight ? '' : ' active') + '" onclick="setThemePreference(\'dark\')" aria-pressed="' + (!isLight) + '">Dark</button>'
+      + '<button type="button" class="theme-toggle-btn' + (isLight ? ' active' : '') + '" onclick="setThemePreference(\'light\')" aria-pressed="' + isLight + '">Light</button>';
+  }
+
+  function themeToggleHtml(pref){
+    return '<div class="theme-toggle-wrap"><span class="theme-toggle-label">Appearance</span>'
+      + '<div class="theme-toggle-switch" id="theme-toggle-switch" role="group" aria-label="Appearance">' + themeToggleButtonsHtml(pref) + '</div></div>';
+  }
+
+  async function setThemePreference(pref){
+    if(!currentProfile || currentProfile.theme_preference === pref){ return; }
+    var previous = currentProfile.theme_preference;
+    applyTheme(pref);
+    var switchEl = document.getElementById('theme-toggle-switch');
+    if(switchEl){ switchEl.innerHTML = themeToggleButtonsHtml(pref); }
+    try{
+      await dbWrite('profiles?id=eq.' + currentProfile.id, 'PATCH', { theme_preference: pref });
+      currentProfile.theme_preference = pref;
+    }catch(e){
+      console.error(e);
+      applyTheme(previous);
+      if(switchEl){ switchEl.innerHTML = themeToggleButtonsHtml(previous); }
+    }
   }
 
   // ---------- Profile photo upload (Supabase Storage 'profile-photos' bucket) ----------

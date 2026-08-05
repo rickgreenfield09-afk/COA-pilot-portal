@@ -469,3 +469,24 @@ run). Gap/follow-up: user must execute drop-check_onboarding_status.sql
 against the target Postgres/Supabase instance; confirm no other environment
 (e.g. a separate prod-tier DB) still references the table before applying
 there.
+
+## 2026-08-05 — Light theme + Appearance preference (CM-3 / SC-8 not applicable, config change)
+Added a user-selectable Light theme ("Option A — Navy Lead, Red Accent",
+built from the CYBER Offset Alliance logo, approved by user this session)
+alongside the existing default-dark theme, plus a Dark/Light toggle on
+Profile > Overview that persists the choice. New column
+`profiles.theme_preference text NOT NULL DEFAULT 'dark' CHECK (IN
+('dark','light'))` — self-service editable via the existing PATCH path used
+for other profile fields (no new RLS surface; same trust boundary as
+preferred_name/phone). Migration drafted in `add-theme-preference.sql`, not
+yet run — user applies to the Supabase POC themselves. Theme is applied via
+a `data-theme` attribute on `<html>` (styles.css `[data-theme="light"]`
+token overrides) and cached in `localStorage` (theme name only, no PII) so
+a refresh doesn't flash the wrong theme before the profile loads.
+Status: Implemented (app code) / Planned (DB migration — SQL drafted, not
+yet run). Gap/follow-up: satisfies the CLAUDE.md accessibility requirement
+("Light/dark mode user-selectable... default to dark") which had not been
+built until now. No RLS change needed. Light-theme semantic colors (amber,
+purple status pills) were manually re-picked for WCAG AA contrast on white
+rather than reused as-is from the dark palette — worth a contrast-checker
+pass before go-live alongside the rest of the AA audit.
