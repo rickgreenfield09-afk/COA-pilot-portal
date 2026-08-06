@@ -658,3 +658,121 @@ Vacation time_code_id via tkVacationCode/tkGetTimeCodes and filters on that
 plus `status=eq.approved`.
 Status: Implemented (screen-myteam.js, screen-admin.js). Not yet browser-
 tested live.
+
+## 2026-08-06 — Pay period certification, Step 1: schema + employee flow (AC-3 / AU-2 / AU-9 / SC-28)
+Design discussion with user before building (semi-monthly 1-15/16-end pay
+periods, separate from the existing Mon-Sun weekly entry grid): employees
+must certify a DCAA-style attestation at the end of each pay period before
+it's submitted for admin approval; admin certifies separately before
+payroll (Step 2); admin can enter time on an employee's behalf under
+special circumstances and can reopen a certified period for correction
+(Step 3). Full 3-step build plan agreed; this entry covers Step 1.
+New table `pay_period_certifications` (pay-period-certifications-schema.sql)
+tracks status (open/employee_certified/admin_certified) per employee per
+period. Deliberately given NO insert/update/delete RLS policies at all —
+every write goes through one of three SECURITY DEFINER Postgres functions
+(certify_period_employee implemented this step; certify_period_admin and
+reopen_period created now but not yet called from the UI, landing in
+Steps 2-3) that enforce the real business rules (every weekday in the
+period must have hours before certifying; admin can't certify before the
+employee; reopen requires a reason) — RLS alone can't express those
+cleanly. This is a deliberate, documented deviation from
+add-burndown-atomic-rpcs.sql's "no SECURITY DEFINER, rely on table RLS"
+convention (explained in the SQL file's header comment). Also added
+`time_entries.entered_by` (nullable), for the Step 3 admin-entry feature.
+Employee flow (screen-timekeeping.js): after every Save on the Current
+week, checks whether the pay period containing today is now fully covered
+(every weekday has a non-rejected entry with hours > 0) and not yet
+certified; if so, auto-shows a popup with the canned certification
+statement. Cancel leaves a persistent "Submit Pay Period for Approval"
+button next to Save Week so they can keep correcting entries and submit
+later without re-triggering the popup. Confirming calls
+certify_period_employee via RPC, then logs the event to the existing
+time_card_audit_log (action `period_certify_employee`) — no new logging
+table needed. Once certified, that period's dates become read-only on the
+weekly grid (per-day, not per-week, since a week can straddle a period
+boundary).
+Added a generic reusable `#dynamic-modal` overlay (index.html + app-core.js
+showDynamicModal/closeDynamicModal) so Steps 2-3's popups don't each
+reinvent modal markup. Also improved dbRpc() to surface the actual
+Postgres exception message instead of a bare status code — needed so the
+"every weekday needs hours" validation message reaches the user, but
+benefits every RPC caller in the app.
+Status: Implemented (schema + employee-side flow). Not yet browser-tested
+live. Gap/follow-up: entry locking is enforced client-side (disabled grid
+cells) only — time_entries itself has no RLS in this POC environment, so a
+direct API call could still write to a certified period's dates until
+Azure/RLS migration. Steps 2 (admin certify-for-payroll UI, notes-on-approve,
+remove bulk Approve All in favor of per-time-code-line approval) and 3
+(admin-entered time, reopen UI) still to come.
+
+## 2026-08-06 — Pay period certification, Step 2: admin certify-for-payroll + notes on approve (AC-3 / AU-2 / AU-9)
+Confirmed with user: Approve All stays exactly as it is (one employee, one
+week, one card at a time) — there is no cross-card/cross-employee bulk
+approval today and none is being built; the earlier "review each
+submission" request was about that distinction, not per-line approval.
+Weekly Approve All (screen-timekeeping.js teamTkApproveAll, shared by
+screen-myteam.js/screen-admin.js) now opens a confirm popup with an
+optional notes field before approving — logged into time_card_audit_log
+alongside the approval, so there's a DCAA-relevant record if an admin
+needs to explain anything unusual (e.g. entering hours on an employee's
+behalf).
+Added a Pay Period admin/My Team review view — a "Weekly Review / Pay
+Period" toggle inside the existing Timekeeping subtab (no new top-level
+nav). Shows a read-only rollup of the whole semi-monthly period (reuses
+tkRenderGridTable, which turned out to already be day-count agnostic — no
+grid changes needed to support >7 columns), the certification status pill,
+and a "Certify & Submit for Payroll" action that's only enabled once the
+employee has certified (status = employee_certified). Confirming opens a
+popup with the second canned statement + an optional notes field, calls
+the certify_period_admin RPC (built in Step 1, wired up now), and logs
+`period_certify_admin` to time_card_audit_log.
+Added tk-status-pill color variants for open/employee_certified/
+admin_certified (styles.css) matching the existing amber/teal convention.
+Status: Implemented. Not yet browser-tested live.
+Gap/follow-up: same as Step 1 — locking/certification gating is
+client-side only, no time_entries RLS in this POC. Step 3 (admin-entered
+time on an employee's behalf, and the mandatory-reason reopen flow) still
+to come.
+
+## 2026-08-06 — Pay period certification, Step 3: admin-entered time + reopen (AC-3 / AU-2 / AU-9)
+Completes the 3-step pay period certification build. Two features:
+
+Admin-entered time on an employee's behalf (special circumstances, e.g.
+employee unable to enter their own time): the My Team/Admin weekly review
+card gets an "Enter Time for Employee" toggle that switches that
+employee's grid from read-only to the same editable grid the employee
+uses on their own Current week. Saving reuses saveTkWeek() itself (now
+generalized with an optional `opts` param: `opts.employeeId` targets the
+employee instead of the caller, `opts.onSaved` replaces the employee-
+self-service reload with dropping back to the read-only card) rather than
+duplicating its validation logic (codeless-row check, missing-PTO
+handling, whole-period OT calc). Writes stamp `entered_by` with the
+admin's id (schema added in Step 1) so the DCAA trail always shows who
+actually entered a row, distinct from `performed_by` on the audit log
+entry. The inline "Submit PTO Request" convenience button (for Vacation
+hours with no covering PTO request) is not offered in admin-entry mode —
+it would submit under the wrong identity — the admin sees guidance to
+have the employee request PTO instead.
+Generalized `tkg-save-error`/`tkg-missing-pto-panel` from fixed global
+ids to containerId-scoped ids (`<containerId>-save-error` etc.) — needed
+once a second editable grid (admin-entry) could exist in the DOM
+alongside the employee's own; a fixed id would have let one card's error
+messages appear in the other's panel.
+
+Reopen (correction path): a Reopen button on the Pay Period admin card,
+available once a period is employee_certified or admin_certified. Opens
+a popup requiring a reason (enforced client-side and inside
+reopen_period's SQL — see Step 1), calls the RPC, and logs
+`period_reopen` with the reason to time_card_audit_log. Resets the period
+to `open`, clearing both certifications — full before/after state is
+preserved via the audit log entry, not attempted to be reconstructed from
+table state after the reset.
+
+Status: Implemented. Not yet browser-tested live — all three steps of
+this feature are now built and ready for the user to run
+pay-period-certifications-schema.sql and verify live.
+Gap/follow-up (carried from Steps 1-2): certification/lock enforcement is
+client-side only in this POC — no RLS on time_entries yet, so a direct
+API call could still bypass the lock or the entered_by stamp. Must be
+closed with real RLS once this moves off the Supabase POC.

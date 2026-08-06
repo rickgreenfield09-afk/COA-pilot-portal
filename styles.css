@@ -384,6 +384,9 @@
   .tk-status-pill.cancelled_by_submitter{background:var(--raised);color:var(--muted);}
   .tk-status-pill.expensed{background:rgba(191,95,255,0.12);color:var(--purple);}
   .tk-status-pill.paid{background:rgba(42,184,166,0.12);color:var(--teal);}
+  .tk-status-pill.open{background:var(--raised);color:var(--sub);}
+  .tk-status-pill.employee_certified{background:rgba(232,184,75,0.12);color:var(--amber);}
+  .tk-status-pill.admin_certified{background:rgba(42,184,166,0.12);color:var(--teal);}
   .tk-empty{font-size:13px;color:var(--muted);padding:16px 0;}
 
   /* Period header */

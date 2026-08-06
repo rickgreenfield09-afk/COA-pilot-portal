@@ -66,6 +66,56 @@
     return Math.floor(diffDays / 7);
   }
 
+  // ---- Semi-monthly pay periods (1st-15th, 16th-end of month) ----
+  // Independent of the Mon-Sun week grid above (TK_WEEK_ANCHOR) — periods
+  // are the payroll/certification unit, weeks are just the entry grid.
+  function tkPeriodBounds(d){
+    var year = d.getFullYear(), month = d.getMonth();
+    if(d.getDate() <= 15){
+      return { start: new Date(year, month, 1), end: new Date(year, month, 15) };
+    }
+    return { start: new Date(year, month, 16), end: new Date(year, month + 1, 0) };
+  }
+
+  function tkCurrentPeriodBounds(){
+    return tkPeriodBounds(new Date());
+  }
+
+  // Walks whole periods (each "half-month" is one unit: 1st or 16th) —
+  // offset 0 = the period containing today, -1 = the previous period, etc.
+  // Used by the admin/My Team Pay Period review nav.
+  function tkPeriodBoundsOffset(offset){
+    var cur = tkCurrentPeriodBounds();
+    var halfIndex = cur.start.getFullYear() * 24 + cur.start.getMonth() * 2 + (cur.start.getDate() === 1 ? 0 : 1) + offset;
+    var year = Math.floor(halfIndex / 24);
+    var rem = halfIndex - year * 24;
+    var month = Math.floor(rem / 2);
+    var day = (rem % 2 === 0) ? 1 : 16;
+    return tkPeriodBounds(new Date(year, month, day));
+  }
+
+  // Every calendar day (not just weekdays) in a period, for the admin
+  // Pay Period rollup grid.
+  function tkPeriodDays(start, end){
+    var days = [];
+    var d = new Date(start.getTime());
+    while(d <= end){ days.push(new Date(d.getTime())); d = new Date(d.getTime() + TK_DAY_MS); }
+    return days;
+  }
+
+  // Weekday (Mon-Fri) ISO dates within a period — every one needs hours
+  // entered before the employee can certify.
+  function tkPeriodWeekdayISOs(start, end){
+    var isos = [];
+    var d = new Date(start.getTime());
+    while(d <= end){
+      var dow = d.getDay();
+      if(dow !== 0 && dow !== 6){ isos.push(tkDateToISO(d)); }
+      d = new Date(d.getTime() + TK_DAY_MS);
+    }
+    return isos;
+  }
+
   // Prints every work week from Week 1 (1/5/2026) through the week
   // containing today, to the browser console. Run printTkWeeks() from
   // devtools console to verify the calendar.
@@ -189,9 +239,10 @@
         var iso = tkDateToISO(d);
         var e = row.byDate[iso];
         var hours = e && e.hours != null ? e.hours : '';
+        var dateLocked = !!(opts.lockedDates && opts.lockedDates[iso]);
         var cellHtml;
         if(editable){
-          cellHtml = '<select class="tk-grid-input" id="tkg-hours-' + rowId + '-' + iso + '" data-entry-id="' + (e ? e.id : '') + '" data-entry-hours="' + hours + '" ' + (rowEditable ? '' : 'disabled') + ' onchange="tkOnCellChange(\'' + idBase + '\')">'
+          cellHtml = '<select class="tk-grid-input" id="tkg-hours-' + rowId + '-' + iso + '" data-entry-id="' + (e ? e.id : '') + '" data-entry-hours="' + hours + '" ' + (rowEditable && !dateLocked ? '' : 'disabled') + ' onchange="tkOnCellChange(\'' + idBase + '\')">'
             + tkHoursOptionsHtml(hours)
             + '</select>';
         } else {
@@ -283,6 +334,106 @@
     }
   }
 
+  // ---------- Pay period certification (employee side) ----------
+  var TK_EMPLOYEE_CERT_TEXT = 'I certify that the hours recorded on this timesheet are a true, accurate, and complete record of the actual hours worked, and that they have been properly allocated to the correct cost objectives and project codes in accordance with company policy.';
+  var TK_ADMIN_CERT_TEXT = 'I certify that I have reviewed this timesheet, have first-hand knowledge of the work performed, and verify that the hours charged are reasonable, accurate, and properly allocated to the correct project codes.';
+
+  // Checks the current pay period: has it already been certified, and does
+  // every weekday have hours entered? Drives both the auto-popup (fired
+  // right after a qualifying Save) and the persistent fallback button.
+  async function tkCheckPeriodCompletion(employeeId){
+    var bounds = tkCurrentPeriodBounds();
+    var startISO = tkDateToISO(bounds.start);
+    var endISO = tkDateToISO(bounds.end);
+
+    var certRows = await dbRequest('pay_period_certifications?employee_id=eq.' + employeeId + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=status');
+    if(certRows[0] && certRows[0].status !== 'open'){
+      return { alreadyCertified: true, startISO: startISO, endISO: endISO };
+    }
+
+    var weekdayIsos = tkPeriodWeekdayISOs(bounds.start, bounds.end);
+    var entries = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&hours=gt.0&status=neq.rejected&select=work_date');
+    var covered = {};
+    entries.forEach(function(e){ covered[e.work_date] = true; });
+    var missing = weekdayIsos.filter(function(iso){ return !covered[iso]; });
+
+    return { alreadyCertified: false, complete: missing.length === 0, missing: missing, startISO: startISO, endISO: endISO };
+  }
+
+  // A week can straddle at most one pay-period boundary (7 days inside a
+  // ~15-16 day period). Checks every distinct period touched by `days` and
+  // returns the set of ISO dates that fall in a period that's no longer
+  // 'open' — those cells get disabled even though the rest of the week (or
+  // grid) is otherwise editable.
+  async function tkGetLockedDatesForWeek(employeeId, days){
+    var periods = {};
+    days.forEach(function(d){
+      var p = tkPeriodBounds(d);
+      var key = tkDateToISO(p.start) + '_' + tkDateToISO(p.end);
+      if(!periods[key]){ periods[key] = p; }
+    });
+
+    var lockedDates = {};
+    for(var key in periods){
+      var p = periods[key];
+      var startISO = tkDateToISO(p.start), endISO = tkDateToISO(p.end);
+      var rows = await dbRequest('pay_period_certifications?employee_id=eq.' + employeeId + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=status');
+      if(rows[0] && rows[0].status !== 'open'){
+        days.forEach(function(d){
+          if(tkDateToISO(d) >= startISO && tkDateToISO(d) <= endISO){ lockedDates[tkDateToISO(d)] = true; }
+        });
+      }
+    }
+    return lockedDates;
+  }
+
+  // Renders (or clears) the persistent "Submit for Approval" fallback
+  // button on the Current week card — visible whenever the period is
+  // complete-but-uncertified, regardless of how they got to that state
+  // (a fresh save, cancelling the auto-popup, or just revisiting the tab).
+  async function tkRenderPeriodCertPanel(){
+    var panel = document.getElementById('tkg-period-cert-panel');
+    if(!panel){ return; }
+    var session = getSession();
+    if(!session || !session.user){ return; }
+    try{
+      var check = await tkCheckPeriodCompletion(session.user.id);
+      panel.innerHTML = (!check.alreadyCertified && check.complete)
+        ? '<button class="btn-logout" style="width:auto;" onclick="tkShowEmployeeCertModal(\'' + check.startISO + '\',\'' + check.endISO + '\')">Submit Pay Period for Approval</button>'
+        : '';
+    }catch(e){ console.error(e); }
+  }
+
+  function tkShowEmployeeCertModal(startISO, endISO){
+    showDynamicModal(
+      '<div class="modal-title">Certify Timesheet</div>'
+      + '<div class="modal-text">' + TK_EMPLOYEE_CERT_TEXT + '</div>'
+      + '<div class="modal-text">Pay period: ' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div>'
+      + '<div class="modal-actions">'
+      + '<button class="btn-cancel" onclick="closeDynamicModal()">Cancel</button>'
+      + '<button class="btn-save" onclick="tkConfirmEmployeeCert(\'' + startISO + '\',\'' + endISO + '\')">I Certify &amp; Submit</button>'
+      + '</div>'
+    );
+  }
+
+  async function tkConfirmEmployeeCert(startISO, endISO){
+    var session = getSession();
+    try{
+      await dbRpc('certify_period_employee', { p_period_start: startISO, p_period_end: endISO });
+      await tkLogAudit(session.user.id, startISO, null, 'period_certify_employee', null, TK_EMPLOYEE_CERT_TEXT);
+      closeDynamicModal();
+      loadTkWeek('tk-current', tkCurrentWeekOffset, true);
+    }catch(e){
+      closeDynamicModal();
+      showDynamicModal(
+        '<div class="modal-title">Couldn\'t Submit</div>'
+        + '<div class="modal-text">' + (e.message || 'Something went wrong — try again.') + '</div>'
+        + '<div class="modal-actions"><button class="btn-save" onclick="closeDynamicModal()">OK</button></div>'
+      );
+      console.error(e);
+    }
+  }
+
   // ---------- My Team (manager/admin review) ----------
   var myTeamFlagged = {}; // { employeeId: { iso: true } } — flags a whole day-column for return, keyed by employee id only; ids are unique company-wide so no scope collision risk
 
@@ -290,9 +441,18 @@
   var teamTkIndex = { myteam: 0, admin: 0 };
   var teamTkStartISO = { myteam: '', admin: '' };
   var teamTkEndISO = { myteam: '', admin: '' };
+  var teamTkView = { myteam: 'weekly', admin: 'weekly' }; // 'weekly' or 'period'
+  var teamTkPeriodOffset = { myteam: 0, admin: 0 };
 
   function teamTkContentId(scope){
     return scope + '-timekeeping-content';
+  }
+
+  // The toggle bar (Weekly Review / Pay Period) lives in the outer content
+  // container and stays put across employee/period navigation — only this
+  // inner body re-renders.
+  function teamTkBodyId(scope){
+    return teamTkContentId(scope) + '-body';
   }
 
   async function loadTeamTimekeeping(scope){
@@ -322,15 +482,33 @@
       teamTkEndISO[scope] = tkDateToISO(bounds.end);
       if(teamTkIndex[scope] >= teamTkReports[scope].length){ teamTkIndex[scope] = 0; }
 
-      await teamTkRenderCurrentCard(scope);
+      await teamTkRenderView(scope);
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load timekeeping</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
     }
   }
 
-  async function teamTkRenderCurrentCard(scope){
+  function teamTkSetView(scope, view){
+    teamTkView[scope] = view;
+    teamTkPeriodOffset[scope] = 0;
+    teamTkRenderView(scope);
+  }
+
+  async function teamTkRenderView(scope){
     var container = document.getElementById(teamTkContentId(scope));
+    container.innerHTML = '<div class="subtab-bar" style="margin-bottom:14px;">'
+      + '<button class="subtab-btn ' + (teamTkView[scope] === 'weekly' ? 'active' : '') + '" onclick="teamTkSetView(\'' + scope + '\',\'weekly\')">Weekly Review</button>'
+      + '<button class="subtab-btn ' + (teamTkView[scope] === 'period' ? 'active' : '') + '" onclick="teamTkSetView(\'' + scope + '\',\'period\')">Pay Period</button>'
+      + '</div>'
+      + '<div id="' + teamTkBodyId(scope) + '"></div>';
+
+    if(teamTkView[scope] === 'period'){ await teamTkRenderPeriodCurrentCard(scope); }
+    else { await teamTkRenderCurrentCard(scope); }
+  }
+
+  async function teamTkRenderCurrentCard(scope){
+    var container = document.getElementById(teamTkBodyId(scope));
     var employee = teamTkReports[scope][teamTkIndex[scope]];
     var startISO = teamTkStartISO[scope];
     var endISO = teamTkEndISO[scope];
@@ -346,14 +524,31 @@
     container.innerHTML = navHtml + '<div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>';
     var cardHtml = await teamTkRenderCard(employee, startISO, endISO, scope);
     container.innerHTML = navHtml + cardHtml;
+
+    // If the admin-entry grid (or the read-only grid) rendered, its tbody
+    // needs .dataset.days/.timeCodes for tkAddGridRow's "+" button to work —
+    // same wiring loadTkWeek does for the employee's own grid.
+    var timeCodes = await tkGetTimeCodes();
+    var days = tkWeekDays(new Date(startISO + 'T00:00:00'));
+    ['myteam-entry-' + employee.id + '-grid', 'myteam-card-' + employee.id].forEach(function(idBase){
+      var tbody = document.getElementById(idBase + '-tbody');
+      if(tbody){
+        tbody.dataset.days = JSON.stringify(days.map(tkDateToISO));
+        tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label }; }));
+      }
+    });
   }
 
   function teamTkNavEmployee(scope, dir){
     teamTkIndex[scope] += dir;
     if(teamTkIndex[scope] < 0){ teamTkIndex[scope] = 0; }
     if(teamTkIndex[scope] >= teamTkReports[scope].length){ teamTkIndex[scope] = teamTkReports[scope].length - 1; }
-    teamTkRenderCurrentCard(scope);
+    if(teamTkView[scope] === 'period'){ teamTkRenderPeriodCurrentCard(scope); } else { teamTkRenderCurrentCard(scope); }
   }
+
+  // employeeId -> bool, admin-entry mode toggle (special-circumstances
+  // hand entry on an employee's behalf — see teamTkSaveEntryForEmployee).
+  var teamTkEditMode = {};
 
   async function teamTkRenderCard(employee, startISO, endISO, scope){
     var timeCodes = await tkGetTimeCodes();
@@ -364,28 +559,69 @@
     if(!myTeamFlagged[employee.id]){ myTeamFlagged[employee.id] = {}; }
     var flaggedForThis = myTeamFlagged[employee.id];
     var cardId = 'myteam-card-' + employee.id;
+    var editMode = !!teamTkEditMode[employee.id];
+    var entryContainerId = 'myteam-entry-' + employee.id;
 
-    var tableHtml = rows.length
-      ? tkRenderGridTable(rows, days, timeCodes, { editable:false, rowIdBase: cardId, scope: scope, employeeId: employee.id, flaggedDates: flaggedForThis, showFlagToggle: true })
-      : '<div class="tk-empty">No time entries submitted for this week yet.</div>';
+    var editToggleBtn = '<button class="tk-now-btn" type="button" style="margin-left:8px;" onclick="teamTkToggleEditMode(\'' + scope + '\',\'' + employee.id + '\')">' + (editMode ? 'Done Entering Time' : 'Enter Time for Employee') + '</button>';
 
-    var weekTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
-    var anyFlagged = Object.keys(flaggedForThis).some(function(k){ return flaggedForThis[k]; });
+    var bodyHtml;
+    if(editMode){
+      var editRows = rows.length ? rows : [{ time_code_id: '', byDate: {} }];
+      var lockedDates = await tkGetLockedDatesForWeek(employee.id, days);
+      var idBase = entryContainerId + '-grid';
+      var tableHtml = tkRenderGridTable(editRows, days, timeCodes, { editable:true, rowIdBase: idBase, lockedDates: lockedDates });
+      var fullyLocked = days.every(function(d){ return lockedDates[tkDateToISO(d)]; });
+      bodyHtml = tableHtml + '<div id="' + entryContainerId + '-missing-pto-panel"></div>';
+      bodyHtml += fullyLocked
+        ? '<div class="tk-empty">This pay period has been submitted and is locked for editing. Reopen the period (Pay Period tab) to make corrections.</div>'
+        : '<div class="tk-grid-actions">'
+          + '<div class="login-error" id="' + entryContainerId + '-save-error" style="margin-top:0;flex:1;"></div>'
+          + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="teamTkSaveEntryForEmployee(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\',\'' + entryContainerId + '\')">Save</button>'
+          + '</div>';
+    } else {
+      var tableHtml2 = rows.length
+        ? tkRenderGridTable(rows, days, timeCodes, { editable:false, rowIdBase: cardId, scope: scope, employeeId: employee.id, flaggedDates: flaggedForThis, showFlagToggle: true })
+        : '<div class="tk-empty">No time entries submitted for this week yet.</div>';
+      var weekTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
+      var anyFlagged = Object.keys(flaggedForThis).some(function(k){ return flaggedForThis[k]; });
+      bodyHtml = tableHtml2
+        + '<div class="tk-grid-footer"><div class="tk-grid-footer-item">Week Total: <span>' + weekTotal.toFixed(2) + ' hrs</span></div></div>'
+        + '<div id="myteam-return-panel-' + employee.id + '"></div>'
+        + '<div class="tk-grid-actions">'
+        + '<div class="login-error" id="myteam-error-' + employee.id + '" style="margin-top:0;flex:1;"></div>'
+        + '<button class="btn-logout" style="width:auto;" onclick="teamTkOpenReturnPanel(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Return</button>'
+        + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" ' + (anyFlagged ? 'disabled' : '') + ' onclick="teamTkOpenApproveModal(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Approve All</button>'
+        + '</div>';
+    }
 
     return '<div class="tk-entry-card" id="' + cardId + '">'
       + '<div class="myteam-employee-header">'
       + '<div class="myteam-employee-name">' + (employee.full_name || 'Unknown') + '</div>'
       + '<div class="myteam-employee-title">' + (employee.job_title || '—') + '</div>'
+      + editToggleBtn
       + '</div>'
-      + tableHtml
-      + '<div class="tk-grid-footer"><div class="tk-grid-footer-item">Week Total: <span>' + weekTotal.toFixed(2) + ' hrs</span></div></div>'
-      + '<div id="myteam-return-panel-' + employee.id + '"></div>'
-      + '<div class="tk-grid-actions">'
-      + '<div class="login-error" id="myteam-error-' + employee.id + '" style="margin-top:0;flex:1;"></div>'
-      + '<button class="btn-logout" style="width:auto;" onclick="teamTkOpenReturnPanel(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Return</button>'
-      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" ' + (anyFlagged ? 'disabled' : '') + ' onclick="teamTkApproveAll(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Approve All</button>'
-      + '</div>'
+      + bodyHtml
       + '</div>';
+  }
+
+  function teamTkToggleEditMode(scope, employeeId){
+    teamTkEditMode[employeeId] = !teamTkEditMode[employeeId];
+    teamTkRenderCurrentCard(scope);
+  }
+
+  // Reuses the same saveTkWeek() the employee's own Current-week Save
+  // button calls — opts.employeeId targets the employee instead of the
+  // caller and stamps entered_by so the DCAA trail shows this wasn't
+  // self-entered; opts.onSaved drops back out of edit mode and re-renders
+  // the read-only card instead of the employee-self-service reload.
+  async function teamTkSaveEntryForEmployee(scope, employeeId, startISO, endISO, containerId){
+    await saveTkWeek(startISO, endISO, containerId, {
+      employeeId: employeeId,
+      onSaved: async function(){
+        teamTkEditMode[employeeId] = false;
+        await teamTkRenderCurrentCard(scope);
+      }
+    });
   }
 
   function teamTkToggleFlag(scope, employeeId, iso){
@@ -394,9 +630,30 @@
     teamTkRenderCurrentCard(scope);
   }
 
+  // Approve All still applies to one employee's one week at a time (a
+  // single card) — no cross-card/cross-employee bulk approval exists or is
+  // planned. This just adds a confirm step with an optional note, so
+  // there's a DCAA-relevant record if an admin needs to explain anything
+  // unusual about the approval (e.g. hours entered on the employee's
+  // behalf under special circumstances).
+  function teamTkOpenApproveModal(scope, employeeId, startISO, endISO){
+    showDynamicModal(
+      '<div class="modal-title">Approve Time Card</div>'
+      + '<div class="modal-text">Approve all entries for this employee\'s week (' + formatDate(startISO) + ' – ' + formatDate(endISO) + ')?</div>'
+      + '<div style="margin-bottom:14px;"><label class="field-label">Notes (optional)</label><textarea class="field-input" id="myteam-approve-notes" rows="3" placeholder="Anything unusual about this approval, e.g. entered on the employee\'s behalf"></textarea></div>'
+      + '<div class="modal-actions">'
+      + '<button class="btn-cancel" onclick="closeDynamicModal()">Cancel</button>'
+      + '<button class="btn-save" onclick="teamTkApproveAll(\'' + scope + '\',\'' + employeeId + '\',\'' + startISO + '\',\'' + endISO + '\')">Approve</button>'
+      + '</div>'
+    );
+  }
+
   async function teamTkApproveAll(scope, employeeId, startISO, endISO){
+    var notesEl = document.getElementById('myteam-approve-notes');
+    var notes = notesEl ? notesEl.value : '';
+    closeDynamicModal();
     var errorEl = document.getElementById('myteam-error-' + employeeId);
-    errorEl.textContent = '';
+    if(errorEl){ errorEl.textContent = ''; }
     try{
       var rows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=id,time_code_id');
       var session = getSession();
@@ -406,14 +663,163 @@
           approved_by: session.user.id,
           approved_at: new Date().toISOString()
         });
-        await tkLogAudit(employeeId, startISO, rows[i].time_code_id, 'approve', null, null);
+        await tkLogAudit(employeeId, startISO, rows[i].time_code_id, 'approve', null, notes || null);
       }
       // Accrue PTO once per employee per approved week, not per-row
       try{ await dbRpc('accrue_pto', { p_employee_id: employeeId }); }catch(e){ console.error(e); }
       delete myTeamFlagged[employeeId];
       teamTkRenderCurrentCard(scope);
     }catch(e){
-      errorEl.textContent = 'Could not approve — try again.';
+      if(errorEl){ errorEl.textContent = 'Could not approve — try again.'; }
+      console.error(e);
+    }
+  }
+
+  // ---------- My Team / Admin: Pay Period review (period-level, not weekly) ----------
+  async function teamTkRenderPeriodCurrentCard(scope){
+    var container = document.getElementById(teamTkBodyId(scope));
+    if(!container){ return; }
+    var employee = teamTkReports[scope][teamTkIndex[scope]];
+    var bounds = tkPeriodBoundsOffset(teamTkPeriodOffset[scope]);
+    var startISO = tkDateToISO(bounds.start);
+    var endISO = tkDateToISO(bounds.end);
+
+    var navHtml = '<div class="myteam-tk-header-row">'
+      + '<div class="tk-period-label">Pay Period</div>'
+      + '<div class="tk-period-dates">' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div>'
+      + '<button class="tk-period-nav-btn" onclick="teamTkNavPeriod(\'' + scope + '\',-1)">&larr; Prev Period</button>'
+      + (teamTkPeriodOffset[scope] !== 0 ? '<button class="tk-period-nav-btn" onclick="teamTkGoToCurrentPeriod(\'' + scope + '\')">Current</button>' : '')
+      + '<button class="tk-period-nav-btn" ' + (teamTkPeriodOffset[scope] >= 0 ? 'disabled' : '') + ' onclick="teamTkNavPeriod(\'' + scope + '\',1)">Next Period &rarr;</button>'
+      + '<button class="tk-period-nav-btn" ' + (teamTkIndex[scope] === 0 ? 'disabled' : '') + ' onclick="teamTkNavEmployee(\'' + scope + '\',-1)">&larr; Employee</button>'
+      + '<div class="myteam-nav-count">Employee ' + (teamTkIndex[scope]+1) + ' of ' + teamTkReports[scope].length + '</div>'
+      + '<button class="tk-period-nav-btn" ' + (teamTkIndex[scope] === teamTkReports[scope].length-1 ? 'disabled' : '') + ' onclick="teamTkNavEmployee(\'' + scope + '\',1)">Employee &rarr;</button>'
+      + '</div>';
+
+    container.innerHTML = navHtml + '<div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>';
+    var cardHtml = await teamTkRenderPeriodCard(employee, startISO, endISO, scope);
+    container.innerHTML = navHtml + cardHtml;
+  }
+
+  function teamTkNavPeriod(scope, dir){
+    teamTkPeriodOffset[scope] += dir;
+    if(teamTkPeriodOffset[scope] > 0){ teamTkPeriodOffset[scope] = 0; } // can't review a period that hasn't happened yet
+    teamTkRenderPeriodCurrentCard(scope);
+  }
+
+  function teamTkGoToCurrentPeriod(scope){
+    teamTkPeriodOffset[scope] = 0;
+    teamTkRenderPeriodCurrentCard(scope);
+  }
+
+  async function teamTkRenderPeriodCard(employee, startISO, endISO, scope){
+    var timeCodes = await tkGetTimeCodes();
+    var entries = await dbRequest('time_entries?employee_id=eq.' + employee.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
+    var rows = tkSortRowsByCodeOrder(Object.values(tkGroupEntriesByCode(entries)), timeCodes);
+    var days = tkPeriodDays(new Date(startISO + 'T00:00:00'), new Date(endISO + 'T00:00:00'));
+
+    var tableHtml = rows.length
+      ? tkRenderGridTable(rows, days, timeCodes, { editable:false, rowIdBase: 'myteam-period-' + employee.id })
+      : '<div class="tk-empty">No time entries for this pay period yet.</div>';
+
+    var periodTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
+
+    var certRows = await dbRequest('pay_period_certifications?employee_id=eq.' + employee.id + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=*');
+    var cert = certRows[0] || null;
+    var status = cert ? cert.status : 'open';
+    var statusLabels = { open: 'Open', employee_certified: 'Employee Certified', admin_certified: 'Certified for Payroll' };
+
+    var reopenBtn = '<button class="btn-logout" style="width:auto;" onclick="teamTkOpenReopenModal(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Reopen</button>';
+
+    var actionHtml;
+    if(status === 'admin_certified'){
+      actionHtml = '<div class="tk-empty">Certified for payroll ' + formatDate(cert.admin_cert_at.slice(0,10)) + '.' + (cert.admin_notes ? ' Notes: ' + cert.admin_notes : '') + '</div>'
+        + '<div class="tk-grid-actions"><div class="login-error" id="myteam-period-error-' + employee.id + '" style="margin-top:0;flex:1;"></div>' + reopenBtn + '</div>';
+    } else if(status === 'employee_certified'){
+      actionHtml = '<div class="tk-grid-actions">'
+        + '<div class="login-error" id="myteam-period-error-' + employee.id + '" style="margin-top:0;flex:1;"></div>'
+        + reopenBtn
+        + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="teamTkOpenPeriodCertModal(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Certify &amp; Submit for Payroll</button>'
+        + '</div>';
+    } else {
+      actionHtml = '<div class="tk-empty">Waiting on the employee to certify this pay period.</div>';
+    }
+
+    return '<div class="tk-entry-card">'
+      + '<div class="myteam-employee-header">'
+      + '<div class="myteam-employee-name">' + (employee.full_name || 'Unknown') + '</div>'
+      + '<div class="myteam-employee-title">' + (employee.job_title || '—') + '</div>'
+      + '<span class="tk-status-pill ' + status + '">' + statusLabels[status] + '</span>'
+      + '</div>'
+      + tableHtml
+      + '<div class="tk-grid-footer"><div class="tk-grid-footer-item">Period Total: <span>' + periodTotal.toFixed(2) + ' hrs</span></div></div>'
+      + actionHtml
+      + '</div>';
+  }
+
+  function teamTkOpenPeriodCertModal(scope, employeeId, startISO, endISO){
+    showDynamicModal(
+      '<div class="modal-title">Certify Pay Period</div>'
+      + '<div class="modal-text">' + TK_ADMIN_CERT_TEXT + '</div>'
+      + '<div class="modal-text">Pay period: ' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div>'
+      + '<div style="margin-bottom:14px;"><label class="field-label">Notes (optional)</label><textarea class="field-input" id="myteam-period-cert-notes" rows="3" placeholder="Corrections made, anything unusual about this pay period, etc."></textarea></div>'
+      + '<div class="modal-actions">'
+      + '<button class="btn-cancel" onclick="closeDynamicModal()">Cancel</button>'
+      + '<button class="btn-save" onclick="teamTkConfirmPeriodCert(\'' + scope + '\',\'' + employeeId + '\',\'' + startISO + '\',\'' + endISO + '\')">I Certify &amp; Submit</button>'
+      + '</div>'
+    );
+  }
+
+  async function teamTkConfirmPeriodCert(scope, employeeId, startISO, endISO){
+    var notesEl = document.getElementById('myteam-period-cert-notes');
+    var notes = notesEl ? notesEl.value : '';
+    try{
+      await dbRpc('certify_period_admin', { p_employee_id: employeeId, p_period_start: startISO, p_period_end: endISO, p_notes: notes || null });
+      await tkLogAudit(employeeId, startISO, null, 'period_certify_admin', null, TK_ADMIN_CERT_TEXT + (notes ? ' | Notes: ' + notes : ''));
+      closeDynamicModal();
+      teamTkRenderPeriodCurrentCard(scope);
+    }catch(e){
+      closeDynamicModal();
+      showDynamicModal(
+        '<div class="modal-title">Couldn\'t Submit</div>'
+        + '<div class="modal-text">' + (e.message || 'Something went wrong — try again.') + '</div>'
+        + '<div class="modal-actions"><button class="btn-save" onclick="closeDynamicModal()">OK</button></div>'
+      );
+      console.error(e);
+    }
+  }
+
+  // Correction path: unlocks a certified period back to 'open' so the
+  // employee can fix entries and both certifications happen again from
+  // scratch. Reason is mandatory — this is the DCAA-relevant record of why
+  // a certified timesheet needed to change after the fact.
+  function teamTkOpenReopenModal(scope, employeeId, startISO, endISO){
+    showDynamicModal(
+      '<div class="modal-title">Reopen Pay Period</div>'
+      + '<div class="modal-text">This clears both certifications for ' + formatDate(startISO) + ' – ' + formatDate(endISO) + ' and unlocks it for editing. The employee will need to re-certify, and you\'ll need to re-certify for payroll, once it\'s corrected.</div>'
+      + '<div style="margin-bottom:14px;"><label class="field-label">Reason (required)</label><textarea class="field-input" id="myteam-reopen-reason" rows="3" placeholder="Why this pay period needs to be reopened"></textarea></div>'
+      + '<div class="login-error" id="myteam-reopen-modal-error" style="margin-top:0;"></div>'
+      + '<div class="modal-actions">'
+      + '<button class="btn-cancel" onclick="closeDynamicModal()">Cancel</button>'
+      + '<button class="btn-save" onclick="teamTkConfirmReopen(\'' + scope + '\',\'' + employeeId + '\',\'' + startISO + '\',\'' + endISO + '\')">Reopen</button>'
+      + '</div>'
+    );
+  }
+
+  async function teamTkConfirmReopen(scope, employeeId, startISO, endISO){
+    var reasonEl = document.getElementById('myteam-reopen-reason');
+    var reason = reasonEl ? reasonEl.value.trim() : '';
+    var modalErrorEl = document.getElementById('myteam-reopen-modal-error');
+    if(!reason){
+      if(modalErrorEl){ modalErrorEl.textContent = 'A reason is required to reopen a pay period.'; }
+      return;
+    }
+    try{
+      await dbRpc('reopen_period', { p_employee_id: employeeId, p_period_start: startISO, p_period_end: endISO, p_reason: reason });
+      await tkLogAudit(employeeId, startISO, null, 'period_reopen', null, reason);
+      closeDynamicModal();
+      teamTkRenderPeriodCurrentCard(scope);
+    }catch(e){
+      if(modalErrorEl){ modalErrorEl.textContent = e.message || 'Could not reopen — try again.'; }
       console.error(e);
     }
   }
@@ -527,8 +933,9 @@
           + '</div>';
       }
 
+      var lockedDates = gridEditable ? await tkGetLockedDatesForWeek(session.user.id, days) : {};
       var idBase = containerId + '-grid';
-      var tableHtml = tkRenderGridTable(rows, days, timeCodes, { editable: gridEditable, rowIdBase: idBase });
+      var tableHtml = tkRenderGridTable(rows, days, timeCodes, { editable: gridEditable, rowIdBase: idBase, lockedDates: lockedDates });
       var weekTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
 
       var html = '<div class="tk-entry-card">'
@@ -539,11 +946,16 @@
         + '</div>'
         + tableHtml
         + (gridEditable ? '' : '<div class="tk-grid-footer"><div class="tk-grid-footer-item">Week Total: <span>' + weekTotal.toFixed(2) + ' hrs</span></div></div>')
-        + '<div id="tkg-missing-pto-panel"></div>';
+        + '<div id="' + containerId + '-missing-pto-panel"></div>';
 
-      if(gridEditable){
+      var fullyLocked = gridEditable && days.every(function(d){ return lockedDates[tkDateToISO(d)]; });
+      if(gridEditable && fullyLocked){
+        html += '<div class="tk-grid-footer"><div class="tk-grid-footer-item">Week Total: <span>' + weekTotal.toFixed(2) + ' hrs</span></div></div>'
+          + '<div class="tk-empty">This pay period has been submitted and is locked for editing. Contact your admin if a correction is needed.</div>';
+      } else if(gridEditable){
         html += '<div class="tk-grid-actions">'
-          + '<div class="login-error" id="tkg-save-error" style="margin-top:0;flex:1;"></div>'
+          + '<div class="login-error" id="' + containerId + '-save-error" style="margin-top:0;flex:1;"></div>'
+          + (containerId === 'tk-current' ? '<div id="tkg-period-cert-panel"></div>' : '')
           + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="saveTkWeek(\'' + startISO + '\',\'' + endISO + '\',\'' + containerId + '\')">Save Week</button>'
           + '</div>';
       }
@@ -555,6 +967,8 @@
         tbody.dataset.days = JSON.stringify(days.map(tkDateToISO));
         tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label }; }));
       }
+
+      if(containerId === 'tk-current' && gridEditable){ tkRenderPeriodCertPanel(); }
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load timekeeping</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
       console.error(e);
@@ -632,11 +1046,19 @@
     loadTkWeek('tkh-grid-wrap', offset, false, false);
   }
 
-  async function saveTkWeek(startISO, endISO, containerId){
+  // opts (optional) lets an admin enter time on an employee's behalf under
+  // special circumstances: opts.employeeId targets that employee instead of
+  // the caller, opts.onSaved replaces the default employee-self-service
+  // reload (Current-week reload + certification check) with a caller-
+  // supplied callback (the My Team/Admin card re-render).
+  async function saveTkWeek(startISO, endISO, containerId, opts){
+    opts = opts || {};
     var session = getSession();
-    var saveErrorEl = document.getElementById('tkg-save-error');
+    var employeeId = opts.employeeId || session.user.id;
+    var enteredBy = (opts.employeeId && opts.employeeId !== session.user.id) ? session.user.id : null;
+    var saveErrorEl = document.getElementById(containerId + '-save-error');
     if(saveErrorEl){ saveErrorEl.textContent = ''; }
-    var missingPtoPanel = document.getElementById('tkg-missing-pto-panel');
+    var missingPtoPanel = document.getElementById(containerId + '-missing-pto-panel');
     if(missingPtoPanel){ missingPtoPanel.innerHTML = ''; }
 
     var gridIdBase = containerId + '-grid';
@@ -700,7 +1122,7 @@
     });
 
     if(missingPto.length){
-      renderMissingPtoPanel(missingPto, containerId);
+      renderMissingPtoPanel(missingPto, containerId, opts.employeeId);
       if(saveErrorEl){ saveErrorEl.textContent = 'Some Vacation entries need a PTO request before they can be saved (see below).'; }
       return;
     }
@@ -726,40 +1148,65 @@
         var w = writes[i];
         if(w.action === 'delete'){
           await dbWrite('time_entries?id=eq.' + w.id, 'DELETE');
-          await tkLogAudit(session.user.id, startISO, w.time_code_id, 'edit', [{ field:'hours', oldVal: w.oldHours, newVal: null }]);
+          await tkLogAudit(employeeId, startISO, w.time_code_id, 'edit', [{ field:'hours', oldVal: w.oldHours, newVal: null }]);
         } else if(w.action === 'update'){
           await dbWrite('time_entries?id=eq.' + w.id, 'PATCH', { hours: w.hours, earning_type: w.earning_type, status: 'submitted' });
-          await tkLogAudit(session.user.id, startISO, w.time_code_id, 'edit', [{ field:'hours', oldVal: w.oldHours, newVal: w.hours }]);
+          await tkLogAudit(employeeId, startISO, w.time_code_id, 'edit', [{ field:'hours', oldVal: w.oldHours, newVal: w.hours }]);
         } else {
           await dbWrite('time_entries', 'POST', {
-            employee_id: session.user.id,
+            employee_id: employeeId,
             work_date: w.work_date,
             time_code_id: w.time_code_id,
             hours: w.hours,
             earning_type: w.earning_type,
-            status: 'submitted'
+            status: 'submitted',
+            entered_by: enteredBy
           });
-          await tkLogAudit(session.user.id, startISO, w.time_code_id, 'submit', [{ field:'hours', oldVal: null, newVal: w.hours }]);
+          await tkLogAudit(employeeId, startISO, w.time_code_id, 'submit', [{ field:'hours', oldVal: null, newVal: w.hours }]);
         }
       }
-      loadTkWeek(containerId, tkCurrentWeekOffset, true);
+      if(opts.onSaved){
+        await opts.onSaved();
+      } else {
+        await loadTkWeek(containerId, tkCurrentWeekOffset, true);
+        // Auto-fire the certification popup right off this save if it just
+        // completed the pay period; a Cancel leaves the persistent button
+        // tkRenderPeriodCertPanel() already rendered in its place.
+        if(containerId === 'tk-current'){
+          try{
+            var periodCheck = await tkCheckPeriodCompletion(employeeId);
+            if(!periodCheck.alreadyCertified && periodCheck.complete){
+              tkShowEmployeeCertModal(periodCheck.startISO, periodCheck.endISO);
+            }
+          }catch(e){ console.error(e); }
+        }
+      }
     }catch(e){
       if(saveErrorEl){ saveErrorEl.textContent = 'Could not save week — try again.'; }
       console.error(e);
     }
   }
 
-  function renderMissingPtoPanel(missingPto, containerId){
-    var panel = document.getElementById('tkg-missing-pto-panel');
+  // targetEmployeeId is only set for admin-entry (saveTkWeek opts.employeeId):
+  // the inline "Submit PTO Request" convenience button submits as the
+  // *caller*, so it can't be offered when the caller is an admin entering
+  // on someone else's behalf — shown as guidance text instead.
+  function renderMissingPtoPanel(missingPto, containerId, targetEmployeeId){
+    var panel = document.getElementById(containerId + '-missing-pto-panel');
     if(!panel){ return; }
+    var isAdminEntry = !!targetEmployeeId;
     panel.innerHTML = '<div class="myteam-return-box">'
       + '<div class="tk-section-title">Vacation Needs a PTO Request</div>'
-      + '<div class="tk-empty" style="padding:0 0 10px;">These Vacation entries don\'t have an approved or pending PTO request covering them yet. Submit a request for each date to continue, or clear the entry and save without it.</div>'
+      + '<div class="tk-empty" style="padding:0 0 10px;">These Vacation entries don\'t have an approved or pending PTO request covering them yet.'
+      + (isAdminEntry ? ' Have the employee submit a PTO request for these dates, or use a different time code.' : ' Submit a request for each date to continue, or clear the entry and save without it.')
+      + '</div>'
       + missingPto.map(function(m, idx){
           return '<div style="display:flex;gap:10px;align-items:end;margin-bottom:10px;">'
-            + '<div><label class="field-label">' + formatDate(m.iso) + '</label><input type="text" inputmode="decimal" class="field-input" id="mpto-hours-' + idx + '" value="' + m.hours + '" style="width:80px;"></div>'
-            + '<button class="btn btn-primary" style="width:auto;padding:9px 16px;" onclick="submitInlinePtoRequest(\'' + m.iso + '\',' + idx + ',\'' + containerId + '\')">Submit PTO Request</button>'
-            + '<div class="login-error" id="mpto-error-' + idx + '" style="margin-top:0;"></div>'
+            + '<div><label class="field-label">' + formatDate(m.iso) + '</label>'
+            + (isAdminEntry ? '<div>' + m.hours + ' hrs</div>' : '<input type="text" inputmode="decimal" class="field-input" id="mpto-hours-' + idx + '" value="' + m.hours + '" style="width:80px;">')
+            + '</div>'
+            + (isAdminEntry ? '' : '<button class="btn btn-primary" style="width:auto;padding:9px 16px;" onclick="submitInlinePtoRequest(\'' + m.iso + '\',' + idx + ',\'' + containerId + '\')">Submit PTO Request</button>')
+            + (isAdminEntry ? '' : '<div class="login-error" id="mpto-error-' + idx + '" style="margin-top:0;"></div>')
             + '</div>';
         }).join('')
       + '</div>';

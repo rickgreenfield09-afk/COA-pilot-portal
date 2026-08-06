@@ -271,7 +271,11 @@
       },
       body: JSON.stringify(params)
     });
-    if(!res.ok){ throw new Error('RPC failed: ' + res.status); }
+    if(!res.ok){
+      var data = null;
+      try{ data = await res.json(); }catch(e){}
+      throw new Error((data && data.message) || ('RPC failed: ' + res.status));
+    }
   }
 
   // Calls a Supabase Edge Function (as opposed to a PostgREST table/rpc
@@ -334,6 +338,20 @@
       e.returnValue = '';
     }
   });
+
+  // ---------- Generic dynamic modal (content injected per use — see
+  //            #dynamic-modal in index.html) ----------
+  function showDynamicModal(innerHtml){
+    var el = document.getElementById('dynamic-modal');
+    el.innerHTML = '<div class="modal-box">' + innerHtml + '</div>';
+    el.classList.add('active');
+  }
+
+  function closeDynamicModal(){
+    var el = document.getElementById('dynamic-modal');
+    el.classList.remove('active');
+    el.innerHTML = '';
+  }
 
   function showApp(email){
     document.getElementById('login-wrap').style.display = 'none';
