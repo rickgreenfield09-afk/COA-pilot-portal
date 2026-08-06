@@ -12,7 +12,16 @@
    Still NOT included: labor_categories, employee_rates, indirect_pools,
    indirect_rates, admin_audit_log, qbo_sync_mapping — later sessions.
    No delete UI anywhere in this file (create/edit only) — deferred.
-   Depends on app-core.js: getSession, dbRequest, dbWrite, escAttr, isAdmin. */
+   Third increment (2026-08-06): multi-step submits (Add Customer with a
+   contract, and bulk SLIN save) now go through single atomic RPC calls
+   (bd_add_contract / bd_bulk_add_slins / bd_add_customer_with_contract —
+   see add-burndown-atomic-rpcs.sql) instead of a sequence of separate
+   PostgREST inserts, so a failure partway through no longer leaves
+   orphaned committed rows. Edit Contract's contacts save is unchanged
+   (still a per-role upsert loop) — lower risk since it edits existing
+   rows rather than creating a chain of dependent new ones.
+   Depends on app-core.js: getSession, dbRequest, dbWrite, dbRpc, escAttr,
+   isAdmin. */
 
   // ---------- Subtab switcher ----------
   function switchBurndownSubtab(name){
@@ -265,49 +274,83 @@
     bdBulkInit('newcust', 'bdc-new-bulk-wrap', bdPendingNewCustomerContractId, null, null, true);
   }
 
+  // Builds the { slin_code, slin_desc, category, ... } row payload the
+  // bd_bulk_add_slins RPC expects out of a bdBulk instance's staged rows.
+  // Numeric fields are passed as raw strings — the RPC casts them, so a
+  // blank field becomes SQL NULL via nullif() instead of JS parseFloat
+  // silently producing NaN.
+  function bdBulkRowsPayload(instanceKey){
+    var state = bdBulk[instanceKey];
+    if(!state){ return []; }
+    return state.rows.filter(function(r){ return r.slinCode; }).map(function(r){
+      return {
+        slin_code: r.slinCode,
+        slin_desc: r.slinDesc || null,
+        category: r.category,
+        contract_type: r.contractType || null,
+        option_year: r.optionYear || null,
+        pop_start: r.popStart || null,
+        pop_end: r.popEnd || null,
+        prev_funding: r.prevFunding || null,
+        award_total: r.awardTotal || null,
+        cum_total: r.cumTotal || null
+      };
+    });
+  }
+
+  // When a contract's included, the whole submit (customer + contract +
+  // contacts + any staged SLINs) goes through one atomic RPC — see
+  // bd_add_customer_with_contract in add-burndown-atomic-rpcs.sql. Without
+  // a contract, a plain customer insert is already a single atomic row, so
+  // no RPC is needed there.
   async function bdSubmitAddCustomer(){
     var errorEl = document.getElementById('bdc-new-error');
     var name = bdVal('bdc-new-name');
     if(!name){ errorEl.textContent = 'Name is required.'; return; }
     var session = getSession();
-    var customerId = crypto.randomUUID();
     var includeContract = bdChecked('bdc-new-includecontract');
     try{
-      await dbWrite('customers', 'POST', {
-        customer_id: customerId,
-        name: name,
-        customer_type: bdVal('bdc-new-type'),
-        cage_code: bdVal('bdc-new-cage') || null,
-        uei: bdVal('bdc-new-uei') || null,
-        address: bdVal('bdc-new-address') || null,
-        is_active: true,
-        created_by: session.user.id
-      });
-
-      if(includeContract){
-        var contractId = bdPendingNewCustomerContractId;
-        await dbWrite('contracts', 'POST', {
-          contract_id: contractId,
-          customer_id: customerId,
-          prime_contract_number: bdVal('bdc-new-k-pcn') || null,
-          delivery_order_number: bdVal('bdc-new-k-don') || null,
-          subcontract_number: bdVal('bdc-new-k-scn') || null,
-          contract_type: bdVal('bdc-new-k-type'),
-          fee_type: bdVal('bdc-new-k-feetype') || null,
-          fee_percentage: bdVal('bdc-new-k-fee') ? parseFloat(bdVal('bdc-new-k-fee')) : null,
-          dpas_priority_rating: bdVal('bdc-new-k-dpas') || null,
-          payment_terms: bdVal('bdc-new-k-terms') || null,
-          status: 'active',
+      if(!includeContract){
+        await dbWrite('customers', 'POST', {
+          name: name,
+          customer_type: bdVal('bdc-new-type'),
+          cage_code: bdVal('bdc-new-cage') || null,
+          uei: bdVal('bdc-new-uei') || null,
+          address: bdVal('bdc-new-address') || null,
+          is_active: true,
           created_by: session.user.id
         });
+      }else{
+        if(bdBulk.newcust){ bdBulkSyncFromDom('newcust'); }
+        var bulkRows = bdBulkRowsPayload('newcust');
+        var bulkState = bdBulk.newcust;
 
-        await bdSaveContactsForContract(contractId, 'bdc-new-contacts');
-
-        if(bdBulk.newcust){
-          bdBulkSyncFromDom('newcust');
-          bdBulk.newcust.customerId = customerId;
-          await bdBulkSaveRows('newcust');
-        }
+        await dbRpc('bd_add_customer_with_contract', {
+          payload: {
+            name: name,
+            customer_type: bdVal('bdc-new-type'),
+            cage_code: bdVal('bdc-new-cage') || null,
+            uei: bdVal('bdc-new-uei') || null,
+            address: bdVal('bdc-new-address') || null,
+            contract: {
+              prime_contract_number: bdVal('bdc-new-k-pcn') || null,
+              delivery_order_number: bdVal('bdc-new-k-don') || null,
+              subcontract_number: bdVal('bdc-new-k-scn') || null,
+              contract_type: bdVal('bdc-new-k-type'),
+              fee_type: bdVal('bdc-new-k-feetype') || null,
+              fee_percentage: bdVal('bdc-new-k-fee') || null,
+              dpas_priority_rating: bdVal('bdc-new-k-dpas') || null,
+              payment_terms: bdVal('bdc-new-k-terms') || null,
+              contacts: bdCollectContactsPayload('bdc-new-contacts')
+            },
+            bulk: bulkRows.length ? {
+              mod_number: bulkState ? bulkState.modNumber : null,
+              mod_date: bulkState ? bulkState.modDate : null,
+              source_document: bulkState ? bulkState.sourceDocument : null,
+              rows: bulkRows
+            } : null
+          }
+        });
       }
 
       document.getElementById('bd-add-customer-form-wrap').innerHTML = '';
@@ -315,7 +358,7 @@
       delete bdBulk.newcust;
       await bdLoadCustomers();
     }catch(e){
-      errorEl.textContent = 'Could not add customer — some records may have been partially saved. Check the Customers list and Billing Tree before retrying.';
+      errorEl.textContent = 'Could not add customer — nothing was saved (this runs as one transaction). Try again.';
       console.error(e);
     }
   }
@@ -382,29 +425,42 @@
       + '</div>';
   }
 
+  // Collects the 4-role contacts grid into the [{role,name,email,phone}]
+  // shape the bd_add_contract/bd_add_customer_with_contract RPCs expect —
+  // only roles with a Name filled in are included.
+  function bdCollectContactsPayload(prefix){
+    return bdContactRoles.map(function(role){
+      var key = prefix + '-' + role.replace(/\s+/g, '');
+      var name = bdVal(key + '-name');
+      if(!name){ return null; }
+      return { role: role, name: name, email: bdVal(key + '-email') || null, phone: bdVal(key + '-phone') || null };
+    }).filter(Boolean);
+  }
+
+  // One atomic RPC (bd_add_contract) instead of a contract POST followed by
+  // separate contact POSTs — a failure partway no longer leaves a contract
+  // with no contacts or vice versa. See add-burndown-atomic-rpcs.sql.
   async function bdSubmitAddContract(customerId){
     var errorEl = document.getElementById('bdk-new-error-' + customerId);
-    var contractId = crypto.randomUUID();
     try{
-      await dbWrite('contracts', 'POST', {
-        contract_id: contractId,
-        customer_id: customerId,
-        prime_contract_number: bdVal('bdk-new-pcn-' + customerId) || null,
-        delivery_order_number: bdVal('bdk-new-don-' + customerId) || null,
-        subcontract_number: bdVal('bdk-new-scn-' + customerId) || null,
-        contract_type: bdVal('bdk-new-type-' + customerId),
-        fee_type: bdVal('bdk-new-feetype-' + customerId) || null,
-        fee_percentage: bdVal('bdk-new-fee-' + customerId) ? parseFloat(bdVal('bdk-new-fee-' + customerId)) : null,
-        dpas_priority_rating: bdVal('bdk-new-dpas-' + customerId) || null,
-        payment_terms: bdVal('bdk-new-terms-' + customerId) || null,
-        status: 'active',
-        created_by: getSession().user.id
+      await dbRpc('bd_add_contract', {
+        payload: {
+          customer_id: customerId,
+          prime_contract_number: bdVal('bdk-new-pcn-' + customerId) || null,
+          delivery_order_number: bdVal('bdk-new-don-' + customerId) || null,
+          subcontract_number: bdVal('bdk-new-scn-' + customerId) || null,
+          contract_type: bdVal('bdk-new-type-' + customerId),
+          fee_type: bdVal('bdk-new-feetype-' + customerId) || null,
+          fee_percentage: bdVal('bdk-new-fee-' + customerId) || null,
+          dpas_priority_rating: bdVal('bdk-new-dpas-' + customerId) || null,
+          payment_terms: bdVal('bdk-new-terms-' + customerId) || null,
+          contacts: bdCollectContactsPayload('bdk-new-contacts-' + customerId)
+        }
       });
-      await bdSaveContactsForContract(contractId, 'bdk-new-contacts-' + customerId);
       document.getElementById('bd-add-contract-form-wrap-' + customerId).innerHTML = '';
       await bdLoadContractsForCustomer(customerId);
     }catch(e){
-      errorEl.textContent = 'Could not add contract — try again.';
+      errorEl.textContent = 'Could not add contract — nothing was saved (this runs as one transaction). Try again.';
       console.error(e);
     }
   }
@@ -1194,59 +1250,28 @@
     bdBulkRender(instanceKey);
   }
 
-  // Shared by the standalone SLIN Table "Confirm & Save All" and the
-  // embedded Add Customer submit — one billing_nodes + slins row per row,
-  // plus one slin_funding_history row when an Award Total was entered.
+  // Used by the standalone SLIN Table "Confirm & Save All". One atomic RPC
+  // call (bd_bulk_add_slins) instead of a billing_nodes/slins/
+  // slin_funding_history POST sequence per row — a failure on row 12 of 19
+  // no longer leaves rows 1-11 committed. See add-burndown-atomic-rpcs.sql.
+  // (The embedded Add Customer flow doesn't call this — it stages the same
+  // row shape via bdBulkRowsPayload() into the single
+  // bd_add_customer_with_contract call instead.)
   async function bdBulkSaveRows(instanceKey){
     var state = bdBulk[instanceKey];
-    var session = getSession();
-    for(var i = 0; i < state.rows.length; i++){
-      var r = state.rows[i];
-      if(!r.slinCode){ continue; }
-      var nodeId = crypto.randomUUID();
-      await dbWrite('billing_nodes', 'POST', {
-        node_id: nodeId,
-        parent_node_id: state.parentNodeId || null,
+    var rows = bdBulkRowsPayload(instanceKey);
+    if(!rows.length){ return; }
+    await dbRpc('bd_bulk_add_slins', {
+      payload: {
+        contract_id: state.contractId,
         customer_id: state.customerId || null,
-        contract_id: state.contractId,
-        node_type: 'SLIN',
-        code: r.slinCode,
-        label: r.slinCode + (r.slinDesc ? ' — ' + r.slinDesc : ''),
-        billable: true,
-        is_leaf: true,
-        status: 'active',
-        sort_order: i,
-        created_by: session.user.id
-      });
-      var slinId = crypto.randomUUID();
-      await dbWrite('slins', 'POST', {
-        slin_id: slinId,
-        billing_node_id: nodeId,
-        contract_id: state.contractId,
-        slin_code: r.slinCode,
-        slin_description: r.slinDesc || null,
-        slin_category: r.category,
-        contract_type: r.contractType || null,
-        option_year: r.optionYear || null,
-        pop_start: r.popStart || null,
-        pop_end: r.popEnd || null,
-        status: 'active',
-        created_by: session.user.id
-      });
-      if(r.awardTotal){
-        await dbWrite('slin_funding_history', 'POST', {
-          funding_id: crypto.randomUUID(),
-          slin_id: slinId,
-          mod_number: state.modNumber || null,
-          mod_date: state.modDate || new Date().toISOString().slice(0,10),
-          previous_funding: parseFloat(r.prevFunding) || 0,
-          award_total: parseFloat(r.awardTotal),
-          cumulative_total: parseFloat(r.cumTotal) || ((parseFloat(r.prevFunding) || 0) + parseFloat(r.awardTotal)),
-          source_document: state.sourceDocument || null,
-          entered_by_admin_id: session.user.id
-        });
+        parent_node_id: state.parentNodeId || null,
+        mod_number: state.modNumber || null,
+        mod_date: state.modDate || null,
+        source_document: state.sourceDocument || null,
+        rows: rows
       }
-    }
+    });
   }
 
   async function bdBulkConfirmSave(instanceKey){

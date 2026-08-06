@@ -590,3 +590,30 @@ auto-rolls-back; admin needs to check the Customers list / SLIN Table
 before retrying. Signature capture and document file upload/Blob Storage
 wiring remain explicitly out of scope per this session's direction (doc
 stays wherever it's currently kept; storage can go on the backlog later).
+
+## 2026-08-06 — Burndown: atomic multi-step submits (CM-3 / SI-10)
+Fixes the transaction-safety gap flagged in the entry directly above.
+`add-burndown-atomic-rpcs.sql` adds three Postgres functions —
+`bd_add_contract`, `bd_bulk_add_slins`, `bd_add_customer_with_contract`
+(the last calls the first two) — each doing its entire multi-row insert
+inside a single function call, which Postgres runs as one transaction: if
+any insert inside raises (including an is_admin() RLS denial), everything
+the function did rolls back automatically. None are SECURITY DEFINER —
+they run as the calling user, so the existing is_admin() RLS policies on
+customers/contracts/contract_contacts/billing_nodes/slins/
+slin_funding_history are still enforced exactly as before on every row; a
+non-admin caller now gets the whole transaction aborted rather than one
+insert failing partway through.
+`screen-burndown.js` updated to call these via `dbRpc()` in place of the
+prior sequential `dbWrite()` loops: `bdSubmitAddContract` (Add Contract
+under an existing customer), `bdSubmitAddCustomer`'s "also add first
+contract" branch, and `bdBulkSaveRows` (standalone SLIN Table bulk save).
+Numeric fields (fee_percentage, funding amounts) are now passed as raw
+strings and cast server-side via `nullif(...,'')::numeric`, so a blank
+field becomes SQL NULL instead of relying on client-side `parseFloat`.
+Edit Contract's contacts save (`bdSaveContactsForContract`) intentionally
+left as-is — it edits existing rows (per-role upsert), not a chain of new
+dependent inserts, so the partial-failure blast radius is much smaller
+than the create flows this fixes.
+Status: Implemented (app code + SQL; `node -c` syntax-checked, no
+dangling onclick/onchange references). Not yet browser-tested live.
