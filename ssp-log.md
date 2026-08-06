@@ -776,3 +776,68 @@ Gap/follow-up (carried from Steps 1-2): certification/lock enforcement is
 client-side only in this POC — no RLS on time_entries yet, so a direct
 API call could still bypass the lock or the entered_by stamp. Must be
 closed with real RLS once this moves off the Supabase POC.
+
+## 2026-08-06 — Timekeeping Simulation Mode, Stage 1: sandbox + entry/exit (AU-2 / AU-9 / CM-3)
+Design discussion with user: admins need a way to demo the full daily-
+entry -> employee-certify -> admin-approve -> admin-certify-for-payroll
+cycle at will (not tied to the real calendar) without writing anything to
+the real database, using Ricky's real account
+(954e67be-05cf-4dd9-abaa-ba37790f9032) and the seeded July 16-31 pay
+period (seed-ricky-july-pay-period.sql, deliberately left short one day
+so the simulation can complete it live).
+Built a session-only in-memory sandbox scoped to exactly the 3 tables and
+4 RPCs the Timekeeping/My Team/Admin timekeeping screens touch
+(time_entries, pay_period_certifications, time_card_audit_log;
+certify_period_employee/certify_period_admin/reopen_period/accrue_pto) —
+tkReq/tkWrite/tkRpc in screen-timekeeping.js pass straight through to the
+real dbRequest/dbWrite/dbRpc when simulation mode is off (zero behavior
+change), or read/write an in-memory store seeded once from Ricky's real
+data when it's on. The RPC business rules (weekday-completeness check,
+certify-order enforcement, mandatory reopen reason) are duplicated in JS
+from pay-period-certifications-schema.sql since the real Postgres
+functions can't run against in-memory data — documented as a deliberate
+duplication to keep in sync if the SQL ever changes.
+`tkOffsetForToday()`/`tkCurrentPeriodBounds()` also respect simulation
+mode, resolving to a fixed simulated "today" (2026-07-31, the seeded
+period's last day) instead of the real clock — this one change makes
+every existing week/period-nav, lock, and "Today" button correct for the
+simulation for free, no other date logic needed touching.
+Explicitly out of scope: the PTO tab and Dashboard widgets are NOT
+sandboxed — they still hit the real database even during a simulation.
+Only the screens the walkthrough actually uses are covered.
+Entry point: an admin-only prompt on the Timekeeping screen ("Start
+Simulation"); a persistent amber banner (outside <main>, visible on every
+screen) shows while active, with a Guided Walkthrough checkbox (wired,
+not yet consumed — Stage 2) and an Exit Simulation button that discards
+the sandbox and reloads the real screen.
+Status: Implemented (sandbox + entry/exit + banner). Stage 2 (the actual
+guided-wizard overlay with the 10 walkthrough steps) not yet built.
+Gap/follow-up: My Team/Admin's employee list is entirely replaced by
+Ricky while simulation mode is active — an admin can't review a real
+employee and run the simulation in the same session; acceptable given
+this is a demo aid, not a production workflow.
+
+## 2026-08-06 — Timekeeping Simulation Mode, Stage 2: guided wizard (AU-2 / AU-9)
+Completes the simulation mode build. Added a floating wizard panel
+(#tk-sim-wizard, fixed bottom-right, styled distinctly from modal popups
+so it never blocks them — lower z-index) driven by the Guided Walkthrough
+checkbox already wired into the banner in Stage 1. Ten narration-only
+steps (TK_SIM_STEPS) walk the admin through the full cycle agreed with
+the user: welcome/orientation, enter the last day, watch the auto-popup,
+cancel it once to see the persistent submit button, certify for real,
+approve each week individually, certify for payroll, try Reopen
+(mandatory reason), try Enter Time for Employee, and a closing summary.
+Each step pairs a plain instruction with a short "DCAA:" callout
+explaining which control this maps to (daily entry, dual attestation,
+no-silent-edit locking, audit-attributed exception entry, etc.).
+Deliberately narration-only, not action-gated — the wizard doesn't try to
+detect that the admin actually clicked Save or opened a popup; it just
+shows the next instruction on demand, which is simpler and doesn't break
+if they explore out of order.
+Guided walkthrough can be toggled off entirely (checkbox in the banner or
+"Hide walkthrough" in the panel itself) so a second run can skip the
+narration and just use simulation mode freely, per user's explicit ask —
+the flag isn't reset on simulation start, so it carries over within the
+same session once turned off.
+Status: Implemented. Timekeeping Simulation Mode (Stages 1+2) is now
+complete. Not yet browser-tested live.

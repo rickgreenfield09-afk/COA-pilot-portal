@@ -61,6 +61,11 @@
       <button class="nav-btn" id="nav-btn-admin" data-screen="admin" onclick="requestSwitchScreen('admin')" style="display:none;">Admin</button>
       <button class="nav-btn" id="nav-btn-burndown" data-screen="burndown" onclick="requestSwitchScreen('burndown')" style="display:none;">Burndown</button>
     </nav>
+    <!-- TIMEKEEPING SIMULATION BANNER — hidden unless tkSimMode is active
+         (screen-timekeeping.js). Deliberately outside <main> so it stays
+         visible across every screen, not just Timekeeping. -->
+    <div class="tk-sim-banner" id="tk-sim-banner" style="display:none;"></div>
+    <div class="tk-sim-wizard" id="tk-sim-wizard" style="display:none;"></div>
     <main>
       <div class="screen active" id="screen-home">
         <div id="home-content">
@@ -115,6 +120,7 @@
         </div>
       </div>
       <div class="screen" id="screen-timekeeping">
+        <div id="tk-sim-entry"></div>
         <div class="subtab-bar">
           <button class="subtab-btn active" data-tksubtab="current" onclick="switchTkSubtab('current')">Current Week</button>
           <button class="subtab-btn" data-tksubtab="history" onclick="switchTkSubtab('history')">History</button>

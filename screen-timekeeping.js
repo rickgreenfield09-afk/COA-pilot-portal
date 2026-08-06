@@ -34,6 +34,7 @@
     document.querySelectorAll('.tk-subscreen').forEach(function(s){ s.classList.remove('active'); });
     document.querySelectorAll('[data-tksubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.tksubtab === name); });
     document.getElementById('tk-' + name).classList.add('active');
+    tkRenderSimEntry();
     if(name === 'current'){ loadTkWeek('tk-current', tkCurrentWeekOffset, true); }
     if(name === 'history'){ initTkHistory(); }
     if(name === 'pto'){ loadPtoTab(); }
@@ -60,8 +61,12 @@
     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
 
+  // tkSimMode/TK_SIM_TODAY_ISO are declared further down (Timekeeping
+  // Simulation Mode) but safe to reference here — by the time this is
+  // actually called, the whole script has finished its top-level init.
   function tkOffsetForToday(){
-    var todayUTC = new Date(new Date().toISOString().slice(0,10) + 'T00:00:00');
+    var todayISO = tkSimMode ? TK_SIM_TODAY_ISO : new Date().toISOString().slice(0,10);
+    var todayUTC = new Date(todayISO + 'T00:00:00');
     var diffDays = Math.round((todayUTC - TK_WEEK_ANCHOR) / TK_DAY_MS);
     return Math.floor(diffDays / 7);
   }
@@ -78,7 +83,7 @@
   }
 
   function tkCurrentPeriodBounds(){
-    return tkPeriodBounds(new Date());
+    return tkPeriodBounds(tkSimMode ? new Date(TK_SIM_TODAY_ISO + 'T00:00:00') : new Date());
   }
 
   // Walks whole periods (each "half-month" is one unit: 1st or 16th) —
@@ -319,7 +324,7 @@
     var changes = (fieldChanges && fieldChanges.length) ? fieldChanges : [{ field:null, oldVal:null, newVal:null }];
     for(var i=0;i<changes.length;i++){
       try{
-        await dbWrite('time_card_audit_log', 'POST', {
+        await tkWrite('time_card_audit_log', 'POST', {
           employee_id: employeeId,
           week_start_date: weekOrDateISO,
           time_code_id: timeCodeId || null,
@@ -346,13 +351,13 @@
     var startISO = tkDateToISO(bounds.start);
     var endISO = tkDateToISO(bounds.end);
 
-    var certRows = await dbRequest('pay_period_certifications?employee_id=eq.' + employeeId + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=status');
+    var certRows = await tkReq('pay_period_certifications?employee_id=eq.' + employeeId + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=status');
     if(certRows[0] && certRows[0].status !== 'open'){
       return { alreadyCertified: true, startISO: startISO, endISO: endISO };
     }
 
     var weekdayIsos = tkPeriodWeekdayISOs(bounds.start, bounds.end);
-    var entries = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&hours=gt.0&status=neq.rejected&select=work_date');
+    var entries = await tkReq('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&hours=gt.0&status=neq.rejected&select=work_date');
     var covered = {};
     entries.forEach(function(e){ covered[e.work_date] = true; });
     var missing = weekdayIsos.filter(function(iso){ return !covered[iso]; });
@@ -377,7 +382,7 @@
     for(var key in periods){
       var p = periods[key];
       var startISO = tkDateToISO(p.start), endISO = tkDateToISO(p.end);
-      var rows = await dbRequest('pay_period_certifications?employee_id=eq.' + employeeId + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=status');
+      var rows = await tkReq('pay_period_certifications?employee_id=eq.' + employeeId + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=status');
       if(rows[0] && rows[0].status !== 'open'){
         days.forEach(function(d){
           if(tkDateToISO(d) >= startISO && tkDateToISO(d) <= endISO){ lockedDates[tkDateToISO(d)] = true; }
@@ -394,10 +399,10 @@
   async function tkRenderPeriodCertPanel(){
     var panel = document.getElementById('tkg-period-cert-panel');
     if(!panel){ return; }
-    var session = getSession();
-    if(!session || !session.user){ return; }
+    var employeeId = tkEffectiveEmployeeId();
+    if(!employeeId){ return; }
     try{
-      var check = await tkCheckPeriodCompletion(session.user.id);
+      var check = await tkCheckPeriodCompletion(employeeId);
       panel.innerHTML = (!check.alreadyCertified && check.complete)
         ? '<button class="btn-logout" style="width:auto;" onclick="tkShowEmployeeCertModal(\'' + check.startISO + '\',\'' + check.endISO + '\')">Submit Pay Period for Approval</button>'
         : '';
@@ -417,10 +422,9 @@
   }
 
   async function tkConfirmEmployeeCert(startISO, endISO){
-    var session = getSession();
     try{
-      await dbRpc('certify_period_employee', { p_period_start: startISO, p_period_end: endISO });
-      await tkLogAudit(session.user.id, startISO, null, 'period_certify_employee', null, TK_EMPLOYEE_CERT_TEXT);
+      await tkRpc('certify_period_employee', { p_period_start: startISO, p_period_end: endISO });
+      await tkLogAudit(tkEffectiveEmployeeId(), startISO, null, 'period_certify_employee', null, TK_EMPLOYEE_CERT_TEXT);
       closeDynamicModal();
       loadTkWeek('tk-current', tkCurrentWeekOffset, true);
     }catch(e){
@@ -432,6 +436,257 @@
       );
       console.error(e);
     }
+  }
+
+  // ---------- Timekeeping Simulation Mode ----------
+  // A session-only sandbox for demoing the full daily-entry -> employee
+  // certify -> admin approve -> admin certify-for-payroll cycle without
+  // touching the real database. Admin-only; defaults to Ricky's real
+  // pay period data (seeded via seed-ricky-july-pay-period.sql) so the
+  // walkthrough has something real to work with.
+  //
+  // Scope: only time_entries / pay_period_certifications /
+  // time_card_audit_log reads+writes, and the 4 RPCs the timekeeping
+  // screens use, are intercepted (tkReq/tkWrite/tkRpc below). Anything
+  // outside Timekeeping/My Team/Admin's timekeeping views (Dashboard
+  // widgets, the PTO tab, everything unrelated) still talks to the real
+  // database untouched — this is a scoped sandbox for the certification
+  // walkthrough, not an app-wide demo mode.
+  var TK_SIM_DEFAULT_EMPLOYEE_ID = '954e67be-05cf-4dd9-abaa-ba37790f9032';
+  var TK_SIM_TODAY_ISO = '2026-07-31'; // last day of the seeded July 16-31 period
+  var tkSimMode = false;
+  var tkSimEmployeeId = TK_SIM_DEFAULT_EMPLOYEE_ID;
+  var tkSimGuided = true;
+  var tkSimStore = null; // { time_entries: [], pay_period_certifications: [], time_card_audit_log: [] }
+  var tkSimIdSeq = 0;
+
+  function tkEffectiveEmployeeId(){
+    if(tkSimMode && tkSimEmployeeId){ return tkSimEmployeeId; }
+    var session = getSession();
+    return session && session.user ? session.user.id : null;
+  }
+
+  async function tkStartSimulation(){
+    var entries = await dbRequest('time_entries?employee_id=eq.' + tkSimEmployeeId + '&select=*');
+    var certs = await dbRequest('pay_period_certifications?employee_id=eq.' + tkSimEmployeeId + '&select=*');
+    tkSimStore = {
+      time_entries: entries.map(function(e){ return Object.assign({}, e); }),
+      pay_period_certifications: certs.map(function(c){ return Object.assign({}, c); }),
+      time_card_audit_log: []
+    };
+    tkSimMode = true;
+    tkSimStepIndex = 0;
+    tkCurrentWeekOffset = tkOffsetForToday();
+    teamTkPeriodOffset.myteam = 0;
+    teamTkPeriodOffset.admin = 0;
+    tkRenderSimBanner();
+    tkRenderSimWizard();
+    requestSwitchScreen('timekeeping');
+  }
+
+  function tkExitSimulation(){
+    tkSimMode = false;
+    tkSimStore = null;
+    tkCurrentWeekOffset = tkOffsetForToday();
+    teamTkPeriodOffset.myteam = 0;
+    teamTkPeriodOffset.admin = 0;
+    tkRenderSimBanner();
+    tkRenderSimWizard();
+    tkRenderSimEntry();
+    requestSwitchScreen('timekeeping');
+  }
+
+  function tkToggleSimGuided(){
+    tkSimGuided = !tkSimGuided;
+    tkRenderSimBanner();
+    tkRenderSimWizard();
+  }
+
+  function tkRenderSimBanner(){
+    var el = document.getElementById('tk-sim-banner');
+    if(!el){ return; }
+    if(!tkSimMode){ el.style.display = 'none'; el.innerHTML = ''; return; }
+    el.style.display = 'flex';
+    el.innerHTML = '<span>&#9888; Simulation Mode — acting as Ricky (' + formatDate(TK_SIM_TODAY_ISO) + ' pay period). Nothing here is saved.</span>'
+      + '<label style="margin-left:auto;display:flex;align-items:center;gap:6px;"><input type="checkbox" ' + (tkSimGuided ? 'checked' : '') + ' onchange="tkToggleSimGuided()"> Guided Walkthrough</label>'
+      + '<button class="btn-cancel" style="width:auto;padding:6px 14px;" onclick="tkExitSimulation()">Exit Simulation</button>';
+  }
+
+  // ---- Guided walkthrough (narration only — the admin performs each
+  //      action themselves and clicks Next; nothing here auto-detects or
+  //      gates on the action actually happening) ----
+  var TK_SIM_STEPS = [
+    { title: 'Welcome to the Simulation', body: 'You\'re viewing Ricky\'s Current Week as of July 31, 2026 — the last day of a semi-monthly pay period. Every weekday from July 16-30 already has hours logged.', dcaa: 'DCAA guidelines require time to be recorded daily, not reconstructed later. Ricky\'s kept up every day except today.' },
+    { title: 'Enter the Last Day', body: 'On the Current Week grid, enter 8 hours for July 31 under Business Development, then click Save Week.', dcaa: null },
+    { title: 'Watch for the Popup', body: 'Saving just completed the pay period, so the employee certification popup should appear on its own — you didn\'t have to look for a button.', dcaa: 'The system won\'t let a completed period go unattested. The certification statement is the employee\'s formal record that the hours are accurate.' },
+    { title: 'Cancel It Once', body: 'Click Cancel on that popup instead of confirming. Notice a "Submit Pay Period for Approval" button is now sitting next to Save Week.', dcaa: 'Certifying is a deliberate act, not an accidental click — the system gives a way back to fix something before formally attesting to it.' },
+    { title: 'Certify the Timesheet', body: 'Click that button (or re-trigger the popup with another Save) and confirm certification this time. The period should lock to read-only.', dcaa: 'Once certified, the record is frozen from the employee\'s side — no quiet edits after attestation.' },
+    { title: 'Review Each Week', body: 'Switch to My Team or Admin → Timekeeping → Weekly Review. Approve each of the three weeks in this period one at a time, and try adding a note on one approval.', dcaa: 'Each week gets independent review — there\'s no single button that rubber-stamps the whole period at once.' },
+    { title: 'Certify for Payroll', body: 'Switch to the Pay Period tab. The status should read "Employee Certified." Click Certify & Submit for Payroll, read the second statement, and confirm.', dcaa: 'Two independent attestations — the preparer and the reviewer — happen before anything reaches payroll.' },
+    { title: 'Try Reopen', body: 'Click Reopen on the period. Notice it won\'t let you continue without typing a reason.', dcaa: 'Corrections after certification leave a deliberate, reasoned record in the audit trail instead of a silent edit.' },
+    { title: 'Try Enter Time for Employee', body: 'Back on the Weekly Review card, click "Enter Time for Employee." This is how an admin hand-enters hours on someone\'s behalf under special circumstances.', dcaa: 'Even exception-handling entries are attributably logged — the record always shows who actually entered it.' },
+    { title: 'That\'s the Full Cycle', body: 'Everything you just did — every save, approval, certification, and reopen — would normally also write a row to the DCAA audit log, even though nothing was saved for real this time. Exit Simulation whenever you\'re done, or keep exploring freely.', dcaa: null }
+  ];
+  var tkSimStepIndex = 0;
+
+  function tkSimWizardNext(){ tkSimStepIndex = Math.min(tkSimStepIndex + 1, TK_SIM_STEPS.length - 1); tkRenderSimWizard(); }
+  function tkSimWizardBack(){ tkSimStepIndex = Math.max(tkSimStepIndex - 1, 0); tkRenderSimWizard(); }
+
+  function tkRenderSimWizard(){
+    var el = document.getElementById('tk-sim-wizard');
+    if(!el){ return; }
+    if(!(tkSimMode && tkSimGuided)){ el.style.display = 'none'; el.innerHTML = ''; return; }
+    var step = TK_SIM_STEPS[tkSimStepIndex];
+    var isLast = tkSimStepIndex === TK_SIM_STEPS.length - 1;
+    el.style.display = 'block';
+    el.innerHTML = '<div class="tk-sim-wizard-step">Step ' + (tkSimStepIndex + 1) + ' of ' + TK_SIM_STEPS.length + '</div>'
+      + '<div class="tk-sim-wizard-title">' + step.title + '</div>'
+      + '<div class="tk-sim-wizard-body">' + step.body + '</div>'
+      + (step.dcaa ? '<div class="tk-sim-wizard-dcaa"><strong>DCAA:</strong> ' + step.dcaa + '</div>' : '')
+      + '<div class="tk-sim-wizard-actions">'
+      + '<button class="tk-sim-wizard-dismiss" type="button" onclick="tkToggleSimGuided()">Hide walkthrough</button>'
+      + '<div style="display:flex;gap:8px;">'
+      + '<button class="btn-cancel" style="width:auto;padding:6px 12px;" ' + (tkSimStepIndex === 0 ? 'disabled' : '') + ' onclick="tkSimWizardBack()">Back</button>'
+      + '<button class="btn-save" style="width:auto;padding:6px 14px;" onclick="' + (isLast ? 'tkToggleSimGuided()' : 'tkSimWizardNext()') + '">' + (isLast ? 'Done' : 'Next') + '</button>'
+      + '</div></div>';
+  }
+
+  // Admin-only entry point, rendered into #tk-sim-entry on the Timekeeping
+  // screen. Hidden entirely once simulation mode is active (the banner's
+  // Exit button is the way out).
+  function tkRenderSimEntry(){
+    var el = document.getElementById('tk-sim-entry');
+    if(!el){ return; }
+    if(tkSimMode || !isAdmin()){ el.innerHTML = ''; return; }
+    el.innerHTML = '<div class="warning-box" style="margin-bottom:16px;">'
+      + '<div class="warning-box-icon">&#9654;</div>'
+      + '<div><div class="warning-box-title">Timekeeping Demo Mode</div>'
+      + '<div class="warning-box-text">Walk through daily entry, certification, and approval as Ricky, using seeded data — nothing is written to the real database. <a href="#" onclick="tkStartSimulation();return false;">Start Simulation</a></div></div>'
+      + '</div>';
+  }
+
+  function tkSimTableOf(path){
+    var table = path.split('?')[0];
+    return (table === 'time_entries' || table === 'pay_period_certifications' || table === 'time_card_audit_log') ? table : null;
+  }
+
+  function tkSimParseFilters(path){
+    var qIdx = path.indexOf('?');
+    var filters = [];
+    if(qIdx === -1){ return filters; }
+    new URLSearchParams(path.slice(qIdx + 1)).forEach(function(value, key){
+      if(key === 'select' || key === 'order' || key === 'limit'){ return; }
+      filters.push({ key: key, raw: value });
+    });
+    return filters;
+  }
+
+  function tkSimRowMatches(row, filters){
+    return filters.every(function(f){
+      var val = row[f.key];
+      if(f.raw.indexOf('neq.') === 0){ return String(val) !== f.raw.slice(4); }
+      if(f.raw.indexOf('eq.') === 0){ return String(val) === f.raw.slice(3); }
+      if(f.raw.indexOf('gte.') === 0){ return val != null && val >= f.raw.slice(4); }
+      if(f.raw.indexOf('lte.') === 0){ return val != null && val <= f.raw.slice(4); }
+      if(f.raw.indexOf('gt.') === 0){ return parseFloat(val) > parseFloat(f.raw.slice(3)); }
+      if(f.raw.indexOf('in.(') === 0){ return f.raw.slice(4, -1).split(',').indexOf(String(val)) !== -1; }
+      return true;
+    });
+  }
+
+  // Drop-in replacements for dbRequest/dbWrite/dbRpc used by the
+  // Timekeeping/My Team/Admin timekeeping code paths — pass straight
+  // through to the real functions when simulation mode is off (zero
+  // behavior change), or read/write tkSimStore when it's on.
+  async function tkReq(path){
+    var table = tkSimTableOf(path);
+    if(!(tkSimMode && table)){ return dbRequest(path); }
+    var filters = tkSimParseFilters(path);
+    return tkSimStore[table].filter(function(row){ return tkSimRowMatches(row, filters); });
+  }
+
+  async function tkWrite(path, method, body){
+    var table = tkSimTableOf(path);
+    if(!(tkSimMode && table)){ return dbWrite(path, method, body); }
+    if(method === 'POST'){
+      tkSimIdSeq++;
+      tkSimStore[table].push(Object.assign({ id: 'sim-' + tkSimIdSeq }, body));
+      return;
+    }
+    var filters = tkSimParseFilters(path);
+    var matches = tkSimStore[table].filter(function(row){ return tkSimRowMatches(row, filters); });
+    if(method === 'PATCH'){
+      matches.forEach(function(row){ Object.assign(row, body); });
+    } else if(method === 'DELETE'){
+      matches.forEach(function(row){
+        var idx = tkSimStore[table].indexOf(row);
+        if(idx !== -1){ tkSimStore[table].splice(idx, 1); }
+      });
+    }
+  }
+
+  // Mirrors the SQL in pay-period-certifications-schema.sql. Deliberately
+  // duplicated rather than shared — the real RPCs run in Postgres and
+  // can't be called against in-memory data — so keep this in sync if the
+  // SQL's business rules ever change.
+  async function tkRpc(fnName, params){
+    if(!tkSimMode){ return dbRpc(fnName, params); }
+    if(fnName === 'accrue_pto'){ return; } // no-op in simulation
+
+    if(fnName === 'certify_period_employee'){
+      var weekdays = tkPeriodWeekdayISOs(new Date(params.p_period_start + 'T00:00:00'), new Date(params.p_period_end + 'T00:00:00'));
+      var missing = weekdays.filter(function(iso){
+        return !tkSimStore.time_entries.some(function(e){
+          return e.employee_id === tkSimEmployeeId && e.work_date === iso && parseFloat(e.hours) > 0 && e.status !== 'rejected';
+        });
+      });
+      if(missing.length){ throw new Error('Every weekday in the pay period needs hours entered before you can certify (' + missing.length + ' day(s) still missing)'); }
+      var existing = tkSimStore.pay_period_certifications.find(function(c){ return c.employee_id === tkSimEmployeeId && c.period_start === params.p_period_start && c.period_end === params.p_period_end; });
+      if(existing && existing.status !== 'open'){ throw new Error('This pay period has already been certified'); }
+      if(existing){ existing.status = 'employee_certified'; existing.employee_cert_at = new Date().toISOString(); }
+      else{
+        tkSimStore.pay_period_certifications.push({
+          id: 'sim-cert-' + (++tkSimIdSeq), employee_id: tkSimEmployeeId,
+          period_start: params.p_period_start, period_end: params.p_period_end,
+          status: 'employee_certified', employee_cert_at: new Date().toISOString(),
+          admin_cert_at: null, admin_cert_by: null, admin_notes: null,
+          reopened_at: null, reopened_by: null, reopen_reason: null
+        });
+      }
+      return;
+    }
+
+    if(fnName === 'certify_period_admin'){
+      var cert = tkSimStore.pay_period_certifications.find(function(c){ return c.employee_id === params.p_employee_id && c.period_start === params.p_period_start && c.period_end === params.p_period_end; });
+      if(!cert || cert.status !== 'employee_certified'){ throw new Error('The employee must certify this pay period before it can be submitted for payroll'); }
+      cert.status = 'admin_certified';
+      cert.admin_cert_at = new Date().toISOString();
+      cert.admin_cert_by = tkEffectiveAdminId();
+      cert.admin_notes = params.p_notes || null;
+      return;
+    }
+
+    if(fnName === 'reopen_period'){
+      if(!params.p_reason || !params.p_reason.trim()){ throw new Error('A reason is required to reopen a pay period'); }
+      var cert2 = tkSimStore.pay_period_certifications.find(function(c){ return c.employee_id === params.p_employee_id && c.period_start === params.p_period_start && c.period_end === params.p_period_end; });
+      if(!cert2 || cert2.status === 'open'){ throw new Error('This pay period is not currently certified'); }
+      cert2.status = 'open';
+      cert2.employee_cert_at = null;
+      cert2.admin_cert_at = null;
+      cert2.admin_cert_by = null;
+      cert2.admin_notes = null;
+      cert2.reopened_at = new Date().toISOString();
+      cert2.reopened_by = tkEffectiveAdminId();
+      cert2.reopen_reason = params.p_reason;
+      return;
+    }
+
+    return dbRpc(fnName, params);
+  }
+
+  function tkEffectiveAdminId(){
+    var session = getSession();
+    return session && session.user ? session.user.id : null;
   }
 
   // ---------- My Team (manager/admin review) ----------
@@ -461,15 +716,22 @@
     if(!session || !session.user){ return; }
 
     try{
-      var ids;
-      if(scope === 'admin'){
-        ids = (await dbRequest('profiles?id=neq.' + session.user.id + '&select=id')).map(function(r){ return r.id; });
+      if(tkSimMode){
+        // Simulation mode reviews only the simulated employee (Ricky) —
+        // not the admin's real reports — so it can't be mixed with real
+        // review work in the same session.
+        teamTkReports[scope] = await dbRequest('profiles?id=eq.' + tkSimEmployeeId + '&select=id,full_name,job_title');
       } else {
-        ids = await getRecursiveReportIds(session.user.id);
+        var ids;
+        if(scope === 'admin'){
+          ids = (await dbRequest('profiles?id=neq.' + session.user.id + '&select=id')).map(function(r){ return r.id; });
+        } else {
+          ids = await getRecursiveReportIds(session.user.id);
+        }
+        teamTkReports[scope] = ids.length
+          ? await dbRequest('profiles?id=in.(' + ids.join(',') + ')&select=id,full_name,job_title&order=full_name.asc')
+          : [];
       }
-      teamTkReports[scope] = ids.length
-        ? await dbRequest('profiles?id=in.(' + ids.join(',') + ')&select=id,full_name,job_title&order=full_name.asc')
-        : [];
 
       if(!teamTkReports[scope].length){
         container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">No employees found</div><div class="placeholder-sub">' + (scope === 'admin' ? 'No other employees on file.' : 'Nobody is currently assigned to you for review.') + '</div></div>';
@@ -552,7 +814,7 @@
 
   async function teamTkRenderCard(employee, startISO, endISO, scope){
     var timeCodes = await tkGetTimeCodes();
-    var entries = await dbRequest('time_entries?employee_id=eq.' + employee.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
+    var entries = await tkReq('time_entries?employee_id=eq.' + employee.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
     var rows = tkSortRowsByCodeOrder(Object.values(tkGroupEntriesByCode(entries)), timeCodes);
     var days = tkWeekDays(new Date(startISO + 'T00:00:00'));
 
@@ -655,10 +917,10 @@
     var errorEl = document.getElementById('myteam-error-' + employeeId);
     if(errorEl){ errorEl.textContent = ''; }
     try{
-      var rows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=id,time_code_id');
+      var rows = await tkReq('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=id,time_code_id');
       var session = getSession();
       for(var i=0;i<rows.length;i++){
-        await dbWrite('time_entries?id=eq.' + rows[i].id, 'PATCH', {
+        await tkWrite('time_entries?id=eq.' + rows[i].id, 'PATCH', {
           status: 'approved',
           approved_by: session.user.id,
           approved_at: new Date().toISOString()
@@ -666,7 +928,7 @@
         await tkLogAudit(employeeId, startISO, rows[i].time_code_id, 'approve', null, notes || null);
       }
       // Accrue PTO once per employee per approved week, not per-row
-      try{ await dbRpc('accrue_pto', { p_employee_id: employeeId }); }catch(e){ console.error(e); }
+      try{ await tkRpc('accrue_pto', { p_employee_id: employeeId }); }catch(e){ console.error(e); }
       delete myTeamFlagged[employeeId];
       teamTkRenderCurrentCard(scope);
     }catch(e){
@@ -713,7 +975,7 @@
 
   async function teamTkRenderPeriodCard(employee, startISO, endISO, scope){
     var timeCodes = await tkGetTimeCodes();
-    var entries = await dbRequest('time_entries?employee_id=eq.' + employee.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
+    var entries = await tkReq('time_entries?employee_id=eq.' + employee.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
     var rows = tkSortRowsByCodeOrder(Object.values(tkGroupEntriesByCode(entries)), timeCodes);
     var days = tkPeriodDays(new Date(startISO + 'T00:00:00'), new Date(endISO + 'T00:00:00'));
 
@@ -723,7 +985,7 @@
 
     var periodTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
 
-    var certRows = await dbRequest('pay_period_certifications?employee_id=eq.' + employee.id + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=*');
+    var certRows = await tkReq('pay_period_certifications?employee_id=eq.' + employee.id + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=*');
     var cert = certRows[0] || null;
     var status = cert ? cert.status : 'open';
     var statusLabels = { open: 'Open', employee_certified: 'Employee Certified', admin_certified: 'Certified for Payroll' };
@@ -773,7 +1035,7 @@
     var notesEl = document.getElementById('myteam-period-cert-notes');
     var notes = notesEl ? notesEl.value : '';
     try{
-      await dbRpc('certify_period_admin', { p_employee_id: employeeId, p_period_start: startISO, p_period_end: endISO, p_notes: notes || null });
+      await tkRpc('certify_period_admin', { p_employee_id: employeeId, p_period_start: startISO, p_period_end: endISO, p_notes: notes || null });
       await tkLogAudit(employeeId, startISO, null, 'period_certify_admin', null, TK_ADMIN_CERT_TEXT + (notes ? ' | Notes: ' + notes : ''));
       closeDynamicModal();
       teamTkRenderPeriodCurrentCard(scope);
@@ -814,7 +1076,7 @@
       return;
     }
     try{
-      await dbRpc('reopen_period', { p_employee_id: employeeId, p_period_start: startISO, p_period_end: endISO, p_reason: reason });
+      await tkRpc('reopen_period', { p_employee_id: employeeId, p_period_start: startISO, p_period_end: endISO, p_reason: reason });
       await tkLogAudit(employeeId, startISO, null, 'period_reopen', null, reason);
       closeDynamicModal();
       teamTkRenderPeriodCurrentCard(scope);
@@ -858,9 +1120,9 @@
           var iso = flaggedDates[i];
           var noteEl = document.getElementById('myteam-note-' + employeeId + '-' + iso);
           var note = noteEl ? noteEl.value : '';
-          var existing = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=eq.' + iso + '&select=id,time_code_id');
+          var existing = await tkReq('time_entries?employee_id=eq.' + employeeId + '&work_date=eq.' + iso + '&select=id,time_code_id');
           for(var e=0;e<existing.length;e++){
-            await dbWrite('time_entries?id=eq.' + existing[e].id, 'PATCH', {
+            await tkWrite('time_entries?id=eq.' + existing[e].id, 'PATCH', {
               status: 'rejected',
               notes: formatDate(iso) + ': ' + note,
               approved_by: session.user.id,
@@ -872,9 +1134,9 @@
       } else {
         var noteEl2 = document.getElementById('myteam-note-' + employeeId + '-general');
         var note2 = noteEl2 ? noteEl2.value : '';
-        var rows = await dbRequest('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=id,time_code_id');
+        var rows = await tkReq('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=id,time_code_id');
         for(var j=0;j<rows.length;j++){
-          await dbWrite('time_entries?id=eq.' + rows[j].id, 'PATCH', {
+          await tkWrite('time_entries?id=eq.' + rows[j].id, 'PATCH', {
             status: 'rejected',
             notes: note2,
             approved_by: session.user.id,
@@ -906,7 +1168,8 @@
     var timeCodes = await tkGetTimeCodes();
 
     try{
-      var entries = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
+      var employeeId = tkEffectiveEmployeeId();
+      var entries = await tkReq('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
       var rows = tkSortRowsByCodeOrder(Object.values(tkGroupEntriesByCode(entries)), timeCodes);
       var days = tkWeekDays(bounds.start);
 
@@ -933,7 +1196,7 @@
           + '</div>';
       }
 
-      var lockedDates = gridEditable ? await tkGetLockedDatesForWeek(session.user.id, days) : {};
+      var lockedDates = gridEditable ? await tkGetLockedDatesForWeek(employeeId, days) : {};
       var idBase = containerId + '-grid';
       var tableHtml = tkRenderGridTable(rows, days, timeCodes, { editable: gridEditable, rowIdBase: idBase, lockedDates: lockedDates });
       var weekTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
@@ -1054,7 +1317,7 @@
   async function saveTkWeek(startISO, endISO, containerId, opts){
     opts = opts || {};
     var session = getSession();
-    var employeeId = opts.employeeId || session.user.id;
+    var employeeId = opts.employeeId || tkEffectiveEmployeeId();
     var enteredBy = (opts.employeeId && opts.employeeId !== session.user.id) ? session.user.id : null;
     var saveErrorEl = document.getElementById(containerId + '-save-error');
     if(saveErrorEl){ saveErrorEl.textContent = ''; }
@@ -1147,13 +1410,13 @@
       for(var i=0;i<writes.length;i++){
         var w = writes[i];
         if(w.action === 'delete'){
-          await dbWrite('time_entries?id=eq.' + w.id, 'DELETE');
+          await tkWrite('time_entries?id=eq.' + w.id, 'DELETE');
           await tkLogAudit(employeeId, startISO, w.time_code_id, 'edit', [{ field:'hours', oldVal: w.oldHours, newVal: null }]);
         } else if(w.action === 'update'){
-          await dbWrite('time_entries?id=eq.' + w.id, 'PATCH', { hours: w.hours, earning_type: w.earning_type, status: 'submitted' });
+          await tkWrite('time_entries?id=eq.' + w.id, 'PATCH', { hours: w.hours, earning_type: w.earning_type, status: 'submitted' });
           await tkLogAudit(employeeId, startISO, w.time_code_id, 'edit', [{ field:'hours', oldVal: w.oldHours, newVal: w.hours }]);
         } else {
-          await dbWrite('time_entries', 'POST', {
+          await tkWrite('time_entries', 'POST', {
             employee_id: employeeId,
             work_date: w.work_date,
             time_code_id: w.time_code_id,
