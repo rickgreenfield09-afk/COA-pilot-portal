@@ -59,6 +59,7 @@
       <button class="nav-btn" data-screen="training" onclick="requestSwitchScreen('training')">Training</button>
       <button class="nav-btn" id="nav-btn-myteam" data-screen="myteam" onclick="requestSwitchScreen('myteam')" style="display:none;">My Team</button>
       <button class="nav-btn" id="nav-btn-admin" data-screen="admin" onclick="requestSwitchScreen('admin')" style="display:none;">Admin</button>
+      <button class="nav-btn" id="nav-btn-burndown" data-screen="burndown" onclick="requestSwitchScreen('burndown')" style="display:none;">Burndown</button>
     </nav>
     <main>
       <div class="screen active" id="screen-home">
@@ -335,6 +336,22 @@
           </div>
         </div>
       </div>
+      <div class="screen" id="screen-burndown">
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-bdsubtab="customers" onclick="switchBurndownSubtab('customers')">Customers &amp; Contracts</button>
+          <button class="subtab-btn" data-bdsubtab="tree" onclick="switchBurndownSubtab('tree')">Billing Tree</button>
+        </div>
+        <div class="bd-subscreen active" id="bd-customers">
+          <div id="bd-customers-list"><div class="tk-empty">Loading...</div></div>
+        </div>
+        <div class="bd-subscreen" id="bd-tree">
+          <div id="bd-tree-contract-picker" style="margin-bottom:16px;"></div>
+          <div class="bd-layout">
+            <div class="bd-tree-panel" id="bd-tree-panel"></div>
+            <div class="bd-detail-panel-col" id="bd-detail-panel"></div>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -379,5 +396,6 @@
   <script src="screen-training.js"></script>
   <script src="screen-myteam.js"></script>
   <script src="screen-admin.js"></script>
+  <script src="screen-burndown.js"></script>
 </body>
 </html>

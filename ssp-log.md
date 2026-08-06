@@ -490,3 +490,65 @@ built until now. No RLS change needed. Light-theme semantic colors (amber,
 purple status pills) were manually re-picked for WCAG AA contrast on white
 rather than reused as-is from the dark palette — worth a contrast-checker
 pass before go-live alongside the rest of the AA audit.
+
+## 2026-08-06 — Burndown estimating data model: schema + RLS (AC-3 / AC-6 / AU-2 / AU-9)
+Drafted `burndown-schema.sql`: 15 new tables for the contract/customer/
+timekeeping burndown backend (customers, contracts, contract_contacts,
+billing_nodes self-referencing tree, slins, slin_funding_history,
+slin_employee_authorization, labor_categories, employee_rates,
+indirect_pools, indirect_rates, admin_audit_log, qbo_sync_mapping). Unlike
+every prior POC table in this repo, RLS is turned ON for all 15 tables now
+(explicit user decision this session, not deferred) via a shared
+`public.is_admin()` SECURITY DEFINER helper that checks `profiles.role =
+'admin'` for `auth.uid()`.
+- Admin-only tables (customers, contracts, contract_contacts,
+  employee_rates, indirect_pools, indirect_rates, qbo_sync_mapping): full
+  CRUD gated on `is_admin()`.
+- `billing_nodes`: admin full CRUD; read allowed for any authenticated user
+  (navigation structure only, not financial detail) — the actual billing
+  gate is on `slins`.
+- `slins`: admin full CRUD; employee SELECT scoped to rows where an active
+  `slin_employee_authorization` row exists for `auth.uid()` as of the
+  current date.
+- `slin_funding_history` and `slin_employee_authorization`: admin-only,
+  and genuinely append-only at the RLS layer — SELECT + INSERT policies
+  only, no UPDATE/DELETE policy exists at all, so both are blocked
+  regardless of role (not just a UI convention, unlike the
+  `time_card_audit_log` gap noted 2026-07-31). Employees additionally get a
+  narrow SELECT on their own `slin_employee_authorization` rows.
+- `admin_audit_log`: same append-only pattern (admin SELECT + INSERT only).
+- `labor_categories`: admin write, read open to all authenticated users
+  (non-sensitive reference data).
+- `employee_rates` intentionally has no employee read policy at all —
+  `pay_rate` is compensation data; access is admin-only in both directions.
+Status: Implemented (SQL run successfully against the Supabase POC by the
+user). Gap/follow-up: policies assume `profiles.id`/`profiles.role`
+continue to match current app-core.js `isAdmin()` logic; if `profiles`
+schema changes, `is_admin()` must be revisited.
+
+## 2026-08-06 — Burndown screen: admin-gated UI (AC-3 / AC-6)
+Added `screen-burndown.js` + a new "Burndown" nav item, first UI increment
+against the schema above: Customers/Contracts CRUD (create + edit, no
+delete) and a Billing Tree view (billing_nodes, expand/collapse,
+click-to-select) with SLIN detail (slin fields, funding-mod entry,
+employee-authorization grant/revoke). Nav button `nav-btn-burndown` follows
+the exact same visibility gate as `nav-btn-admin` in
+`checkAdminNavVisibility()` (queries `profiles.role` for the signed-in
+user, hidden unless `admin`) — this is a client-side convenience only, not
+a trust boundary; the real gate is the `is_admin()` RLS policies from the
+2026-08-06 schema entry above, so a non-admin hitting the API directly is
+still blocked at the DB layer regardless of what the nav shows. No delete
+UI anywhere in this screen (create/edit only, deferred). "Revoke" on an
+authorization row inserts a new `status='revoked'` row rather than
+mutating the existing one, consistent with the append-only enforcement on
+that table. Out of scope this pass: contract_contacts, labor_categories,
+employee_rates, indirect_pools, indirect_rates, admin_audit_log,
+qbo_sync_mapping — no UI yet, later sessions.
+Status: Implemented (app code, static read-through verified — no dangling
+onclick references). Not yet browser-tested live (per CLAUDE.md UI rule,
+user verifies after deploy). Gap/follow-up: relies on `crypto.randomUUID()`
+(client-generated PKs for billing_nodes/slins/funding/authorization rows,
+needed so a new node's id is known immediately for a same-submit SLIN
+insert) — fine for the evergreen-browser internal admin audience of this
+POC, would need a fallback if IE11/very old browser support were ever
+required (not expected here).

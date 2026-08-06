@@ -500,3 +500,39 @@
   .demo-feedback-btn-label{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;}
   .demo-feedback-btn-sub{font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;opacity:0.8;}
   @media (max-width:600px){.demo-feedback-btn{right:12px;bottom:12px;padding:8px 12px;}}
+
+  /* Burndown screen (screen-burndown.js) — Customers/Contracts CRUD list +
+     the billing_nodes tree/detail split view. Reuses .tk-entry-card,
+     .field-input, .asset-form-grid, .btn/.btn-primary, .btn-edit,
+     .btn-cancel from elsewhere rather than inventing parallel classes;
+     only genuinely new layout/pill/tree shapes are defined here. */
+  .bd-row-card{cursor:default;}
+  .bd-row-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;}
+  .bd-row-title{font-size:14px;font-weight:600;color:var(--text);}
+  .bd-row-sub{font-size:12px;color:var(--sub);margin-top:2px;}
+  .bd-row-expand{display:none;}
+  .bd-row-expand.open{display:block;margin-top:16px;}
+  .bd-detail-inline{border-top:1px solid var(--border);padding-top:16px;}
+  .bd-add-form{background:var(--raised);border-radius:6px;padding:14px;margin-top:10px;}
+  .bd-nested-section{border-top:1px solid var(--border);margin-top:16px;padding-top:16px;}
+  .bd-row-card-nested{background:var(--raised);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:8px;}
+  .bd-status-pill{font-size:11px;font-family:'DM Mono',monospace;padding:3px 10px;border-radius:10px;text-transform:uppercase;letter-spacing:0.5px;}
+  .bd-pill-active{background:rgba(42,184,166,0.14);color:var(--teal);}
+  .bd-pill-muted{background:var(--raised);color:var(--muted);}
+  .bd-inline-hint{font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0;font-family:'DM Sans',sans-serif;margin-left:6px;}
+
+  .bd-layout{display:flex;gap:20px;align-items:flex-start;}
+  .bd-tree-panel{flex:0 0 340px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;max-height:70vh;overflow-y:auto;}
+  .bd-detail-panel-col{flex:1;min-width:0;}
+  @media (max-width:900px){.bd-layout{flex-direction:column;}.bd-tree-panel{flex:1 1 auto;max-height:none;width:100%;}}
+
+  .bd-tree{display:flex;flex-direction:column;}
+  .bd-tree-row{display:flex;align-items:center;gap:6px;padding-top:6px;padding-bottom:6px;border-radius:4px;cursor:default;}
+  .bd-tree-row.selected{background:rgba(42,184,166,0.1);}
+  .bd-tree-caret{width:14px;flex-shrink:0;color:var(--muted);cursor:pointer;font-size:11px;}
+  .bd-tree-label{flex:1;font-size:13px;color:var(--text);cursor:pointer;}
+  .bd-tree-row.selected .bd-tree-label{color:var(--teal);font-weight:600;}
+  .bd-tree-type-tag{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;}
+
+  .bd-ledger{display:flex;flex-direction:column;gap:8px;}
+  .bd-ledger-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--raised);border-radius:6px;padding:10px 14px;}

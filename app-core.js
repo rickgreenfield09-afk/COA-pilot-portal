@@ -370,15 +370,18 @@
     if(!session || !session.user){ return; }
     var btn = document.getElementById('nav-btn-admin');
     var staffRecallBtn = document.getElementById('dir-staffrecall-btn');
+    var burndownBtn = document.getElementById('nav-btn-burndown');
     try{
       var rows = await dbRequest('profiles?id=eq.' + session.user.id + '&select=role');
       var isAdminRole = rows.length && rows[0].role === 'admin';
       btn.style.display = isAdminRole ? '' : 'none';
       if(staffRecallBtn){ staffRecallBtn.style.display = isAdminRole ? '' : 'none'; }
+      if(burndownBtn){ burndownBtn.style.display = isAdminRole ? '' : 'none'; }
     }catch(e){
       console.error(e);
       btn.style.display = 'none';
       if(staffRecallBtn){ staffRecallBtn.style.display = 'none'; }
+      if(burndownBtn){ burndownBtn.style.display = 'none'; }
     }
   }
 
@@ -406,6 +409,9 @@
     }
     if(name === 'travel'){
       switchTravelSubtab('estimate');
+    }
+    if(name === 'burndown'){
+      switchBurndownSubtab('customers');
     }
   }
 
