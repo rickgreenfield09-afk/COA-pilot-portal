@@ -340,6 +340,7 @@
         <div class="subtab-bar">
           <button class="subtab-btn active" data-bdsubtab="customers" onclick="switchBurndownSubtab('customers')">Customers &amp; Contracts</button>
           <button class="subtab-btn" data-bdsubtab="tree" onclick="switchBurndownSubtab('tree')">Billing Tree</button>
+          <button class="subtab-btn" data-bdsubtab="slintable" onclick="switchBurndownSubtab('slintable')">SLIN Table</button>
         </div>
         <div class="bd-subscreen active" id="bd-customers">
           <div id="bd-customers-list"><div class="tk-empty">Loading...</div></div>
@@ -349,6 +350,14 @@
           <div class="bd-layout">
             <div class="bd-tree-panel" id="bd-tree-panel"></div>
             <div class="bd-detail-panel-col" id="bd-detail-panel"></div>
+          </div>
+        </div>
+        <div class="bd-subscreen" id="bd-slintable">
+          <div id="bd-st-contract-picker" style="margin-bottom:16px;"></div>
+          <div id="bd-st-existing-wrap"></div>
+          <div class="tk-entry-card" style="margin-top:20px;">
+            <div class="tk-section-title">Add New SLINs</div>
+            <div id="bd-st-bulk-wrap"></div>
           </div>
         </div>
       </div>

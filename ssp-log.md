@@ -552,3 +552,41 @@ needed so a new node's id is known immediately for a same-submit SLIN
 insert) — fine for the evergreen-browser internal admin audience of this
 POC, would need a fallback if IE11/very old browser support were ever
 required (not expected here).
+
+## 2026-08-06 — Burndown: contract_contacts UI, option_year, bulk SLIN entry (AC-3)
+Driven by a real Task Order Mod document the user provided as a test case.
+`add-slin-option-year.sql`: adds `slins.option_year` (free text — "Base
+Year"/"OY1"/"OY2"/etc. vary by contract, deliberately not a CHECK enum),
+plus an index for filtering. Not yet run against the Supabase POC — user
+applies it (same as every other standalone migration file in this repo).
+
+`screen-burndown.js` additions:
+- Contract Contacts UI (Technical/Contractual/Security/Billing POC —
+  name/email/phone) wired into Add Contract, Edit Contract, and the new
+  Add Customer combined flow. Upsert-by-role (PATCH existing, POST new);
+  no delete UI, consistent with the rest of this file.
+- Option Year exposed on both the single Add/Edit SLIN forms and the new
+  bulk-entry rows; the Billing Tree gained an Option Year filter (SLIN-
+  level match plus its ancestor chain stays visible so the tree doesn't
+  show orphaned leaves) and a new "SLIN Table" subtab shows a flat,
+  option-year-filterable view of a contract's existing SLINs with each
+  one's latest cumulative funding.
+- New reusable bulk-entry widget (`bdBulk*`): add N SLIN rows in one
+  screen (SLIN code/description/category/contract type/option year/PoP/
+  previous-award-cumulative funding), review, then save all in one
+  Confirm action. One shared mod_number/mod_date/source_document per
+  batch, matching how a real mod document lists many SLINs under one mod.
+  Mounted standalone in SLIN Table (own Review/Save flow) and embedded
+  inside Add Customer's "also add first contract" toggle (no separate
+  save button there — the outer Add Customer submit collects the staged
+  rows and commits customer -> contract -> contacts -> SLINs/funding in
+  one sequence using client-generated UUIDs throughout).
+Status: Implemented (app code; `node -c` syntax-checked; static
+onclick/onchange reference check — no dangling calls). Not yet browser-
+tested live. Gap/follow-up: no real DB transaction — if a multi-row Add
+Customer or bulk-save submit fails partway through, earlier rows in that
+sequence are already committed and the error message says so, but nothing
+auto-rolls-back; admin needs to check the Customers list / SLIN Table
+before retrying. Signature capture and document file upload/Blob Storage
+wiring remain explicitly out of scope per this session's direction (doc
+stays wherever it's currently kept; storage can go on the backlog later).
