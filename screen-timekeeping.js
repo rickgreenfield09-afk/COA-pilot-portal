@@ -642,8 +642,6 @@
     var gridIdBase = containerId + '-grid';
     var timeCodes = await tkGetTimeCodes();
     var vacation = tkVacationCode(timeCodes);
-    var codesById = {};
-    timeCodes.forEach(function(c){ codesById[c.id] = c; });
 
     var rowEls = document.querySelectorAll('#' + gridIdBase + '-tbody tr[data-rowid]');
     var days = tkWeekDays(new Date(startISO + 'T00:00:00'));
@@ -667,6 +665,7 @@
 
     var writes = []; // {action: insert|update|delete, id, work_date, time_code_id, hours, oldHours}
     var missingPto = []; // Vacation entries with no covering PTO request yet
+    var weekEntries = []; // every non-deleted entry in the week (unchanged + written), for OT calc
 
     rowEls.forEach(function(tr){
       var rowId = tr.dataset.rowid;
@@ -682,7 +681,10 @@
         var existingId = cellEl.dataset.entryId || '';
         var existingHours = cellEl.dataset.entryHours || '';
         var val = cellEl.value;
-        if(val === existingHours){ return; } // unchanged
+        if(val === existingHours){ // unchanged
+          if(val !== '' && parseFloat(val) > 0){ weekEntries.push({ work_date: iso, hours: parseFloat(val), write: null }); }
+          return;
+        }
         if(val === '' || parseFloat(val) === 0){
           if(existingId){ writes.push({ action:'delete', id: existingId, work_date: iso, time_code_id: codeId, oldHours: existingHours }); }
           return;
@@ -691,7 +693,9 @@
           missingPto.push({ iso: iso, hours: val });
           return;
         }
-        writes.push({ action: existingId ? 'update' : 'insert', id: existingId, work_date: iso, time_code_id: codeId, hours: parseFloat(val), oldHours: existingHours });
+        var w = { action: existingId ? 'update' : 'insert', id: existingId, work_date: iso, time_code_id: codeId, hours: parseFloat(val), oldHours: existingHours };
+        writes.push(w);
+        weekEntries.push({ work_date: iso, hours: w.hours, write: w });
       });
     });
 
@@ -701,22 +705,20 @@
       return;
     }
 
-    // System determines regular vs overtime for billable (gov_contract /
-    // commercial_customer) time codes only — indirect codes (B&P, BD,
-    // Holiday, Vacation, etc.) never generate OT. Whole-day granularity: a
-    // row that pushes the week's billable regular hours past 40 is flagged
-    // overtime in full, same rule as the old biweekly system used per-week.
-    writes.sort(function(a,b){ return a.work_date < b.work_date ? -1 : (a.work_date > b.work_date ? 1 : 0); });
-    var runningBillableHours = 0;
-    writes.forEach(function(w){
-      if(w.action === 'delete'){ w.earning_type = null; return; }
-      var code = codesById[w.time_code_id];
-      var billable = code && (code.category === 'gov_contract' || code.category === 'commercial_customer');
-      if(!billable){ w.earning_type = null; return; }
-      var before = runningBillableHours;
-      var after = before + w.hours;
-      w.earning_type = (before >= 40 || after > 40) ? 'overtime' : 'regular';
-      runningBillableHours = after;
+    // OT is computed off total weekly hours worked — billable and indirect
+    // codes alike (B&P, BD, Holiday, Vacation, etc. all count toward the
+    // 40-hour threshold, per user direction). Whole-day/row granularity: an
+    // entry that pushes the week's cumulative hours past 40 is flagged
+    // overtime in full, same rule the old biweekly system used per-week.
+    // Includes hours already on unchanged rows so a partial-week save still
+    // sees the true running total.
+    weekEntries.sort(function(a,b){ return a.work_date < b.work_date ? -1 : (a.work_date > b.work_date ? 1 : 0); });
+    var runningHours = 0;
+    weekEntries.forEach(function(entry){
+      var before = runningHours;
+      var after = before + entry.hours;
+      if(entry.write){ entry.write.earning_type = (before >= 40 || after > 40) ? 'overtime' : 'regular'; }
+      runningHours = after;
     });
 
     try{

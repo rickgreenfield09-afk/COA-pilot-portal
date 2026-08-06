@@ -34,13 +34,15 @@
 
       if(reportIds.length){
         var idFilter = 'employee_id=in.(' + reportIds.join(',') + ')';
-        var pendingRows = await dbRequest('time_entries?' + idFilter + '&status=in.(submitted,pending)&select=id,earning_type,status');
-        var groups = { timecard: [], pto: [], training: [], travel: [], admin: [], award: [] };
+        // status='submitted' = regular time card entries awaiting approval;
+        // status='pending' = Vacation entries awaiting PTO request approval
+        // (the only time code that goes through this flow — see tkVacationCode).
+        var pendingRows = await dbRequest('time_entries?' + idFilter + '&status=in.(submitted,pending)&select=id,status');
+        var groups = { timecard: [], pto: [] };
         pendingRows.forEach(function(r){
-          if(r.status === 'submitted'){ groups.timecard.push(r); }
-          else if(groups[r.earning_type]){ groups[r.earning_type].push(r); }
+          groups[r.status === 'submitted' ? 'timecard' : 'pto'].push(r);
         });
-        var groupLabels = { timecard:'Time Cards', pto:'PTO', training:'Training', travel:'Travel', admin:'Admin', award:'Award' };
+        var groupLabels = { timecard:'Time Cards', pto:'PTO' };
         var sectionsHtml = '';
         Object.keys(groups).forEach(function(key){
           if(!groups[key].length){ return; }
@@ -56,7 +58,10 @@
           : assetRequestsHtml;
 
         var todayISO = new Date().toISOString().slice(0,10);
-        var ptoToday = await dbRequest('time_entries?' + idFilter + '&earning_type=eq.pto&status=eq.approved&work_date=eq.' + todayISO + '&select=employee_id');
+        var vacationCode = tkVacationCode(await tkGetTimeCodes());
+        var ptoToday = vacationCode
+          ? await dbRequest('time_entries?' + idFilter + '&time_code_id=eq.' + vacationCode.id + '&status=eq.approved&work_date=eq.' + todayISO + '&select=employee_id')
+          : [];
         if(ptoToday.length){
           var nameById = {};
           reports.forEach(function(r){ nameById[r.id] = r.full_name; });

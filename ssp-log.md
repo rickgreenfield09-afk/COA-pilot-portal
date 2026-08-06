@@ -617,3 +617,44 @@ dependent inserts, so the partial-failure blast radius is much smaller
 than the create flows this fixes.
 Status: Implemented (app code + SQL; `node -c` syntax-checked, no
 dangling onclick/onchange references). Not yet browser-tested live.
+
+## 2026-08-06 — Timekeeping Save Week 400 error + OT redesign (SI-11 / CM-3)
+Root cause found via live DevTools Network response: `time_entries.earning_type`
+has a NOT NULL constraint, but the prior code (`saveTkWeek`, screen-timekeeping.js)
+only classified billable (gov_contract/commercial_customer) rows as
+regular/overtime and left indirect codes (B&P, BD, Holiday, Vacation, etc.)
+null — every Save Week containing a non-billable row failed with Postgres
+error 23502 (not-null violation).
+Design discussion with user before fixing: decided OT should be computed off
+total weekly hours worked (billable + indirect combined), not billable-only —
+matches standard DCAA/FLSA practice where OT is a labor-cost concept, separate
+from billability. Implemented by classifying every saved row regular/overtime
+based on cumulative hours across the whole week (walking all entries in
+date order), which also fixes a second pre-existing bug: OT was previously
+computed only from the hours being changed in the current save, not the full
+week's total, so a second save later in the week could under/over-count OT
+against hours already saved from an earlier save. `earning_type` is now
+always non-null on insert/update, so no DB migration is needed (dropped the
+`fix-time-entries-earning-type-nullable.sql` migration drafted earlier —
+unnecessary once earning_type is always populated).
+Status: Implemented (screen-timekeeping.js `saveTkWeek`). Not yet browser-
+tested live.
+
+## 2026-08-06 — My Team / Admin dashboard: fix stale pending/PTO queries (AC-3)
+Follow-up from the OT redesign above: `loadTeamDashboard`/`loadAdminDashboard`
+(screen-myteam.js, screen-admin.js) grouped pending time_entries by
+`earning_type` values (`pto`/`training`/`travel`/`admin`/`award`) that never
+match this table's actual values (`regular`/`overtime`/null) — leftover from
+a pre-Time-Code design where those were apparently separate earning types.
+In the current model the only non-`submitted` status a time_entries row ever
+gets is `pending` (a Vacation entry awaiting its linked PTO request's
+approval, per tkVacationCode) — travel/training/asset requests already live
+in their own tables and are already surfaced by the dashboard's other cards
+(travelPendingSummaryHtml, asset_requests query). Simplified grouping to just
+timecard (`status='submitted'`)/pto (`status='pending'`). Also fixed the "Out
+Today (Approved PTO)" query, which filtered `earning_type=eq.pto` (a value
+that never occurs) instead of the Vacation time code — now resolves the
+Vacation time_code_id via tkVacationCode/tkGetTimeCodes and filters on that
+plus `status=eq.approved`.
+Status: Implemented (screen-myteam.js, screen-admin.js). Not yet browser-
+tested live.
