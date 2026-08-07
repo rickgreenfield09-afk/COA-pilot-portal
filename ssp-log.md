@@ -841,3 +841,21 @@ the flag isn't reset on simulation start, so it carries over within the
 same session once turned off.
 Status: Implemented. Timekeeping Simulation Mode (Stages 1+2) is now
 complete. Not yet browser-tested live.
+
+## 2026-08-06 — Two fixes from live demo review (AC-3)
+1. Wizard panel (.tk-sim-wizard) was rendering in the same fixed
+   bottom-right corner as the existing .demo-feedback-btn, so the
+   feedback button visually sat on top of the wizard's Back/Next
+   buttons. Moved the wizard's bottom offset from 24px to 100px to clear
+   it — no change to the feedback button itself.
+2. New rule (explicit user request from testing): once a week has been
+   submitted at least once (any saved entries exist for it),
+   Saturday/Sunday cells lock for self-service editing — weekend work is
+   the exception case, not the norm, so any correction after the fact
+   goes through an admin via Enter Time for Employee rather than staying
+   open-endedly editable. Implemented in loadTkWeek (screen-timekeeping.js)
+   by folding weekend dates into the existing lockedDates mechanism
+   tkRenderGridTable already respects — no grid-rendering changes needed.
+   Admin-entry mode (teamTkRenderCard) is untouched and still allows
+   weekend edits, since that's the intended correction path.
+Status: Implemented. Not yet re-verified live.

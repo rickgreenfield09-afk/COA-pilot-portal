@@ -1197,6 +1197,16 @@
       }
 
       var lockedDates = gridEditable ? await tkGetLockedDatesForWeek(employeeId, days) : {};
+      // Once a week has been submitted at least once, weekend cells lock
+      // for self-service — Sat/Sun are the exception case, not the norm,
+      // so any correction after the fact goes through an admin (Enter
+      // Time for Employee) rather than being re-editable indefinitely.
+      if(gridEditable && entries.length > 0){
+        days.forEach(function(d){
+          var dow = d.getDay();
+          if(dow === 0 || dow === 6){ lockedDates[tkDateToISO(d)] = true; }
+        });
+      }
       var idBase = containerId + '-grid';
       var tableHtml = tkRenderGridTable(rows, days, timeCodes, { editable: gridEditable, rowIdBase: idBase, lockedDates: lockedDates });
       var weekTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);

@@ -229,7 +229,10 @@
   .tk-sim-banner label{font-weight:500;color:var(--text);}
   [data-theme="light"] .tk-sim-banner{background:rgba(138,90,0,0.10);}
 
-  .tk-sim-wizard{position:fixed;right:24px;bottom:24px;width:320px;max-width:calc(100% - 48px);background:var(--surface);border:1px solid var(--teal);border-radius:10px;padding:18px;box-shadow:0 8px 24px rgba(0,0,0,0.35);z-index:90;}
+  /* bottom:100px (not 24px) so this clears the fixed .demo-feedback-btn
+     sitting in the same corner — the wizard's own action buttons were
+     rendering underneath it otherwise. */
+  .tk-sim-wizard{position:fixed;right:24px;bottom:100px;width:320px;max-width:calc(100% - 48px);background:var(--surface);border:1px solid var(--teal);border-radius:10px;padding:18px;box-shadow:0 8px 24px rgba(0,0,0,0.35);z-index:90;}
   .tk-sim-wizard-step{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;}
   .tk-sim-wizard-title{font-family:'Bebas Neue',sans-serif;font-size:19px;margin-bottom:8px;}
   .tk-sim-wizard-body{font-size:13px;color:var(--text);line-height:1.5;margin-bottom:10px;}
