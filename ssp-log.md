@@ -36,6 +36,27 @@ call could still PATCH an admin-only field on someone else's profile in the
 current Supabase POC (no live data, accepted risk). Must be enforced via
 Postgres RLS policy against the Entra ID JWT role claim before go-live.
 
+## 2026-08-07 — Profile field edit gate correction (AC-3)
+Corrected the 2026-07-16 split: `adminEditableFields` was being applied to
+the My Profile (self-edit) screen, meaning an admin viewing their own
+profile could edit their own job title, start date, employment status, and
+clearance fields — no separation of duties, since there is no separate
+admin-edits-another-employee screen yet. Moved job_title, start_date,
+employment_status, clearance_level, clearance_investigation_type,
+clearance_granted_date, and clearance_expiration_date out of both editable
+lists — display-only for everyone on this screen, including admins, until
+a proper other-employee admin edit screen exists. Also fixed a second bug:
+`bio` had an isEditable() input path in renderProfile() but was never in
+either editable list, so no one could actually edit it — added `bio` to
+employeeEditableFields (self-service, same as contact info).
+Status: Implemented at UI level (isEditable() gate in renderProfile()).
+Gap/follow-up: same as 2026-07-16 entry — not enforced by RLS or a
+server-side check yet; must be enforced via Postgres RLS policy against
+the Entra ID JWT role claim before go-live. Re-enable HR/clearance
+self-view-only fields for admin editing only once a dedicated
+admin-edits-another-employee screen exists that operates on someone else's
+profile row, not the logged-in admin's own.
+
 ## 2026-07-16 — Directory roster/org chart cache bug (bug fix, no control impact)
 `dirFetchAllProfiles()` (screen-directory.js) referenced `dirAllProfiles`
 without ever declaring it, throwing a ReferenceError and breaking both

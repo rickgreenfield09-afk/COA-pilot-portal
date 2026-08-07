@@ -191,21 +191,22 @@
   }
 
   // Profile field edit gates — used by renderProfile()/saveProfile() and the
-  // Travel Info card in screen-profile.js. Contact info is employee
-  // self-service; org placement, HR status, and clearance data are
-  // admin-only (confirmed with user 2026-07-16, see ssp-log.md AC-3 entry).
-  var employeeEditableFields = ['preferred_name', 'phone', 'home_email', 'home_phone', 'known_traveler_number'];
+  // Travel Info card in screen-profile.js. This screen is self-edit only
+  // (My Profile) — there is no separate "admin edits another employee"
+  // screen yet. Job title, start date, employment status, and clearance
+  // data are HR/security-managed fields and must stay display-only here
+  // even for admins, since editing them here would mean an admin editing
+  // their own HR record with no separation of duties (confirmed with user
+  // 2026-08-07, see ssp-log.md AC-3 entry). Only re-add them once a
+  // proper admin-edits-other-employee screen exists.
+  var employeeEditableFields = ['preferred_name', 'phone', 'home_email', 'home_phone', 'known_traveler_number', 'bio'];
   // 'department' is intentionally excluded here — profiles has no such
   // column (only department_id, a departments FK, and a deprecated
   // department_legacy_text). Including it made saveProfile()'s PATCH fail
   // for every field whenever an admin edited a profile, since PostgREST
   // rejects the whole request for one unknown column. Department is
   // display-only on this card until a proper department_id picker exists.
-  var adminEditableFields = employeeEditableFields.concat([
-    'full_name', 'job_title', 'location',
-    'start_date', 'employment_status',
-    'clearance_level', 'clearance_investigation_type', 'clearance_granted_date', 'clearance_expiration_date'
-  ]);
+  var adminEditableFields = employeeEditableFields.concat(['full_name', 'location']);
 
   // Returns all direct + indirect report IDs for userId, regardless of role.
   // Manager-ness is derived from manager_id chains, not from the role column.
