@@ -235,8 +235,8 @@
   /* In normal document flow (not fixed) directly under the sim banner —
      was a fixed bottom-right card, which floated over page buttons no
      matter where it sat. This pushes content down instead of covering it. */
-  .tk-sim-wizard{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:14px 24px;background:rgba(42,184,166,0.08);border-bottom:1px solid var(--teal);}
-  [data-theme="light"] .tk-sim-wizard{background:rgba(18,42,84,0.05);}
+  .tk-sim-wizard{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:14px 24px;background:rgba(42,184,166,0.22);border-top:2px solid var(--teal);border-bottom:2px solid var(--teal);}
+  [data-theme="light"] .tk-sim-wizard{background:rgba(18,42,84,0.10);}
   .tk-sim-wizard-main{flex:1;min-width:260px;}
   .tk-sim-wizard-step{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:2px;}
   .tk-sim-wizard-title{font-family:'Bebas Neue',sans-serif;font-size:17px;margin-bottom:4px;}
@@ -452,6 +452,7 @@
   .tk-day-pto{background:rgba(191,95,255,0.08);}
   .tk-day-flagged{background:rgba(224,82,82,0.10);}
   .myteam-employee-header{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+  .tk-cert-info{margin-left:10px;font-size:12px;color:var(--sub);}
   .myteam-employee-name{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--text);}
   .myteam-employee-title{font-size:12px;color:var(--sub);margin-top:2px;}
   .myteam-return-box{background:var(--raised);border-radius:6px;padding:14px;margin-top:14px;}

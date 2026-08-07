@@ -478,7 +478,10 @@
       var gridEditable = certStatus === 'open';
 
       // Same weekend-lock-after-first-save rule as the weekly grid, plus
-      // the whole period locks once certified.
+      // the whole period locks once certified, plus any date already
+      // admin-approved locks even while the period's still open — a
+      // correction there means flagging/returning it in Weekly Review
+      // first, not quietly editing already-reviewed hours here.
       var lockedDates = {};
       if(!gridEditable){
         days.forEach(function(d){ lockedDates[tkDateToISO(d)] = true; });
@@ -487,6 +490,7 @@
           var dow = d.getDay();
           if(dow === 0 || dow === 6){ lockedDates[tkDateToISO(d)] = true; }
         });
+        entries.forEach(function(e){ if(e.status === 'approved'){ lockedDates[e.work_date] = true; } });
       }
 
       var idBase = containerId + '-grid';
@@ -507,11 +511,12 @@
             : '<tr><td colspan="2" class="tk-empty" style="padding:8px 0;">No hours yet.</td></tr>')
         + '</tbody></table>';
 
+      var certStatusLabels = { open: 'Open', employee_certified: 'Certified', admin_certified: 'Certified for Payroll' };
       var certInfoHtml = '';
       if(certStatus === 'employee_certified'){
-        certInfoHtml = '<div class="tk-empty">Certified by you on ' + formatDate(cert.employee_cert_at.slice(0,10)) + '. Waiting on admin review.</div>';
+        certInfoHtml = '<span class="tk-cert-info">Certified by you on ' + formatDate(cert.employee_cert_at.slice(0,10)) + '. Waiting on admin review.</span>';
       } else if(certStatus === 'admin_certified'){
-        certInfoHtml = '<div class="tk-empty">Certified by you on ' + formatDate(cert.employee_cert_at.slice(0,10)) + ', certified for payroll on ' + formatDate(cert.admin_cert_at.slice(0,10)) + '.</div>';
+        certInfoHtml = '<span class="tk-cert-info">Certified by you on ' + formatDate(cert.employee_cert_at.slice(0,10)) + ', certified for payroll on ' + formatDate(cert.admin_cert_at.slice(0,10)) + '.</span>';
       }
 
       var actionsHtml = '';
@@ -525,14 +530,15 @@
 
       container.innerHTML = '<div class="tk-entry-card">'
         + '<div class="tk-period-header"><div><div class="tk-period-label">Pay Period Overview</div>'
-        + '<div class="tk-period-dates">' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div></div></div>'
+        + '<div class="tk-period-dates">' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div></div>'
+        + '<div><span class="tk-status-pill ' + certStatus + '">' + certStatusLabels[certStatus] + '</span>' + certInfoHtml + '</div>'
+        + '</div>'
         + tableHtml
         + '<div id="' + containerId + '-missing-pto-panel"></div>'
         + '<div class="tk-overview-footer">'
         + '<div class="tk-overview-categories">' + categoryTableHtml + '</div>'
         + '<div class="tk-grid-footer-item">Period Total: <span>' + periodTotal.toFixed(2) + ' hrs</span></div>'
         + '</div>'
-        + certInfoHtml
         + actionsHtml
         + '</div>';
 
@@ -934,6 +940,18 @@
     var rows = tkSortRowsByCodeOrder(Object.values(tkGroupEntriesByCode(entries)), timeCodes);
     var days = tkWeekDays(new Date(startISO + 'T00:00:00'));
 
+    // Surfaces the pay period's certification status here too, not just
+    // on the Pay Period tab — a week can belong to at most one period
+    // (checked off its start date; the rare boundary-straddling week is
+    // covered well enough by which period contains most of it).
+    var weekPeriodBounds = tkPeriodBounds(new Date(startISO + 'T00:00:00'));
+    var weekPeriodCertRows = await tkReq('pay_period_certifications?employee_id=eq.' + employee.id + '&period_start=eq.' + tkDateToISO(weekPeriodBounds.start) + '&period_end=eq.' + tkDateToISO(weekPeriodBounds.end) + '&select=status');
+    var weekPeriodStatus = weekPeriodCertRows[0] ? weekPeriodCertRows[0].status : 'open';
+    var weekCertPillLabels = { employee_certified: 'Certified', admin_certified: 'Certified for Payroll' };
+    var weekCertPillHtml = weekCertPillLabels[weekPeriodStatus]
+      ? '<span class="tk-status-pill ' + weekPeriodStatus + '" style="margin-left:8px;">' + weekCertPillLabels[weekPeriodStatus] + '</span>'
+      : '';
+
     if(!myTeamFlagged[employee.id]){ myTeamFlagged[employee.id] = {}; }
     var flaggedForThis = myTeamFlagged[employee.id];
     var cardId = 'myteam-card-' + employee.id;
@@ -976,6 +994,7 @@
       + '<div class="myteam-employee-header">'
       + '<div class="myteam-employee-name">' + (employee.full_name || 'Unknown') + '</div>'
       + '<div class="myteam-employee-title">' + (employee.job_title || '—') + '</div>'
+      + weekCertPillHtml
       + editToggleBtn
       + '</div>'
       + bodyHtml
@@ -1114,7 +1133,7 @@
     var certRows = await tkReq('pay_period_certifications?employee_id=eq.' + employee.id + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=*');
     var cert = certRows[0] || null;
     var status = cert ? cert.status : 'open';
-    var statusLabels = { open: 'Open', employee_certified: 'Employee Certified', admin_certified: 'Certified for Payroll' };
+    var statusLabels = { open: 'Open', employee_certified: 'Certified', admin_certified: 'Certified for Payroll' };
     if(status === 'admin_certified'){ await teamTkPreloadAdminName(cert.admin_cert_by); }
 
     var editMode = status === 'open' && !!teamTkPeriodEditMode[employee.id];
@@ -1124,6 +1143,13 @@
       ? '<button class="tk-now-btn" type="button" style="margin-left:8px;" onclick="teamTkTogglePeriodEditMode(\'' + scope + '\',\'' + employee.id + '\')">' + (editMode ? 'Done Entering Time' : 'Enter Time for Employee') + '</button>'
       : '';
 
+    var certInfoHtml = '';
+    if(status === 'admin_certified'){
+      certInfoHtml = '<span class="tk-cert-info">Certified by ' + (employee.full_name || 'employee') + ' on ' + formatDate(cert.employee_cert_at.slice(0,10)) + '. Certified for payroll by ' + (teamTkAdminNameCache[cert.admin_cert_by] || 'admin') + ' on ' + formatDate(cert.admin_cert_at.slice(0,10)) + '.' + (cert.admin_notes ? ' Notes: ' + cert.admin_notes : '') + '</span>';
+    } else if(status === 'employee_certified'){
+      certInfoHtml = '<span class="tk-cert-info">Certified by ' + (employee.full_name || 'employee') + ' on ' + formatDate(cert.employee_cert_at.slice(0,10)) + '.</span>';
+    }
+
     var bodyHtml;
     if(editMode){
       var editRows = rows.length ? rows : [{ time_code_id: '', byDate: {} }];
@@ -1132,6 +1158,10 @@
       if(entries.length){
         days.forEach(function(d){ var dow = d.getDay(); if(dow === 0 || dow === 6){ lockedDates[tkDateToISO(d)] = true; } });
       }
+      // Entries from a week that's already been admin-approved lock too —
+      // correcting them means flagging/returning that week in Weekly
+      // Review first, not quietly editing already-reviewed hours here.
+      entries.forEach(function(e){ if(e.status === 'approved'){ lockedDates[e.work_date] = true; } });
       var tableHtml = tkRenderGridTable(editRows, days, timeCodes, { editable:true, rowIdBase: idBase, lockedDates: lockedDates });
       bodyHtml = tableHtml + '<div id="' + entryContainerId + '-missing-pto-panel"></div>'
         + '<div class="tk-grid-actions">'
@@ -1143,15 +1173,12 @@
         ? tkRenderGridTable(rows, days, timeCodes, { editable:false, rowIdBase: 'myteam-period-' + employee.id })
         : '<div class="tk-empty">No time entries for this pay period yet.</div>';
       var periodTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
-      var reopenBtn = '<button class="btn-logout" style="width:auto;" onclick="teamTkOpenReopenModal(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Reopen</button>';
+      var reopenBtn = '<button class="btn btn-danger" style="width:auto;padding:11px 20px;" onclick="teamTkOpenReopenModal(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Reopen</button>';
 
-      var certInfoHtml = '';
       var actionHtml;
       if(status === 'admin_certified'){
-        certInfoHtml = '<div class="tk-empty">Certified by ' + (employee.full_name || 'employee') + ' on ' + formatDate(cert.employee_cert_at.slice(0,10)) + '. Certified for payroll by ' + (teamTkAdminNameCache[cert.admin_cert_by] || 'admin') + ' on ' + formatDate(cert.admin_cert_at.slice(0,10)) + '.' + (cert.admin_notes ? ' Notes: ' + cert.admin_notes : '') + '</div>';
         actionHtml = '<div class="tk-grid-actions"><div class="login-error" id="myteam-period-error-' + employee.id + '" style="margin-top:0;flex:1;"></div>' + reopenBtn + '</div>';
       } else if(status === 'employee_certified'){
-        certInfoHtml = '<div class="tk-empty">Certified by ' + (employee.full_name || 'employee') + ' on ' + formatDate(cert.employee_cert_at.slice(0,10)) + '.</div>';
         actionHtml = '<div class="tk-grid-actions">'
           + '<div class="login-error" id="myteam-period-error-' + employee.id + '" style="margin-top:0;flex:1;"></div>'
           + reopenBtn
@@ -1163,7 +1190,6 @@
 
       bodyHtml = tableHtml2
         + '<div class="tk-grid-footer"><div class="tk-grid-footer-item">Period Total: <span>' + periodTotal.toFixed(2) + ' hrs</span></div></div>'
-        + certInfoHtml
         + actionHtml;
     }
 
@@ -1172,6 +1198,7 @@
       + '<div class="myteam-employee-name">' + (employee.full_name || 'Unknown') + '</div>'
       + '<div class="myteam-employee-title">' + (employee.job_title || '—') + '</div>'
       + '<span class="tk-status-pill ' + status + '">' + statusLabels[status] + '</span>'
+      + certInfoHtml
       + editToggleBtn
       + '</div>'
       + bodyHtml
@@ -1402,9 +1429,19 @@
       var tableHtml = tkRenderGridTable(rows, days, timeCodes, { editable: gridEditable, rowIdBase: idBase, lockedDates: lockedDates });
       var weekTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
 
+      // Surfaces pay period certification here too (History browses past
+      // weeks one at a time, so this is the only place it'd otherwise show).
+      var weekPeriodBounds = tkPeriodBounds(bounds.start);
+      var weekPeriodCertRows = await tkReq('pay_period_certifications?employee_id=eq.' + employeeId + '&period_start=eq.' + tkDateToISO(weekPeriodBounds.start) + '&period_end=eq.' + tkDateToISO(weekPeriodBounds.end) + '&select=status');
+      var weekPeriodStatus = weekPeriodCertRows[0] ? weekPeriodCertRows[0].status : 'open';
+      var weekCertPillLabels = { employee_certified: 'Certified', admin_certified: 'Certified for Payroll' };
+      var weekCertPillHtml = weekCertPillLabels[weekPeriodStatus]
+        ? ' <span class="tk-status-pill ' + weekPeriodStatus + '" style="margin-left:6px;">' + weekCertPillLabels[weekPeriodStatus] + '</span>'
+        : '';
+
       var html = '<div class="tk-entry-card">'
         + '<div class="tk-period-header">'
-        + '<div><div class="tk-period-label">Week ' + tkWeekNumber(offset) + (isFutureWeek ? ' <span class="tk-status-pill draft" style="margin-left:6px;">Upcoming — view only</span>' : '') + '</div>'
+        + '<div><div class="tk-period-label">Week ' + tkWeekNumber(offset) + (isFutureWeek ? ' <span class="tk-status-pill draft" style="margin-left:6px;">Upcoming — view only</span>' : '') + weekCertPillHtml + '</div>'
         + '<div class="tk-period-dates">' + formatDate(startISO) + ' – ' + formatDate(endISO) + '</div></div>'
         + navHtml
         + '</div>'

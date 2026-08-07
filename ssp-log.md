@@ -920,3 +920,37 @@ Status: Implemented. Not yet re-verified live.
 Gap/follow-up: Reopen button still uses the low-contrast .btn-logout
 style (same class as items 2 fixed for Return/Submit) — not reported as
 an issue this round, left as-is; worth the same treatment if it comes up.
+
+## 2026-08-06 — Live testing round 3: visibility, locking, cert display (AC-3 / AU-2)
+1. Wizard header brightened (stronger background + top/bottom teal
+   border) — was too easily missed against the page background.
+2. Reopen button given the same .btn-danger treatment as Return/Submit
+   Pay Period from the previous round (was still on the low-contrast
+   .btn-logout style). Audited every other Timekeeping button for the
+   same issue — only one other instance exists (PTO tab's "Cancel
+   Request" button), left as-is since the PTO tab is out of scope for
+   this simulation work; flagged as a follow-up if it comes up.
+3. Fixed a real gap in the Pay Period Overview and the admin Pay Period
+   edit-mode: entries from an already admin-approved week were still
+   editable there (only the certified-period-wide lock and the weekend
+   lock applied). Now any date with an approved entry locks too —
+   correcting it means flagging/returning that week in Weekly Review
+   first, not quietly editing already-reviewed hours from the period
+   view.
+4. Certification status pill relabeled to plain "Certified" (was
+   "Employee Certified") once the employee has certified, and the
+   who/when text now sits directly to the right of the pill instead of
+   below the grid — on the admin Pay Period card, the employee's own Pay
+   Period Overview, the Weekly Review card, and History (each week's
+   containing pay period status now shows next to the Week N label too)
+   — this was already being logged to time_card_audit_log; the display
+   was the gap.
+Status: Implemented. Not yet re-verified live.
+Open question sent to user (not built yet): what should happen if an
+admin flags/returns an entry from an already-approved week after the
+employee has otherwise completed the pay period — does fixing it need to
+go through a full re-approval of that week before the period can be
+certified, or is completing/resaving the fixed entry (already possible
+per the earlier rejected-resubmit fix) sufficient on its own? Multiple
+reasonable designs exist here; holding off on building any of them until
+that's confirmed.
