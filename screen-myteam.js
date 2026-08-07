@@ -15,6 +15,8 @@
     if(name === 'resumes'){ loadTeamResumes('myteam'); }
     if(name === 'assets'){ loadTeamAssets('myteam'); }
     if(name === 'travel'){ switchTeamTravelSubtab('myteam', 'estimate'); }
+    if(typeof tkRenderSimBanner === 'function'){ tkRenderSimBanner(); }
+    if(typeof tkRenderSimWizard === 'function'){ tkRenderSimWizard(); }
   }
 
   // ---------- My Team Dashboard ----------

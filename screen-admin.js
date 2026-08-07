@@ -16,6 +16,8 @@
     if(name === 'resumes'){ loadTeamResumes('admin'); }
     if(name === 'assets'){ loadTeamAssets('admin'); }
     if(name === 'travel'){ switchTeamTravelSubtab('admin', 'estimate'); }
+    if(typeof tkRenderSimBanner === 'function'){ tkRenderSimBanner(); }
+    if(typeof tkRenderSimWizard === 'function'){ tkRenderSimWizard(); }
   }
 
   // ---------- Admin Dashboard (team overview) ----------

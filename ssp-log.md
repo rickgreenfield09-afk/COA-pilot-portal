@@ -973,3 +973,19 @@ already ran the original schema file, since certify_period_admin already
 exists live. pay-period-certifications-schema.sql itself was also updated
 so a fresh install includes the rule from the start.
 Status: Implemented. Not yet re-verified live.
+
+## 2026-08-06 — Scope simulation banner/wizard to Timekeeping pages only (AC-3)
+Previously the sim banner and wizard were visible on every screen while
+simulation mode was active (rendered outside <main>, only gated on
+tkSimMode). Per user request, now only shows on the Timekeeping screen
+(any subtab) or My Team/Admin specifically while their Timekeeping
+subtab is active — navigating to Dashboard, Profile, Travel, etc. (even
+My Team/Admin's own Dashboard subtab) hides both.
+tkSimBannerVisibleHere() checks the active .screen and, for My Team/
+Admin, whether their Timekeeping subtab specifically is active. Hooked
+into switchScreen (app-core.js), switchMyTeamSubtab, switchAdminSubtab,
+and switchTkSubtab so visibility re-evaluates on every navigation —
+app-core.js calls are typeof-guarded (matches an existing pattern already
+in that file) since it loads before screen-timekeeping.js, even though by
+call-time (after a user click) the function always exists.
+Status: Implemented. Not yet re-verified live.

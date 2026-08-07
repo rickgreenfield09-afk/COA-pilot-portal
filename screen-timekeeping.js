@@ -35,6 +35,8 @@
     document.querySelectorAll('[data-tksubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.tksubtab === name); });
     document.getElementById('tk-' + name).classList.add('active');
     tkRenderSimEntry();
+    tkRenderSimBanner();
+    tkRenderSimWizard();
     if(name === 'current'){ tkLoadCurrentTab(); }
     if(name === 'history'){ initTkHistory(); }
     if(name === 'pto'){ loadPtoTab(); }
@@ -623,10 +625,27 @@
     tkRenderSimWizard();
   }
 
+  // Timekeeping screen (any subtab), or My Team/Admin specifically while
+  // on their Timekeeping subtab — not their Dashboard, Travel, etc.
+  function tkSimBannerVisibleHere(){
+    var activeScreen = document.querySelector('.screen.active');
+    if(!activeScreen){ return false; }
+    if(activeScreen.id === 'screen-timekeeping'){ return true; }
+    if(activeScreen.id === 'screen-myteam'){
+      var sub = document.getElementById('myteam-timekeeping');
+      return !!(sub && sub.classList.contains('active'));
+    }
+    if(activeScreen.id === 'screen-admin'){
+      var sub2 = document.getElementById('admin-timekeeping');
+      return !!(sub2 && sub2.classList.contains('active'));
+    }
+    return false;
+  }
+
   function tkRenderSimBanner(){
     var el = document.getElementById('tk-sim-banner');
     if(!el){ return; }
-    if(!tkSimMode){ el.style.display = 'none'; el.innerHTML = ''; return; }
+    if(!tkSimMode || !tkSimBannerVisibleHere()){ el.style.display = 'none'; el.innerHTML = ''; return; }
     el.style.display = 'flex';
     el.innerHTML = '<span>&#9888; Simulation Mode — acting as Ricky (' + formatDate(TK_SIM_TODAY_ISO) + ' pay period). Nothing here is saved.</span>'
       + '<label style="margin-left:auto;display:flex;align-items:center;gap:6px;"><input type="checkbox" ' + (tkSimGuided ? 'checked' : '') + ' onchange="tkToggleSimGuided()"> Guided Walkthrough</label>'
@@ -656,7 +675,7 @@
   function tkRenderSimWizard(){
     var el = document.getElementById('tk-sim-wizard');
     if(!el){ return; }
-    if(!(tkSimMode && tkSimGuided)){ el.style.display = 'none'; el.innerHTML = ''; return; }
+    if(!(tkSimMode && tkSimGuided && tkSimBannerVisibleHere())){ el.style.display = 'none'; el.innerHTML = ''; return; }
     var step = TK_SIM_STEPS[tkSimStepIndex];
     var isLast = tkSimStepIndex === TK_SIM_STEPS.length - 1;
     el.style.display = 'flex';

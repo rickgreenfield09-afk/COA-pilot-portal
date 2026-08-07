@@ -431,6 +431,11 @@
     if(name === 'burndown'){
       switchBurndownSubtab('customers');
     }
+    // Timekeeping Simulation Mode's banner/wizard only show on
+    // Timekeeping-related screens — re-evaluate visibility on every
+    // screen switch (screen-timekeeping.js; no-op when sim mode is off).
+    if(typeof tkRenderSimBanner === 'function'){ tkRenderSimBanner(); }
+    if(typeof tkRenderSimWizard === 'function'){ tkRenderSimWizard(); }
   }
 
   document.addEventListener('DOMContentLoaded', tryRestoreSession);
