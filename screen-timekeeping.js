@@ -781,6 +781,10 @@
     if(fnName === 'certify_period_admin'){
       var cert = tkSimStore.pay_period_certifications.find(function(c){ return c.employee_id === params.p_employee_id && c.period_start === params.p_period_start && c.period_end === params.p_period_end; });
       if(!cert || cert.status !== 'employee_certified'){ throw new Error('The employee must certify this pay period before it can be submitted for payroll'); }
+      var unapproved = tkSimStore.time_entries.filter(function(e){
+        return e.employee_id === params.p_employee_id && e.work_date >= params.p_period_start && e.work_date <= params.p_period_end && e.status !== 'approved';
+      });
+      if(unapproved.length){ throw new Error('Every entry in this pay period must be approved before it can be certified for payroll (' + unapproved.length + ' not yet approved)'); }
       cert.status = 'admin_certified';
       cert.admin_cert_at = new Date().toISOString();
       cert.admin_cert_by = tkEffectiveAdminId();

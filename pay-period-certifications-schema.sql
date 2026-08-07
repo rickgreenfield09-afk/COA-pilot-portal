@@ -152,6 +152,7 @@ set search_path = public
 as $$
 declare
   v_status text;
+  v_unapproved int;
 begin
   if not public.is_admin() then
     raise exception 'Only an admin can certify a pay period for payroll';
@@ -163,6 +164,22 @@ begin
 
   if v_status is distinct from 'employee_certified' then
     raise exception 'The employee must certify this pay period before it can be submitted for payroll';
+  end if;
+
+  -- Every entry must be individually approved, not just "the employee
+  -- certified" — if an admin returns an entry from a previously-approved
+  -- week after certification (e.g. correcting a mistake), fixing and
+  -- resaving it (see saveTkWeek's rejected-entry resubmit) puts it back
+  -- to 'submitted', not 'approved' — that week needs Approve All run
+  -- again before the period can be certified for payroll.
+  select count(*) into v_unapproved
+  from public.time_entries
+  where employee_id = p_employee_id
+    and work_date between p_period_start and p_period_end
+    and status is distinct from 'approved';
+
+  if v_unapproved > 0 then
+    raise exception 'Every entry in this pay period must be approved before it can be certified for payroll (% not yet approved)', v_unapproved;
   end if;
 
   update public.pay_period_certifications

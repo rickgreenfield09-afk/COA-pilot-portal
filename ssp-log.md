@@ -954,3 +954,22 @@ certified, or is completing/resaving the fixed entry (already possible
 per the earlier rejected-resubmit fix) sufficient on its own? Multiple
 reasonable designs exist here; holding off on building any of them until
 that's confirmed.
+
+## 2026-08-06 — Recertification gate: certify_period_admin requires every entry approved (AC-3)
+Confirmed with user: if an admin returns an entry from a week that was
+already approved, that week must be re-approved (Approve All run again)
+before the pay period can be certified for payroll — resaving the fixed
+entry on its own isn't enough.
+certify_period_admin (both the real RPC in
+pay-period-certifications-schema.sql and the simulation sandbox mock in
+screen-timekeeping.js) now checks every time_entries row in the period is
+status='approved', not just that the employee has certified. Since a
+returned-then-resaved entry comes back as 'submitted' (per the earlier
+rejected-entry resubmit fix), this naturally blocks period certification
+until the admin re-approves that specific week — no new status or table
+needed, just a stricter check in the existing gate.
+add-certify-admin-approval-gate.sql: standalone patch for anyone who
+already ran the original schema file, since certify_period_admin already
+exists live. pay-period-certifications-schema.sql itself was also updated
+so a fresh install includes the rule from the start.
+Status: Implemented. Not yet re-verified live.
