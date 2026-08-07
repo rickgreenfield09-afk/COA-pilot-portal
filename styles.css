@@ -98,6 +98,9 @@
   .btn-primary{background:var(--teal);color:var(--void);}
   .btn-primary:hover{background:#35d4c0;}
   .btn-primary:disabled{background:var(--border);color:var(--muted);cursor:default;}
+  .btn-danger{background:var(--red);color:#fff;}
+  .btn-danger:hover{background:#ea6b6b;}
+  .btn-danger:disabled{background:var(--border);color:var(--muted);cursor:default;}
   .login-error{font-size:12px;color:var(--red);font-family:'DM Mono',monospace;margin-top:14px;text-align:center;min-height:16px;}
 
   /* ---------- App shell ---------- */
@@ -229,16 +232,18 @@
   .tk-sim-banner label{font-weight:500;color:var(--text);}
   [data-theme="light"] .tk-sim-banner{background:rgba(138,90,0,0.10);}
 
-  /* bottom:100px (not 24px) so this clears the fixed .demo-feedback-btn
-     sitting in the same corner — the wizard's own action buttons were
-     rendering underneath it otherwise. */
-  .tk-sim-wizard{position:fixed;right:24px;bottom:100px;width:320px;max-width:calc(100% - 48px);background:var(--surface);border:1px solid var(--teal);border-radius:10px;padding:18px;box-shadow:0 8px 24px rgba(0,0,0,0.35);z-index:90;}
-  .tk-sim-wizard-step{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;}
-  .tk-sim-wizard-title{font-family:'Bebas Neue',sans-serif;font-size:19px;margin-bottom:8px;}
-  .tk-sim-wizard-body{font-size:13px;color:var(--text);line-height:1.5;margin-bottom:10px;}
-  .tk-sim-wizard-dcaa{font-size:12px;color:var(--amber);background:rgba(232,184,75,0.10);border-radius:6px;padding:8px 10px;margin-bottom:14px;line-height:1.4;}
-  .tk-sim-wizard-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;}
-  .tk-sim-wizard-dismiss{font-size:11px;color:var(--muted);cursor:pointer;text-decoration:underline;background:none;border:none;padding:0;}
+  /* In normal document flow (not fixed) directly under the sim banner —
+     was a fixed bottom-right card, which floated over page buttons no
+     matter where it sat. This pushes content down instead of covering it. */
+  .tk-sim-wizard{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:14px 24px;background:rgba(42,184,166,0.08);border-bottom:1px solid var(--teal);}
+  [data-theme="light"] .tk-sim-wizard{background:rgba(18,42,84,0.05);}
+  .tk-sim-wizard-main{flex:1;min-width:260px;}
+  .tk-sim-wizard-step{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:2px;}
+  .tk-sim-wizard-title{font-family:'Bebas Neue',sans-serif;font-size:17px;margin-bottom:4px;}
+  .tk-sim-wizard-body{font-size:13px;color:var(--text);line-height:1.4;margin-bottom:6px;}
+  .tk-sim-wizard-dcaa{font-size:12px;color:var(--amber);background:rgba(232,184,75,0.10);border-radius:6px;padding:6px 10px;line-height:1.4;display:inline-block;}
+  .tk-sim-wizard-actions{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+  .tk-sim-wizard-dismiss{font-size:11px;color:var(--muted);cursor:pointer;text-decoration:underline;background:none;border:none;padding:0;white-space:nowrap;}
 
   /* ---------- Training subtabs ---------- */
   .subtab-bar{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:20px;}
@@ -436,6 +441,13 @@
   .tk-grid-footer{display:flex;justify-content:flex-end;gap:24px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:13px;}
   .tk-grid-footer-item{font-family:'DM Mono',monospace;color:var(--sub);}
   .tk-grid-footer-item span{color:var(--text);font-weight:600;}
+
+  .tk-overview-footer{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+  .tk-overview-categories{flex-shrink:0;}
+  .tk-category-totals{border-collapse:collapse;font-size:13px;}
+  .tk-category-totals th{text-align:left;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;padding:4px 18px 4px 0;border-bottom:1px solid var(--border);}
+  .tk-category-totals td{padding:5px 18px 5px 0;color:var(--text);}
+  .tk-category-totals td:last-child,.tk-category-totals th:last-child{font-family:'DM Mono',monospace;text-align:right;padding-right:0;}
   .tk-grid-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;}
   .tk-day-pto{background:rgba(191,95,255,0.08);}
   .tk-day-flagged{background:rgba(224,82,82,0.10);}

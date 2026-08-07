@@ -859,3 +859,64 @@ complete. Not yet browser-tested live.
    Admin-entry mode (teamTkRenderCard) is untouched and still allows
    weekend edits, since that's the intended correction path.
 Status: Implemented. Not yet re-verified live.
+
+## 2026-08-06 — Live testing round 2: Return visibility, rejected-day resubmit, Pay Period Overview, admin period edit (AC-3 / AU-2)
+Batch of fixes/features from a second live demo pass:
+
+1. Wizard panel moved out of fixed-position entirely — now sits in normal
+   document flow directly under the sim banner (pushes content down
+   instead of floating over it), fixing the same class of overlap bug as
+   the earlier demo-feedback-button fix.
+2. New `.btn-danger` class (red fill, same size/font as `.btn-primary`)
+   applied to Return and the new Submit Pay Period button — both
+   previously used the low-contrast `.btn-logout` style, which read as
+   near-invisible next to a bold `.btn-primary` sibling.
+3. Fixed a real bug found via Return: a rejected entry's hour cell showed
+   no visual indicator in the employee's own editable grid (only in the
+   read-only admin view), AND if the employee re-selected the same hours
+   value, saveTkWeek's change-detection treated it as "unchanged" and
+   never resubmitted it — the entry stayed status='rejected' forever.
+   Cells now carry data-entry-status and show a "Returned — re-enter to
+   resubmit" pill with the return reason as a tooltip; saveTkWeek always
+   writes a rejected cell through as an update regardless of whether the
+   value changed.
+4. Generalized saveTkWeek to derive its date range from start/end
+   (tkPeriodDays) instead of always assuming a 7-day week, AND fixed the
+   OT calculation to bucket by each entry's own Monday-Sunday week
+   instead of one continuous running total — necessary so a save spanning
+   a whole multi-week pay period doesn't miscompute overtime by treating
+   the entire period as one long week. Verified this produces identical
+   output to the old logic for existing single-week Save Week calls.
+5. New Pay Period Overview (tkRenderPayPeriodOverview): once the current
+   pay period is complete (or already certified), the Current Week tab
+   shows a multi-week grid for the whole period instead of one week, plus
+   a category-hours breakdown table and a Save Pay Period/Submit Pay
+   Period button pair that toggle based on unsaved-edit state (extended
+   tkOnCellChange to detect this) so only one shows at a time. Replaces
+   the old auto-popup-on-save + persistent-fallback-button approach
+   entirely — the popup now only ever fires from an explicit Submit Pay
+   Period click.
+6. Admin Pay Period card gets its own "Enter Time for Employee" toggle
+   (teamTkPeriodEditMode, separate from the Weekly Review card's own
+   toggle), reusing the newly-generalized saveTkWeek to safely save
+   across the whole period's date range in one call. Only available while
+   the period is status='open' (Reopen first if it's already certified).
+7. Certification status now shows who certified and when directly on
+   both the employee's Pay Period Overview and the admin's Pay Period
+   card (not just buried in the audit log) — who/when was already being
+   logged to time_card_audit_log via tkLogAudit; this is a display-only
+   addition (teamTkPreloadAdminName resolves the certifying admin's name).
+8. New update-ricky-july-weeks-approved.sql: marks 7/16-7/24 as
+   status='approved' (the seed script left everything 'submitted') so the
+   Pay Period admin view starts from a realistic partially-reviewed state
+   — 7/27-7/31 is what actually gets reviewed live in the walkthrough.
+9. Explained (not changed) the Flag/Approve-All-greys-out mechanic per
+   user's question — it's an intentional but subtle UI: Flag just
+   relabels a header link and disables Approve All; the actual action is
+   the separate Return button. Flagged as a real usability gap (little
+   visible feedback) but not fixed this round — user's focus was
+   confirming it works as designed before deciding whether to improve it.
+Status: Implemented. Not yet re-verified live.
+Gap/follow-up: Reopen button still uses the low-contrast .btn-logout
+style (same class as items 2 fixed for Return/Submit) — not reported as
+an issue this round, left as-is; worth the same treatment if it comes up.
