@@ -47,6 +47,11 @@
       document.getElementById('bd-st-bulk-wrap').innerHTML = '';
       bdLoadSlinTableContractPicker();
     }
+    if(name === 'rates'){
+      bdRatesSelectedEmployeeId = null;
+      document.getElementById('bd-rates-list').innerHTML = '';
+      bdLoadRatesTab();
+    }
   }
 
   // ---------- Shared small render helpers ----------
@@ -1395,4 +1400,197 @@
       + (Object.keys(years).length ? '<select class="field-input" style="max-width:260px;" onchange="bdStOptionYearFilter=this.value;bdRenderStExistingTable();">' + yearOptions + '</select>' : '')
       + '<div class="bd-ledger" style="margin-top:14px;">' + rowsHtml + '</div>'
       + '</div>';
+  }
+
+  // =============================================================
+  // RATES (labor_categories + employee_rates) — feeds the Burndown
+  // funding calculation (Phase 4): pay/bill rate per employee, per labor
+  // category, optionally overridden per SLIN. Add-only, no edit/delete —
+  // a new rate is a new effective-dated row; the Burndown calc picks
+  // whichever row is effective for a given hours' work date, preferring a
+  // SLIN-specific match over the employee's default (no-SLIN) rate.
+  // =============================================================
+
+  var bdLaborCategories = [];
+  var bdRatesSelectedEmployeeId = null;
+  var bdRatesAllSlins = null;
+
+  async function bdLoadRatesTab(){
+    await bdLoadLaborCategories();
+    await bdLoadRateEmployeePicker();
+  }
+
+  // ---- Labor Categories ----
+
+  async function bdLoadLaborCategories(){
+    var container = document.getElementById('bd-laborcat-list');
+    try{
+      bdLaborCategories = await dbRequest('labor_categories?select=*&order=title.asc');
+      bdRenderLaborCategoryList();
+    }catch(e){
+      container.innerHTML = '<div class="tk-empty">Couldn\'t load labor categories.</div>';
+      console.error(e);
+    }
+  }
+
+  function bdRenderLaborCategoryList(){
+    var container = document.getElementById('bd-laborcat-list');
+    var addBtnHtml = '<div class="tk-grid-actions" style="justify-content:flex-start;margin-bottom:16px;"><button class="btn-edit" onclick="bdShowAddLaborCategoryForm()">+ Add Labor Category</button></div>'
+      + '<div id="bd-laborcat-add-wrap"></div>';
+    var listHtml = bdLaborCategories.length
+      ? bdLaborCategories.map(function(lc){
+          return '<div class="bd-row-card">'
+            + '<div class="bd-row-summary" style="cursor:default;">'
+            + '<div><div class="bd-row-title">' + escAttr(lc.title) + '</div>'
+            + '<div class="bd-row-sub">' + (lc.description ? escAttr(lc.description) : '—') + '</div></div>'
+            + '<div class="bd-status-pill' + (lc.status === 'active' ? ' bd-pill-active' : ' bd-pill-muted') + '">' + (lc.status === 'active' ? 'Active' : 'Inactive') + '</div>'
+            + '</div></div>';
+        }).join('')
+      : '<div class="tk-empty">No labor categories yet.</div>';
+    container.innerHTML = addBtnHtml + listHtml;
+  }
+
+  function bdShowAddLaborCategoryForm(){
+    var wrap = document.getElementById('bd-laborcat-add-wrap');
+    wrap.innerHTML = '<div class="bd-add-form">'
+      + '<div class="asset-form-grid">'
+      + bdInput('Title', 'bdlc-new-title', '')
+      + bdSelect('Status', 'bdlc-new-status', [{value:'active',label:'Active'},{value:'inactive',label:'Inactive'}], 'active')
+      + '</div>'
+      + '<div><label class="field-label">Description</label><input type="text" id="bdlc-new-desc" class="field-input"></div>'
+      + '<div class="tk-grid-actions">'
+      + '<button class="btn-cancel" onclick="document.getElementById(\'bd-laborcat-add-wrap\').innerHTML=\'\'">Cancel</button>'
+      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="bdSubmitAddLaborCategory()">Add</button>'
+      + '</div>'
+      + '<div class="login-error" id="bdlc-new-error"></div>'
+      + '</div>';
+  }
+
+  async function bdSubmitAddLaborCategory(){
+    var errorEl = document.getElementById('bdlc-new-error');
+    var title = bdVal('bdlc-new-title');
+    if(!title){ errorEl.textContent = 'Title is required.'; return; }
+    try{
+      await dbWrite('labor_categories', 'POST', {
+        labor_category_id: crypto.randomUUID(),
+        title: title,
+        description: bdVal('bdlc-new-desc') || null,
+        status: bdVal('bdlc-new-status')
+      });
+      document.getElementById('bd-laborcat-add-wrap').innerHTML = '';
+      await bdLoadLaborCategories();
+    }catch(e){
+      errorEl.textContent = 'Could not add — try again.';
+      console.error(e);
+    }
+  }
+
+  // ---- Employee Rates ----
+
+  async function bdFetchAllSlinsForRates(){
+    if(bdRatesAllSlins){ return bdRatesAllSlins; }
+    bdRatesAllSlins = await dbRequest('slins?select=slin_id,slin_code,slin_description,contract_id,contracts(prime_contract_number,subcontract_number,customers(name))&order=slin_code.asc');
+    return bdRatesAllSlins;
+  }
+
+  async function bdLoadRateEmployeePicker(){
+    var wrap = document.getElementById('bd-rates-employee-picker');
+    try{
+      await bdFetchProfiles();
+      var options = '<option value="">Select an employee...</option>' + bdAllProfiles.map(function(p){
+        return '<option value="' + p.id + '">' + escAttr(p.full_name) + '</option>';
+      }).join('');
+      wrap.innerHTML = '<select class="field-input" id="bd-rates-employee-select" style="max-width:420px;" onchange="bdOnRatesEmployeeChange()">' + options + '</select>';
+    }catch(e){
+      wrap.innerHTML = '<div class="tk-empty">Couldn\'t load employees.</div>';
+      console.error(e);
+    }
+  }
+
+  function bdOnRatesEmployeeChange(){
+    var employeeId = bdVal('bd-rates-employee-select');
+    bdRatesSelectedEmployeeId = employeeId || null;
+    var listEl = document.getElementById('bd-rates-list');
+    if(!employeeId){
+      listEl.innerHTML = '';
+      return;
+    }
+    bdLoadEmployeeRates(employeeId);
+  }
+
+  async function bdLoadEmployeeRates(employeeId){
+    var container = document.getElementById('bd-rates-list');
+    container.innerHTML = '<div class="tk-empty">Loading...</div>';
+    try{
+      var rows = await dbRequest('employee_rates?employee_id=eq.' + employeeId + '&select=*,labor_categories(title),slins(slin_code)&order=effective_start.desc');
+      bdRenderEmployeeRateList(rows);
+    }catch(e){
+      container.innerHTML = '<div class="tk-empty">Couldn\'t load rates.</div>';
+      console.error(e);
+    }
+  }
+
+  function bdRenderEmployeeRateList(rows){
+    var container = document.getElementById('bd-rates-list');
+    var addBtn = '<button class="btn-edit" style="margin-bottom:12px;" onclick="bdShowAddRateForm()">+ Add Rate</button><div id="bd-rates-add-wrap"></div>';
+    var listHtml = rows.length
+      ? '<div class="bd-ledger">' + rows.map(function(r){
+          var scope = r.slins ? ('SLIN ' + escAttr(r.slins.slin_code)) : 'Default (all SLINs)';
+          return '<div class="bd-ledger-row"><div><div class="bd-row-title">' + escAttr(r.labor_categories ? r.labor_categories.title : 'Unknown') + ' — ' + scope + '</div>'
+            + '<div class="bd-row-sub">Pay ' + bdMoney(r.pay_rate) + ' · Bill ' + bdMoney(r.bill_rate) + ' · Bill w/ Fee ' + bdMoney(r.bill_rate_with_fee) + ' · Effective ' + formatDate(r.effective_start) + (r.effective_end ? ' – ' + formatDate(r.effective_end) : ' – open') + '</div></div></div>';
+        }).join('') + '</div>'
+      : '<div class="tk-empty">No rates entered for this employee yet.</div>';
+    container.innerHTML = addBtn + listHtml;
+  }
+
+  async function bdShowAddRateForm(){
+    var wrap = document.getElementById('bd-rates-add-wrap');
+    var slins = await bdFetchAllSlinsForRates();
+    var slinOptions = [{ value: '', label: '(Default — applies to all SLINs unless overridden)' }].concat(slins.map(function(s){
+      var custName = s.contracts && s.contracts.customers && s.contracts.customers.name ? s.contracts.customers.name : 'Unknown';
+      return { value: s.slin_id, label: custName + ' — ' + s.slin_code };
+    }));
+    wrap.innerHTML = '<div class="bd-add-form">'
+      + '<div class="asset-form-grid">'
+      + bdSelect('Labor Category', 'bdr-new-laborcat', bdLaborCategories.filter(function(lc){ return lc.status === 'active'; }).map(function(lc){ return { value: lc.labor_category_id, label: lc.title }; }), '')
+      + bdSelect('SLIN (optional override)', 'bdr-new-slin', slinOptions, '')
+      + bdInput('Pay Rate', 'bdr-new-payrate', '', 'number')
+      + bdInput('Bill Rate', 'bdr-new-billrate', '', 'number')
+      + bdInput('Bill Rate w/ Fee', 'bdr-new-billfee', '', 'number')
+      + bdInput('Effective Start', 'bdr-new-effstart', new Date().toISOString().slice(0,10), 'date')
+      + bdInput('Effective End (optional)', 'bdr-new-effend', '', 'date')
+      + '</div>'
+      + '<div class="tk-grid-actions">'
+      + '<button class="btn-cancel" onclick="document.getElementById(\'bd-rates-add-wrap\').innerHTML=\'\'">Cancel</button>'
+      + '<button class="btn btn-primary" style="width:auto;padding:11px 20px;" onclick="bdSubmitAddRate()">Add Rate</button>'
+      + '</div>'
+      + '<div class="login-error" id="bdr-new-error"></div>'
+      + '</div>';
+  }
+
+  async function bdSubmitAddRate(){
+    var errorEl = document.getElementById('bdr-new-error');
+    var laborCatId = bdVal('bdr-new-laborcat');
+    var effStart = bdVal('bdr-new-effstart');
+    if(!laborCatId){ errorEl.textContent = 'Labor Category is required.'; return; }
+    if(!effStart){ errorEl.textContent = 'Effective Start is required.'; return; }
+    try{
+      await dbWrite('employee_rates', 'POST', {
+        rate_id: crypto.randomUUID(),
+        employee_id: bdRatesSelectedEmployeeId,
+        labor_category_id: laborCatId,
+        slin_id: bdVal('bdr-new-slin') || null,
+        pay_rate: bdVal('bdr-new-payrate') ? parseFloat(bdVal('bdr-new-payrate')) : null,
+        bill_rate: bdVal('bdr-new-billrate') ? parseFloat(bdVal('bdr-new-billrate')) : null,
+        bill_rate_with_fee: bdVal('bdr-new-billfee') ? parseFloat(bdVal('bdr-new-billfee')) : null,
+        effective_start: effStart,
+        effective_end: bdVal('bdr-new-effend') || null,
+        created_by: getSession().user.id
+      });
+      document.getElementById('bd-rates-add-wrap').innerHTML = '';
+      await bdLoadEmployeeRates(bdRatesSelectedEmployeeId);
+    }catch(e){
+      errorEl.textContent = 'Could not add rate — try again.';
+      console.error(e);
+    }
   }
