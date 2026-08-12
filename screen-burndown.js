@@ -29,8 +29,24 @@
     document.querySelectorAll('#screen-burndown [data-bdsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.bdsubtab === name); });
     document.getElementById('bd-' + name).classList.add('active');
     if(name === 'customers'){ bdLoadCustomers(); }
-    if(name === 'tree'){ bdLoadTreeContractPicker(); }
-    if(name === 'slintable'){ bdLoadSlinTableContractPicker(); }
+    if(name === 'tree'){
+      bdTreeSelectedContractId = null;
+      bdTreeContractCustomerId = null;
+      bdSelectedNodeId = null;
+      bdExpandedNodeIds = {};
+      document.getElementById('bd-tree-panel').innerHTML = '';
+      document.getElementById('bd-detail-panel').innerHTML = '';
+      bdLoadTreeContractPicker();
+    }
+    if(name === 'slintable'){
+      bdStSelectedContractId = null;
+      bdStSelectedCustomerId = null;
+      bdStExistingSlins = [];
+      bdStLatestFundingBySlin = {};
+      document.getElementById('bd-st-existing-wrap').innerHTML = '';
+      document.getElementById('bd-st-bulk-wrap').innerHTML = '';
+      bdLoadSlinTableContractPicker();
+    }
   }
 
   // ---------- Shared small render helpers ----------
@@ -1326,6 +1342,8 @@
     bdStSelectedCustomerId = row ? row.customer_id : null;
     bdStOptionYearFilter = '';
     if(!contractId){
+      bdStExistingSlins = [];
+      bdStLatestFundingBySlin = {};
       document.getElementById('bd-st-existing-wrap').innerHTML = '';
       document.getElementById('bd-st-bulk-wrap').innerHTML = '';
       return;

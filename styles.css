@@ -92,6 +92,11 @@
   .field-input::placeholder{color:var(--muted);}
   input[type=number]::-webkit-outer-spin-button,
   input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  input[type=date]::-webkit-datetime-edit-fields-wrapper,
+  input[type=date]::-webkit-datetime-edit-text,
+  input[type=date]::-webkit-datetime-edit-month-field,
+  input[type=date]::-webkit-datetime-edit-day-field,
+  input[type=date]::-webkit-datetime-edit-year-field{color:var(--text);}
   input[type=number]{-moz-appearance:textfield;}
   input[type=date]::-webkit-calendar-picker-indicator{filter:invert(1);cursor:pointer;}
   .btn{width:100%;padding:12px;border-radius:6px;border:none;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.15s;}
@@ -557,6 +562,7 @@
 
   .bd-layout{display:flex;gap:20px;align-items:flex-start;}
   .bd-tree-panel{flex:0 0 340px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;max-height:70vh;overflow-y:auto;}
+  .bd-tree-panel:empty{display:none;border:none;padding:0;}
   .bd-detail-panel-col{flex:1;min-width:0;}
   @media (max-width:900px){.bd-layout{flex-direction:column;}.bd-tree-panel{flex:1 1 auto;max-height:none;width:100%;}}
 
