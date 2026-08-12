@@ -155,13 +155,62 @@
     return codes.find(function(c){ return c.code === 'VACATION'; }) || null;
   }
 
+  // ---------- Authorized SLINs (Timekeeping -> Burndown linkage) ----------
+  // A time code's category of 'gov_contract' or 'commercial_customer' means
+  // it's billable to a customer and needs a SLIN; 'indirect' never does.
+  function tkIsBillableCategory(category){
+    return category === 'gov_contract' || category === 'commercial_customer';
+  }
+
+  function tkSlinLabel(s){
+    return s.slin_code + (s.slin_description ? ' — ' + s.slin_description : '');
+  }
+
+  // Only the SLIN's own code/description -- not customer/contract name.
+  // contracts/customers are admin-only RLS today (no employee read policy),
+  // so a joined label would break for non-admins; slins itself has
+  // slins_employee_read_authorized, which covers this.
+  var TK_AUTHORIZED_SLINS_CACHE = {}; // employeeId -> [{id,label}], active authorizations only
+  async function tkGetAuthorizedSlins(employeeId){
+    if(TK_AUTHORIZED_SLINS_CACHE[employeeId]){ return TK_AUTHORIZED_SLINS_CACHE[employeeId]; }
+    var list = [];
+    try{
+      var todayISO = new Date().toISOString().slice(0,10);
+      var rows = await dbRequest('slin_employee_authorization?employee_id=eq.' + employeeId + '&status=eq.active&effective_date=lte.' + todayISO
+        + '&select=slin_id,slins(slin_id,slin_code,slin_description)');
+      list = rows.filter(function(r){ return r.slins; }).map(function(r){ return { id: r.slin_id, label: tkSlinLabel(r.slins) }; });
+    }catch(e){ console.error(e); }
+    TK_AUTHORIZED_SLINS_CACHE[employeeId] = list;
+    return list;
+  }
+
+  // Label lookup for whatever slin_ids already appear on saved entries --
+  // separate from tkGetAuthorizedSlins so a row still displays correctly
+  // even if that authorization was later revoked (doesn't rely on the
+  // "currently authorized" list).
+  async function tkFetchSlinLabelsByIds(ids){
+    var map = {};
+    if(!ids.length){ return map; }
+    try{
+      var rows = await dbRequest('slins?slin_id=in.(' + ids.join(',') + ')&select=slin_id,slin_code,slin_description');
+      rows.forEach(function(s){ map[s.slin_id] = tkSlinLabel(s); });
+    }catch(e){ console.error(e); }
+    return map;
+  }
+
+  function tkUniqueSlinIds(rows){
+    var seen = {};
+    rows.forEach(function(r){ if(r.slin_id){ seen[r.slin_id] = true; } });
+    return Object.keys(seen);
+  }
+
   // ---------- Shared weekly grid (used by the employee's own Current/
   //            History card and the My Team/Admin review card) ----------
   function tkGroupEntriesByCode(entries){
     var byCode = {};
     entries.forEach(function(e){
-      var key = e.time_code_id || 'none';
-      if(!byCode[key]){ byCode[key] = { time_code_id: e.time_code_id, byDate: {} }; }
+      var key = (e.time_code_id || 'none') + '|' + (e.slin_id || 'none');
+      if(!byCode[key]){ byCode[key] = { time_code_id: e.time_code_id, slin_id: e.slin_id || null, byDate: {} }; }
       byCode[key].byDate[e.work_date] = e;
     });
     return byCode;
@@ -234,13 +283,36 @@
       var rowEditable = editable && !rowLocked;
       var hasAnySavedEntry = Object.keys(row.byDate).length > 0;
 
-      var codeCell = editable
-        ? ('<button class="tk-now-btn" type="button" onclick="tkAddGridRow(\'' + idBase + '\')" title="Add time code row">+</button> '
-          + '<select class="tk-grid-input" style="display:inline-block;width:calc(100% - 34px);" id="tkg-code-' + rowId + '" ' + ((hasAnySavedEntry || rowLocked) ? 'disabled' : '') + '>'
+      var codeCell;
+      if(editable){
+        var codeInfo = codesById[codeVal];
+        var rowBillable = !!(codeInfo && tkIsBillableCategory(codeInfo.category));
+        var slinLocked = hasAnySavedEntry || rowLocked;
+        var currentSlinLabel = row.slin_id && opts.slinLabelById ? opts.slinLabelById[row.slin_id] : null;
+        var slinOptionsList = (opts.authorizedSlins || []).slice();
+        // A locked row's already-saved SLIN might not be in the current
+        // authorized list (revoked since) -- inject it so it still displays.
+        if(row.slin_id && !slinOptionsList.some(function(o){ return o.id === row.slin_id; })){
+          slinOptionsList.push({ id: row.slin_id, label: currentSlinLabel || 'SLIN' });
+        }
+        var slinOptionsHtml = slinOptionsList.length
+          ? ('<option value="">Select SLIN…</option>' + slinOptionsList.map(function(o){ return '<option value="' + o.id + '"' + (o.id === row.slin_id ? ' selected' : '') + '>' + o.label + '</option>'; }).join(''))
+          : '<option value="">No SLINs authorized — contact your admin</option>';
+
+        codeCell = '<button class="tk-now-btn" type="button" onclick="tkAddGridRow(\'' + idBase + '\')" title="Add time code row">+</button> '
+          + '<select class="tk-grid-input" style="display:inline-block;width:calc(100% - 34px);" id="tkg-code-' + rowId + '" ' + ((hasAnySavedEntry || rowLocked) ? 'disabled' : '') + ' onchange="tkOnCodeChange(\'' + idBase + '\',\'' + rowId + '\')">'
           + '<option value="">Select time code…</option>'
-          + timeCodes.map(function(c){ return '<option value="' + c.id + '"' + (c.id === codeVal ? ' selected' : '') + '>' + c.label + '</option>'; }).join('')
-          + '</select>')
-        : '<span>' + (codesById[codeVal] ? codesById[codeVal].label : '—') + '</span>';
+          + timeCodes.map(function(c){ return '<option value="' + c.id + '" data-category="' + c.category + '"' + (c.id === codeVal ? ' selected' : '') + '>' + c.label + '</option>'; }).join('')
+          + '</select>'
+          + '<div id="tkg-slin-wrap-' + rowId + '" style="margin-top:6px;display:' + (rowBillable ? 'block' : 'none') + ';">'
+          + '<select class="tk-grid-input" id="tkg-slin-' + rowId + '" ' + (slinLocked ? 'disabled' : '') + '>' + slinOptionsHtml + '</select>'
+          + '</div>';
+      } else {
+        var slinSuffix = (row.slin_id && opts.slinLabelById && opts.slinLabelById[row.slin_id])
+          ? '<div style="font-size:12px;color:var(--sub);margin-top:2px;">' + opts.slinLabelById[row.slin_id] + '</div>'
+          : '';
+        codeCell = '<span>' + (codesById[codeVal] ? codesById[codeVal].label : '—') + '</span>' + slinSuffix;
+      }
 
       var dayCells = days.map(function(d){
         var iso = tkDateToISO(d);
@@ -290,15 +362,21 @@
     var rowId = idBase + '-new' + tkGridRowSeq;
     var days = tbody.dataset.days ? JSON.parse(tbody.dataset.days) : [];
     var timeCodesJson = tbody.dataset.timeCodes ? JSON.parse(tbody.dataset.timeCodes) : [];
+    var slinOptionsJson = tbody.dataset.slinOptions ? JSON.parse(tbody.dataset.slinOptions) : [];
 
-    var codeOptions = '<option value="">Select time code…</option>' + timeCodesJson.map(function(c){ return '<option value="' + c.id + '">' + c.label + '</option>'; }).join('');
+    var codeOptions = '<option value="">Select time code…</option>' + timeCodesJson.map(function(c){ return '<option value="' + c.id + '" data-category="' + (c.category || '') + '">' + c.label + '</option>'; }).join('');
+    var slinOptionsHtml = slinOptionsJson.length
+      ? ('<option value="">Select SLIN…</option>' + slinOptionsJson.map(function(o){ return '<option value="' + o.id + '">' + o.label + '</option>'; }).join(''))
+      : '<option value="">No SLINs authorized — contact your admin</option>';
     var dayCells = days.map(function(iso){
       return '<td><select class="tk-grid-input" id="tkg-hours-' + rowId + '-' + iso + '" data-entry-id="" data-entry-hours="" onchange="tkOnCellChange(\'' + idBase + '\')">' + tkHoursOptionsHtml('') + '</select></td>';
     }).join('');
 
     var rowHtml = '<tr data-rowid="' + rowId + '">'
       + '<td><button class="tk-now-btn" type="button" onclick="tkAddGridRow(\'' + idBase + '\')" title="Add time code row">+</button> '
-      + '<select class="tk-grid-input" style="display:inline-block;width:calc(100% - 34px);" id="tkg-code-' + rowId + '">' + codeOptions + '</select></td>'
+      + '<select class="tk-grid-input" style="display:inline-block;width:calc(100% - 34px);" id="tkg-code-' + rowId + '" onchange="tkOnCodeChange(\'' + idBase + '\',\'' + rowId + '\')">' + codeOptions + '</select>'
+      + '<div id="tkg-slin-wrap-' + rowId + '" style="margin-top:6px;display:none;"><select class="tk-grid-input" id="tkg-slin-' + rowId + '">' + slinOptionsHtml + '</select></div>'
+      + '</td>'
       + dayCells
       + '<td class="tk-hours-cell">0.00</td>'
       + '<td><button class="tk-now-btn tk-remove-btn" type="button" onclick="tkRemoveGridRow(\'' + rowId + '\')" title="Remove row">&minus;</button></td>'
@@ -309,6 +387,20 @@
   function tkRemoveGridRow(rowId){
     var tr = document.querySelector('tr[data-rowid="' + rowId + '"]');
     if(tr){ tr.remove(); }
+  }
+
+  function tkOnCodeChange(idBase, rowId){
+    var codeSel = document.getElementById('tkg-code-' + rowId);
+    var slinWrap = document.getElementById('tkg-slin-wrap-' + rowId);
+    if(!codeSel || !slinWrap){ return; }
+    var opt = codeSel.selectedOptions[0];
+    var billable = !!(opt && tkIsBillableCategory(opt.dataset.category));
+    slinWrap.style.display = billable ? 'block' : 'none';
+    if(!billable){
+      var slinSel = document.getElementById('tkg-slin-' + rowId);
+      if(slinSel){ slinSel.value = ''; }
+    }
+    tkOnCellChange(idBase); // keep Save/Submit toggle (Pay Period Overview) in sync
   }
 
   function tkOnCellChange(idBase){
@@ -473,6 +565,8 @@
       var entries = await tkReq('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
       var rows = tkSortRowsByCodeOrder(Object.values(tkGroupEntriesByCode(entries)), timeCodes);
       var days = tkPeriodDays(new Date(startISO + 'T00:00:00'), new Date(endISO + 'T00:00:00'));
+      var slinLabelById = await tkFetchSlinLabelsByIds(tkUniqueSlinIds(rows));
+      var authorizedSlins = await tkGetAuthorizedSlins(employeeId);
 
       var certRows = await tkReq('pay_period_certifications?employee_id=eq.' + employeeId + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=*');
       var cert = certRows[0] || null;
@@ -496,7 +590,7 @@
       }
 
       var idBase = containerId + '-grid';
-      var tableHtml = tkRenderGridTable(rows, days, timeCodes, { editable: gridEditable, rowIdBase: idBase, lockedDates: lockedDates });
+      var tableHtml = tkRenderGridTable(rows, days, timeCodes, { editable: gridEditable, rowIdBase: idBase, lockedDates: lockedDates, slinLabelById: slinLabelById, authorizedSlins: authorizedSlins });
       var periodTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
 
       var categoryTotals = {};
@@ -547,7 +641,8 @@
       var tbody = document.getElementById(idBase + '-tbody');
       if(tbody){
         tbody.dataset.days = JSON.stringify(days.map(tkDateToISO));
-        tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label }; }));
+        tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label, category: c.category }; }));
+        tbody.dataset.slinOptions = JSON.stringify(authorizedSlins);
       }
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load pay period overview</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
@@ -933,15 +1028,17 @@
     container.innerHTML = navHtml + cardHtml;
 
     // If the admin-entry grid (or the read-only grid) rendered, its tbody
-    // needs .dataset.days/.timeCodes for tkAddGridRow's "+" button to work —
-    // same wiring loadTkWeek does for the employee's own grid.
+    // needs .dataset.days/.timeCodes/.slinOptions for tkAddGridRow's "+"
+    // button to work — same wiring loadTkWeek does for the employee's own grid.
     var timeCodes = await tkGetTimeCodes();
+    var authorizedSlins = await tkGetAuthorizedSlins(employee.id);
     var days = tkWeekDays(new Date(startISO + 'T00:00:00'));
     ['myteam-entry-' + employee.id + '-grid', 'myteam-card-' + employee.id].forEach(function(idBase){
       var tbody = document.getElementById(idBase + '-tbody');
       if(tbody){
         tbody.dataset.days = JSON.stringify(days.map(tkDateToISO));
-        tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label }; }));
+        tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label, category: c.category }; }));
+        tbody.dataset.slinOptions = JSON.stringify(authorizedSlins);
       }
     });
   }
@@ -962,6 +1059,8 @@
     var entries = await tkReq('time_entries?employee_id=eq.' + employee.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
     var rows = tkSortRowsByCodeOrder(Object.values(tkGroupEntriesByCode(entries)), timeCodes);
     var days = tkWeekDays(new Date(startISO + 'T00:00:00'));
+    var slinLabelById = await tkFetchSlinLabelsByIds(tkUniqueSlinIds(rows));
+    var authorizedSlins = await tkGetAuthorizedSlins(employee.id);
 
     // Surfaces the pay period's certification status here too, not just
     // on the Pay Period tab — a week can belong to at most one period
@@ -988,7 +1087,7 @@
       var editRows = rows.length ? rows : [{ time_code_id: '', byDate: {} }];
       var lockedDates = await tkGetLockedDatesForWeek(employee.id, days);
       var idBase = entryContainerId + '-grid';
-      var tableHtml = tkRenderGridTable(editRows, days, timeCodes, { editable:true, rowIdBase: idBase, lockedDates: lockedDates });
+      var tableHtml = tkRenderGridTable(editRows, days, timeCodes, { editable:true, rowIdBase: idBase, lockedDates: lockedDates, slinLabelById: slinLabelById, authorizedSlins: authorizedSlins });
       var fullyLocked = days.every(function(d){ return lockedDates[tkDateToISO(d)]; });
       bodyHtml = tableHtml + '<div id="' + entryContainerId + '-missing-pto-panel"></div>';
       bodyHtml += fullyLocked
@@ -999,7 +1098,7 @@
           + '</div>';
     } else {
       var tableHtml2 = rows.length
-        ? tkRenderGridTable(rows, days, timeCodes, { editable:false, rowIdBase: cardId, scope: scope, employeeId: employee.id, flaggedDates: flaggedForThis, showFlagToggle: true })
+        ? tkRenderGridTable(rows, days, timeCodes, { editable:false, rowIdBase: cardId, scope: scope, employeeId: employee.id, flaggedDates: flaggedForThis, showFlagToggle: true, slinLabelById: slinLabelById })
         : '<div class="tk-empty">No time entries submitted for this week yet.</div>';
       var weekTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
       var anyFlagged = Object.keys(flaggedForThis).some(function(k){ return flaggedForThis[k]; });
@@ -1120,14 +1219,16 @@
     container.innerHTML = navHtml + cardHtml;
 
     // Same wiring teamTkRenderCurrentCard does — the Enter Time for
-    // Employee grid's tbody needs .dataset.days/.timeCodes for
+    // Employee grid's tbody needs .dataset.days/.timeCodes/.slinOptions for
     // tkAddGridRow's "+" button to work.
     var timeCodes = await tkGetTimeCodes();
+    var authorizedSlins = await tkGetAuthorizedSlins(employee.id);
     var periodDays = tkPeriodDays(bounds.start, bounds.end);
     var tbody = document.getElementById('myteam-period-entry-' + employee.id + '-grid-tbody');
     if(tbody){
       tbody.dataset.days = JSON.stringify(periodDays.map(tkDateToISO));
-      tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label }; }));
+      tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label, category: c.category }; }));
+      tbody.dataset.slinOptions = JSON.stringify(authorizedSlins);
     }
   }
 
@@ -1152,6 +1253,8 @@
     var entries = await tkReq('time_entries?employee_id=eq.' + employee.id + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
     var rows = tkSortRowsByCodeOrder(Object.values(tkGroupEntriesByCode(entries)), timeCodes);
     var days = tkPeriodDays(new Date(startISO + 'T00:00:00'), new Date(endISO + 'T00:00:00'));
+    var slinLabelById = await tkFetchSlinLabelsByIds(tkUniqueSlinIds(rows));
+    var authorizedSlins = await tkGetAuthorizedSlins(employee.id);
 
     var certRows = await tkReq('pay_period_certifications?employee_id=eq.' + employee.id + '&period_start=eq.' + startISO + '&period_end=eq.' + endISO + '&select=*');
     var cert = certRows[0] || null;
@@ -1185,7 +1288,7 @@
       // correcting them means flagging/returning that week in Weekly
       // Review first, not quietly editing already-reviewed hours here.
       entries.forEach(function(e){ if(e.status === 'approved'){ lockedDates[e.work_date] = true; } });
-      var tableHtml = tkRenderGridTable(editRows, days, timeCodes, { editable:true, rowIdBase: idBase, lockedDates: lockedDates });
+      var tableHtml = tkRenderGridTable(editRows, days, timeCodes, { editable:true, rowIdBase: idBase, lockedDates: lockedDates, slinLabelById: slinLabelById, authorizedSlins: authorizedSlins });
       bodyHtml = tableHtml + '<div id="' + entryContainerId + '-missing-pto-panel"></div>'
         + '<div class="tk-grid-actions">'
         + '<div class="login-error" id="' + entryContainerId + '-save-error" style="margin-top:0;flex:1;"></div>'
@@ -1193,7 +1296,7 @@
         + '</div>';
     } else {
       var tableHtml2 = rows.length
-        ? tkRenderGridTable(rows, days, timeCodes, { editable:false, rowIdBase: 'myteam-period-' + employee.id })
+        ? tkRenderGridTable(rows, days, timeCodes, { editable:false, rowIdBase: 'myteam-period-' + employee.id, slinLabelById: slinLabelById })
         : '<div class="tk-empty">No time entries for this pay period yet.</div>';
       var periodTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
       var reopenBtn = '<button class="btn btn-danger" style="width:auto;padding:11px 20px;" onclick="teamTkOpenReopenModal(\'' + scope + '\',\'' + employee.id + '\',\'' + startISO + '\',\'' + endISO + '\')">Reopen</button>';
@@ -1413,6 +1516,8 @@
       var entries = await tkReq('time_entries?employee_id=eq.' + employeeId + '&work_date=gte.' + startISO + '&work_date=lte.' + endISO + '&select=*');
       var rows = tkSortRowsByCodeOrder(Object.values(tkGroupEntriesByCode(entries)), timeCodes);
       var days = tkWeekDays(bounds.start);
+      var slinLabelById = await tkFetchSlinLabelsByIds(tkUniqueSlinIds(rows));
+      var authorizedSlins = await tkGetAuthorizedSlins(employeeId);
 
       // Current week: only the week containing today is actually editable.
       // Future weeks are viewable (so people can see what's coming) but
@@ -1449,7 +1554,7 @@
         });
       }
       var idBase = containerId + '-grid';
-      var tableHtml = tkRenderGridTable(rows, days, timeCodes, { editable: gridEditable, rowIdBase: idBase, lockedDates: lockedDates });
+      var tableHtml = tkRenderGridTable(rows, days, timeCodes, { editable: gridEditable, rowIdBase: idBase, lockedDates: lockedDates, slinLabelById: slinLabelById, authorizedSlins: authorizedSlins });
       var weekTotal = tkDayTotals(rows, days).reduce(function(a,b){ return a+b; }, 0);
 
       // Surfaces pay period certification here too (History browses past
@@ -1488,7 +1593,8 @@
       var tbody = document.getElementById(idBase + '-tbody');
       if(tbody){
         tbody.dataset.days = JSON.stringify(days.map(tkDateToISO));
-        tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label }; }));
+        tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label, category: c.category }; }));
+        tbody.dataset.slinOptions = JSON.stringify(authorizedSlins);
       }
     }catch(e){
       container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load timekeeping</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
@@ -1593,20 +1699,32 @@
     // so existing weekly Save Week calls are unaffected.
     var days = tkPeriodDays(new Date(startISO + 'T00:00:00'), new Date(endISO + 'T00:00:00'));
 
-    // Block the save if any row has hours entered but no Time Code picked —
-    // otherwise those hours would silently be dropped rather than saved.
+    // Block the save if any row has hours entered but no Time Code picked
+    // (hours would silently be dropped), or a billable Time Code but no
+    // SLIN picked (the hours would save with no SLIN attached, breaking the
+    // Burndown funding rollup).
     var codelessButHasHours = false;
+    var missingSlinButHasHours = false;
+    var categoryById = {};
+    timeCodes.forEach(function(c){ categoryById[c.id] = c.category; });
     rowEls.forEach(function(tr){
       var codeSel = document.getElementById('tkg-code-' + tr.dataset.rowid);
-      if(codeSel && !codeSel.value){
-        days.forEach(function(d){
-          var cellEl = document.getElementById('tkg-hours-' + tr.dataset.rowid + '-' + tkDateToISO(d));
-          if(cellEl && cellEl.value !== '' && parseFloat(cellEl.value) > 0){ codelessButHasHours = true; }
-        });
-      }
+      var slinSel = document.getElementById('tkg-slin-' + tr.dataset.rowid);
+      var rowHasHours = false;
+      days.forEach(function(d){
+        var cellEl = document.getElementById('tkg-hours-' + tr.dataset.rowid + '-' + tkDateToISO(d));
+        if(cellEl && cellEl.value !== '' && parseFloat(cellEl.value) > 0){ rowHasHours = true; }
+      });
+      if(!rowHasHours){ return; }
+      if(codeSel && !codeSel.value){ codelessButHasHours = true; return; }
+      if(codeSel && tkIsBillableCategory(categoryById[codeSel.value]) && (!slinSel || !slinSel.value)){ missingSlinButHasHours = true; }
     });
     if(codelessButHasHours){
       if(saveErrorEl){ saveErrorEl.textContent = 'Select a Time Code for every row that has hours entered.'; }
+      return;
+    }
+    if(missingSlinButHasHours){
+      if(saveErrorEl){ saveErrorEl.textContent = 'Select a SLIN for every row logging billable hours.'; }
       return;
     }
 
@@ -1620,6 +1738,8 @@
       if(!codeSel || !codeSel.value){ return; }
       var codeId = codeSel.value;
       var isVacation = !!(vacation && codeId === vacation.id);
+      var slinSel = document.getElementById('tkg-slin-' + rowId);
+      var slinId = (slinSel && slinSel.value) ? slinSel.value : null;
 
       days.forEach(function(d){
         var iso = tkDateToISO(d);
@@ -1645,7 +1765,7 @@
           missingPto.push({ iso: iso, hours: val });
           return;
         }
-        var w = { action: existingId ? 'update' : 'insert', id: existingId, work_date: iso, time_code_id: codeId, hours: parseFloat(val), oldHours: existingHours };
+        var w = { action: existingId ? 'update' : 'insert', id: existingId, work_date: iso, time_code_id: codeId, slin_id: slinId, hours: parseFloat(val), oldHours: existingHours };
         writes.push(w);
         weekEntries.push({ work_date: iso, hours: w.hours, write: w });
       });
@@ -1696,6 +1816,7 @@
             employee_id: employeeId,
             work_date: w.work_date,
             time_code_id: w.time_code_id,
+            slin_id: w.slin_id,
             hours: w.hours,
             earning_type: w.earning_type,
             status: 'submitted',

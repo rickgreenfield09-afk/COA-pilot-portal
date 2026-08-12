@@ -114,14 +114,18 @@
     var todayISO = new Date().toISOString().slice(0,10);
     var todayLabel = new Date(todayISO + 'T00:00:00').toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' });
 
+    var authorizedSlins = [];
+    try{ authorizedSlins = await tkGetAuthorizedSlins(session.user.id); }catch(e){ console.error(e); }
+
     tbody.dataset.date = todayISO;
     tbody.dataset.dateLabel = todayLabel;
-    tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label }; }));
+    tbody.dataset.timeCodes = JSON.stringify(timeCodes.map(function(c){ return { id: c.id, label: c.label, category: c.category }; }));
+    tbody.dataset.slinOptions = JSON.stringify(authorizedSlins);
     tbody.innerHTML = '';
     qteRowSeq = 0;
 
     var entries = [];
-    try{ entries = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=eq.' + todayISO + '&select=id,time_code_id,hours'); }catch(e){ console.error(e); }
+    try{ entries = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=eq.' + todayISO + '&select=id,time_code_id,hours,slin_id'); }catch(e){ console.error(e); }
 
     if(entries.length){
       entries.forEach(function(e){ addQteRow(e); });
@@ -137,22 +141,50 @@
     var rowId = 'qte-' + qteRowSeq;
     var isFirst = tbody.children.length === 0;
     var timeCodes = tbody.dataset.timeCodes ? JSON.parse(tbody.dataset.timeCodes) : [];
+    var slinOptions = tbody.dataset.slinOptions ? JSON.parse(tbody.dataset.slinOptions) : [];
     var dateLabel = tbody.dataset.dateLabel || '';
     var codeVal = existing ? existing.time_code_id : '';
     var hoursVal = existing && existing.hours != null ? existing.hours : '';
+    var slinVal = existing && existing.slin_id ? existing.slin_id : '';
     var hasSaved = !!(existing && existing.id);
 
+    var codeInfo = timeCodes.find(function(c){ return c.id === codeVal; });
+    var rowBillable = !!(codeInfo && (codeInfo.category === 'gov_contract' || codeInfo.category === 'commercial_customer'));
+
     var codeOptions = '<option value="">Select time code…</option>'
-      + timeCodes.map(function(c){ return '<option value="' + c.id + '"' + (c.id === codeVal ? ' selected' : '') + '>' + c.label + '</option>'; }).join('');
+      + timeCodes.map(function(c){ return '<option value="' + c.id + '" data-category="' + (c.category || '') + '"' + (c.id === codeVal ? ' selected' : '') + '>' + c.label + '</option>'; }).join('');
+
+    var slinOptionsList = slinOptions.slice();
+    if(slinVal && !slinOptionsList.some(function(o){ return o.id === slinVal; })){
+      slinOptionsList.push({ id: slinVal, label: 'SLIN' });
+    }
+    var slinOptionsHtml = slinOptionsList.length
+      ? ('<option value="">Select SLIN…</option>' + slinOptionsList.map(function(o){ return '<option value="' + o.id + '"' + (o.id === slinVal ? ' selected' : '') + '>' + o.label + '</option>'; }).join(''))
+      : '<option value="">No SLINs authorized — contact your admin</option>';
 
     var rowHtml = '<tr data-rowid="' + rowId + '">'
-      + '<td><select class="tk-grid-input" id="' + rowId + '-code" ' + (hasSaved ? 'disabled' : '') + '>' + codeOptions + '</select></td>'
+      + '<td><select class="tk-grid-input" id="' + rowId + '-code" ' + (hasSaved ? 'disabled' : '') + ' onchange="qteOnCodeChange(\'' + rowId + '\')">' + codeOptions + '</select>'
+      + '<div id="' + rowId + '-slin-wrap" style="margin-top:6px;display:' + (rowBillable ? 'block' : 'none') + ';"><select class="tk-grid-input" id="' + rowId + '-slin" ' + (hasSaved ? 'disabled' : '') + '>' + slinOptionsHtml + '</select></div>'
+      + '</td>'
       + '<td>' + dateLabel + '</td>'
       + '<td><div class="tk-pto-hours-cell"><select class="tk-grid-input" id="' + rowId + '-hours" style="width:80px;">' + tkHoursOptionsHtml(hoursVal) + '</select>'
         + (isFirst ? '' : '<button class="tk-now-btn tk-remove-btn" type="button" onclick="removeQteRow(\'' + rowId + '\')">&minus;</button>')
         + '</div></td>'
       + '</tr>';
     tbody.insertAdjacentHTML('beforeend', rowHtml);
+  }
+
+  function qteOnCodeChange(rowId){
+    var codeSel = document.getElementById(rowId + '-code');
+    var slinWrap = document.getElementById(rowId + '-slin-wrap');
+    if(!codeSel || !slinWrap){ return; }
+    var opt = codeSel.selectedOptions[0];
+    var billable = !!(opt && (opt.dataset.category === 'gov_contract' || opt.dataset.category === 'commercial_customer'));
+    slinWrap.style.display = billable ? 'block' : 'none';
+    if(!billable){
+      var slinSel = document.getElementById(rowId + '-slin');
+      if(slinSel){ slinSel.value = ''; }
+    }
   }
 
   function removeQteRow(rowId){
@@ -165,25 +197,37 @@
     var session = getSession();
     var tbody = document.getElementById('qte-rows');
     var todayISO = tbody && tbody.dataset.date ? tbody.dataset.date : new Date().toISOString().slice(0,10);
+    var timeCodes = tbody && tbody.dataset.timeCodes ? JSON.parse(tbody.dataset.timeCodes) : [];
+    var categoryById = {};
+    timeCodes.forEach(function(c){ categoryById[c.id] = c.category; });
     errorEl.textContent = '';
 
     var rowEls = document.querySelectorAll('#qte-rows tr[data-rowid]');
     var writes = [];
     var hasInvalid = false;
+    var missingSlin = false;
     rowEls.forEach(function(tr){
       var rowId = tr.dataset.rowid;
       var codeSel = document.getElementById(rowId + '-code');
       var hoursSel = document.getElementById(rowId + '-hours');
+      var slinSel = document.getElementById(rowId + '-slin');
       if(!codeSel || !hoursSel){ return; }
       var codeVal = codeSel.value;
       var hoursVal = hoursSel.value;
       if(!codeVal && !hoursVal){ return; } // fully blank row, skip
       if(!codeVal || !hoursVal || parseFloat(hoursVal) <= 0){ hasInvalid = true; return; }
-      writes.push({ time_code_id: codeVal, hours: parseFloat(hoursVal) });
+      var billable = categoryById[codeVal] === 'gov_contract' || categoryById[codeVal] === 'commercial_customer';
+      var slinVal = (slinSel && slinSel.value) ? slinSel.value : null;
+      if(billable && !slinVal){ missingSlin = true; return; }
+      writes.push({ time_code_id: codeVal, hours: parseFloat(hoursVal), slin_id: slinVal });
     });
 
     if(hasInvalid){
       errorEl.textContent = 'Select a time code and valid hours for every line.';
+      return;
+    }
+    if(missingSlin){
+      errorEl.textContent = 'Select a SLIN for every line logging billable hours.';
       return;
     }
     if(!writes.length){
@@ -194,7 +238,9 @@
     try{
       for(var i=0;i<writes.length;i++){
         var w = writes[i];
-        var existing = await dbRequest('time_entries?employee_id=eq.' + session.user.id + '&work_date=eq.' + todayISO + '&time_code_id=eq.' + w.time_code_id + '&select=id');
+        var lookup = 'time_entries?employee_id=eq.' + session.user.id + '&work_date=eq.' + todayISO + '&time_code_id=eq.' + w.time_code_id
+          + (w.slin_id ? ('&slin_id=eq.' + w.slin_id) : '&slin_id=is.null');
+        var existing = await dbRequest(lookup + '&select=id');
         if(existing.length){
           await dbWrite('time_entries?id=eq.' + existing[0].id, 'PATCH', { hours: w.hours, status: 'submitted' });
         } else {
@@ -202,6 +248,7 @@
             employee_id: session.user.id,
             work_date: todayISO,
             time_code_id: w.time_code_id,
+            slin_id: w.slin_id,
             hours: w.hours,
             status: 'submitted'
           });
