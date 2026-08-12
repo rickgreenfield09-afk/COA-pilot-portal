@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COA Employee Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script>
+  // Applies the last-used Appearance preference before first paint, so a
+  // light-mode user doesn't see a flash of dark on refresh while the
+  // profile (the source of truth) is still loading. app-core.js reconciles
+  // this cached guess against profiles.theme_preference once it arrives.
+  (function(){
+    try{
+      if(localStorage.getItem('coa_theme') === 'light'){
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    }catch(e){ /* localStorage unavailable (private mode, etc.) — default dark is fine */ }
+  })();
+</script>
+</head>
+</head>
+<body>
+
+  <!-- LOGIN SCREEN -->
+  <div class="login-wrap" id="login-wrap">
+    <div class="login-card">
+      <img class="login-brand-img" src="https://llkatqqkzjzqfaosmrjl.supabase.co/storage/v1/object/public/Assets/COA-Transparent.png" alt="COA logo">
+      <div class="login-logo">COA PORTAL</div>
+      <div class="login-sub">EMPLOYEE SIGN IN</div>
+      <label class="field-label" for="login-email">Email</label>
+      <input type="email" id="login-email" class="field-input" placeholder="you@company.com" autocomplete="username">
+      <label class="field-label" for="login-password">Password</label>
+      <input type="password" id="login-password" class="field-input" placeholder="••••••••" autocomplete="current-password">
+      <button class="btn btn-primary" id="login-btn" onclick="handleLogin()">Sign In</button>
+      <div class="login-error" id="login-error"></div>
+    </div>
+  </div>
+
+  <!-- APP SHELL -->
+  <div id="app-shell">
+    <header>
+      <div class="logo-wrap">
+        <img class="header-logo-img" src="https://llkatqqkzjzqfaosmrjl.supabase.co/storage/v1/object/public/Assets/COA-Transparent.png" alt="COA logo">
+        <div class="logo">COA PORTAL</div>
+      </div>
+      <div class="header-right">
+        <span class="user-email" id="user-email-display"></span>
+        <button class="btn-logout" onclick="handleLogout()">Sign Out</button>
+      </div>
+    </header>
+    <nav>
+      <button class="nav-btn active" data-screen="home" onclick="requestSwitchScreen('home')">My Dashboard</button>
+      <button class="nav-btn" data-screen="profile" onclick="requestSwitchScreen('profile')">My Profile</button>
+      <button class="nav-btn" data-screen="directory" onclick="requestSwitchScreen('directory')">Directory</button>
+      <button class="nav-btn" data-screen="timekeeping" onclick="requestSwitchScreen('timekeeping')">Timekeeping</button>
+      <button class="nav-btn" data-screen="travel" onclick="requestSwitchScreen('travel')">Travel</button>
+      <button class="nav-btn" data-screen="training" onclick="requestSwitchScreen('training')">Training</button>
+      <button class="nav-btn" id="nav-btn-myteam" data-screen="myteam" onclick="requestSwitchScreen('myteam')" style="display:none;">My Team</button>
+      <button class="nav-btn" id="nav-btn-admin" data-screen="admin" onclick="requestSwitchScreen('admin')" style="display:none;">Admin</button>
+      <button class="nav-btn" id="nav-btn-burndown" data-screen="burndown" onclick="requestSwitchScreen('burndown')" style="display:none;">Burndown</button>
+    </nav>
+    <!-- TIMEKEEPING SIMULATION BANNER — hidden unless tkSimMode is active
+         (screen-timekeeping.js). Deliberately outside <main> so it stays
+         visible across every screen, not just Timekeeping. -->
+    <div class="tk-sim-banner" id="tk-sim-banner" style="display:none;"></div>
+    <div class="tk-sim-wizard" id="tk-sim-wizard" style="display:none;"></div>
+    <main>
+      <div class="screen active" id="screen-home">
+        <div id="home-content">
+          <div class="placeholder-card">
+            <div class="placeholder-sub">Loading dashboard...</div>
+          </div>
+        </div>
+      </div>
+      <div class="screen" id="screen-profile">
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-profsubtab="overview" onclick="switchProfileSubtab('overview')">Overview</button>
+          <button class="subtab-btn" data-profsubtab="resume" onclick="switchProfileSubtab('resume')">Resume</button>
+          <button class="subtab-btn" data-profsubtab="assets" onclick="switchProfileSubtab('assets')">Assets</button>
+        </div>
+        <div class="prof-subscreen active" id="prof-overview">
+          <div id="profile-content">
+            <div class="placeholder-card">
+              <div class="placeholder-sub">Loading profile...</div>
+            </div>
+          </div>
+        </div>
+        <div class="prof-subscreen" id="prof-resume">
+          <div id="resume-viewing-banner"></div>
+          <div id="resume-content">
+            <div class="placeholder-card">
+              <div class="placeholder-sub">Loading resume...</div>
+            </div>
+          </div>
+        </div>
+        <div class="prof-subscreen" id="prof-assets">
+          <div id="profile-assets-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="screen" id="screen-directory">
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-dirsubtab="roster" onclick="switchDirectorySubtab('roster')">Roster</button>
+          <button class="subtab-btn" data-dirsubtab="orgchart" onclick="switchDirectorySubtab('orgchart')">Org Chart</button>
+          <button class="subtab-btn" id="dir-staffrecall-btn" data-dirsubtab="staffrecall" onclick="switchDirectorySubtab('staffrecall')" style="display:none;">Staff Recall</button>
+        </div>
+        <div class="dir-subscreen active" id="dir-roster">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="dir-subscreen" id="dir-orgchart">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="dir-subscreen" id="dir-staffrecall">
+          <div id="staffrecall-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="screen" id="screen-timekeeping">
+        <div id="tk-sim-entry"></div>
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-tksubtab="current" onclick="switchTkSubtab('current')">Current Week</button>
+          <button class="subtab-btn" data-tksubtab="history" onclick="switchTkSubtab('history')">History</button>
+          <button class="subtab-btn" data-tksubtab="pto" onclick="switchTkSubtab('pto')">PTO</button>
+        </div>
+        <div class="tk-subscreen active" id="tk-current">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="tk-subscreen" id="tk-history">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="tk-subscreen" id="tk-pto">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+      </div>
+      <div class="screen" id="screen-myteam">
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-myteamsubtab="dashboard" onclick="switchMyTeamSubtab('dashboard')">Dashboard</button>
+          <button class="subtab-btn" data-myteamsubtab="timekeeping" onclick="switchMyTeamSubtab('timekeeping')">Timekeeping</button>
+          <button class="subtab-btn" data-myteamsubtab="travel" onclick="switchMyTeamSubtab('travel')">Travel</button>
+          <button class="subtab-btn" data-myteamsubtab="training" onclick="switchMyTeamSubtab('training')">Training</button>
+          <button class="subtab-btn" data-myteamsubtab="resumes" onclick="switchMyTeamSubtab('resumes')">Resumes</button>
+          <button class="subtab-btn" data-myteamsubtab="assets" onclick="switchMyTeamSubtab('assets')">Assets</button>
+        </div>
+        <div class="myteam-subscreen active" id="myteam-dashboard">
+          <div id="myteam-dashboard-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+        <div class="myteam-subscreen" id="myteam-timekeeping">
+          <div id="myteam-timekeeping-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+        <div class="myteam-subscreen" id="myteam-travel">
+          <div class="subtab-bar">
+            <button class="subtab-btn active" data-teamtravelsubtab="estimate" onclick="switchTeamTravelSubtab('myteam','estimate')">Travel Estimates</button>
+            <button class="subtab-btn" data-teamtravelsubtab="expense" onclick="switchTeamTravelSubtab('myteam','expense')">Travel Expense Reports</button>
+          </div>
+          <div class="travel-subscreen active" id="myteam-travel-estimate">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+          <div class="travel-subscreen" id="myteam-travel-expense">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+        <div class="myteam-subscreen" id="myteam-training">
+          <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+        </div>
+        <div class="myteam-subscreen" id="myteam-resumes">
+          <div class="tk-entry-card team-panel" id="myteam-resumes-team-panel">
+            <div class="team-panel-header">
+              <div class="tk-section-title">My Team - Select an employee to view their resume</div>
+              <button type="button" class="btn-cancel team-panel-clear-btn" onclick="clearTeamResumeSelection('myteam')">Clear Selection</button>
+            </div>
+            <div class="team-panel-body">
+              <div id="myteam-resumes-employee-list"><div class="tk-empty">Loading...</div></div>
+            </div>
+          </div>
+          <div id="myteam-resume-viewing-banner"></div>
+          <div id="myteam-resume-content"></div>
+        </div>
+        <div class="myteam-subscreen" id="myteam-assets">
+          <div class="tk-entry-card">
+            <div class="tk-section-title">Search Team Equipment</div>
+            <input type="text" id="myteam-asset-search-input" class="field-input" placeholder="Search by employee, asset name, type, serial, vendor, model, notes..." oninput="debounceSearchAssets(\'myteam\')" style="margin-bottom:12px;">
+            <div id="myteam-asset-search-results"></div>
+          </div>
+          <div id="myteam-assets-content"></div>
+          <div class="tk-entry-card" id="myteam-assets-team-panel">
+            <div class="tk-section-title">My Team</div>
+            <div id="myteam-assets-employee-list"><div class="tk-empty">Loading...</div></div>
+          </div>
+          <div class="tk-entry-card">
+            <div class="tk-section-title">Export to CSV</div>
+            <div class="placeholder-sub" style="margin-bottom:10px;">Select one or more employees and one or more asset types, then export matching equipment records.</div>
+            <div class="asset-export-grid">
+              <div><label class="field-label">Employees</label><select id="myteam-asset-export-employees" class="field-input" multiple size="6"></select></div>
+              <div><label class="field-label">Asset Types</label><select id="myteam-asset-export-types" class="field-input" multiple size="6"></select></div>
+            </div>
+            <button class="btn-edit" style="margin-top:10px;" onclick="exportAssetsToCsv(\'myteam\')">Export CSV</button>
+            <div class="login-error" id="myteam-asset-export-message"></div>
+          </div>
+        </div>
+      </div>
+      <div class="screen" id="screen-travel">
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-travelsubtab="estimate" onclick="switchTravelSubtab('estimate')">Travel Estimate</button>
+          <button class="subtab-btn" data-travelsubtab="expense" onclick="switchTravelSubtab('expense')">Travel Expense Report</button>
+        </div>
+        <div class="travel-subscreen active" id="travel-estimate">
+          <div id="travelestimate-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading travel estimate...</div></div>
+          </div>
+        </div>
+        <div class="travel-subscreen" id="travel-expense">
+          <div id="travelexpense-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading travel expense report...</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="screen" id="screen-training">
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-subtab="internal" onclick="switchTrainingSubtab('internal')">Internal Training</button>
+          <button class="subtab-btn" data-subtab="government" onclick="switchTrainingSubtab('government')">Government Training</button>
+          <button class="subtab-btn" data-subtab="external" onclick="switchTrainingSubtab('external')">External Training</button>
+          <button class="subtab-btn" data-subtab="request" onclick="switchTrainingSubtab('request')">Request Training</button>
+        </div>
+        <div class="training-subscreen active" id="training-internal">
+          <div class="placeholder-card">
+            <div class="placeholder-title">Internal Training</div>
+            <div class="placeholder-sub">Coming next session</div>
+          </div>
+        </div>
+        <div class="training-subscreen" id="training-government">
+          <div class="placeholder-card">
+            <div class="placeholder-title">Government Training</div>
+            <div class="placeholder-sub">Coming next session</div>
+          </div>
+        </div>
+        <div class="training-subscreen" id="training-external">
+          <div class="placeholder-card">
+            <div class="placeholder-title">External Training</div>
+            <div class="placeholder-sub">Coming next session</div>
+          </div>
+        </div>
+        <div class="training-subscreen" id="training-request">
+          <div class="placeholder-card">
+            <div class="placeholder-title">Request Training</div>
+            <div class="placeholder-sub">Coming next session</div>
+          </div>
+        </div>
+      </div>
+      <div class="screen" id="screen-admin">
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-adminsubtab="dashboard" onclick="switchAdminSubtab('dashboard')">Dashboard</button>
+          <button class="subtab-btn" data-adminsubtab="timekeeping" onclick="switchAdminSubtab('timekeeping')">Timekeeping</button>
+          <button class="subtab-btn" data-adminsubtab="travel" onclick="switchAdminSubtab('travel')">Travel</button>
+          <button class="subtab-btn" data-adminsubtab="training" onclick="switchAdminSubtab('training')">Training</button>
+          <button class="subtab-btn" data-adminsubtab="resumes" onclick="switchAdminSubtab('resumes')">Resumes</button>
+          <button class="subtab-btn" data-adminsubtab="assets" onclick="switchAdminSubtab('assets')">Assets</button>
+        </div>
+        <div class="admin-subscreen active" id="admin-dashboard">
+          <div id="admin-dashboard-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+        <div class="admin-subscreen" id="admin-timekeeping">
+          <div id="admin-timekeeping-content">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+        <div class="admin-subscreen" id="admin-travel">
+          <div class="subtab-bar">
+            <button class="subtab-btn active" data-teamtravelsubtab="estimate" onclick="switchTeamTravelSubtab('admin','estimate')">Travel Estimates</button>
+            <button class="subtab-btn" data-teamtravelsubtab="expense" onclick="switchTeamTravelSubtab('admin','expense')">Travel Expense Reports</button>
+          </div>
+          <div class="travel-subscreen active" id="admin-travel-estimate">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+          <div class="travel-subscreen" id="admin-travel-expense">
+            <div class="placeholder-card"><div class="placeholder-sub">Loading...</div></div>
+          </div>
+        </div>
+        <div class="admin-subscreen" id="admin-training">
+          <div class="placeholder-card">
+            <div class="placeholder-title">Training</div>
+            <div class="placeholder-sub">Coming next session</div>
+          </div>
+        </div>
+        <div class="admin-subscreen" id="admin-resumes">
+          <div class="resume-search-wrap" id="resume-search-wrap">
+            <div class="resume-search-input-wrap">
+              <input type="text" id="resume-search-input" class="info-edit-input resume-search-input" placeholder="Search resumes — e.g. PMP, Six Sigma, DoD contract, or department..." oninput="onResumeSearchInput()">
+              <button type="button" class="resume-search-clear-btn" id="resume-search-clear-btn" onclick="clearResumeSearch()" style="display:none;" aria-label="Clear search">&times;</button>
+            </div>
+            <div id="resume-search-results"></div>
+            <div class="resume-cart" style="width:100%;">
+              <div class="resume-cart-title">Resume Export Cart</div>
+              <div id="resume-cart-list"><div class="resume-cart-empty">No resumes added yet.</div></div>
+              <button class="btn-edit" id="print-cart-btn" onclick="printResumeCart()" disabled style="margin-top:8px;">Print Selected (0)</button>
+              <button class="btn-cancel" id="clear-cart-btn" onclick="clearResumeCart()" disabled style="margin-top:8px;">Clear All</button>
+            </div>
+          </div>
+          <div class="tk-entry-card team-panel" id="admin-resumes-team-panel">
+            <div class="team-panel-header">
+              <div class="tk-section-title">All Employees - Select an employee to view their resume</div>
+              <button type="button" class="btn-cancel team-panel-clear-btn" onclick="clearTeamResumeSelection('admin')">Clear Selection</button>
+            </div>
+            <div class="team-panel-body">
+              <div id="admin-resumes-dept-filter-wrap"></div>
+              <div id="admin-resumes-employee-list"><div class="tk-empty">Loading...</div></div>
+            </div>
+          </div>
+          <div id="admin-resume-viewing-banner"></div>
+          <div id="admin-resume-content"></div>
+        </div>
+        <div class="admin-subscreen" id="admin-assets">
+          <div class="tk-entry-card">
+            <div class="tk-section-title">Search All Equipment</div>
+            <input type="text" id="asset-search-input" class="field-input" placeholder="Search by employee, asset name, type, serial, vendor, model, notes..." oninput="debounceSearchAssets('admin')" style="margin-bottom:12px;">
+            <div id="asset-search-results"></div>
+          </div>
+          <div id="admin-assets-content"></div>
+          <div class="tk-entry-card" id="admin-assets-team-panel">
+            <div class="tk-section-title">All Employees - Select an employee to view their equipment</div>
+            <div id="admin-assets-dept-filter-wrap"></div>
+            <div id="admin-assets-employee-list"><div class="tk-empty">Loading...</div></div>
+          </div>
+          <div class="tk-entry-card">
+            <div class="tk-section-title">Export to CSV</div>
+            <div class="placeholder-sub" style="margin-bottom:10px;">Select one or more employees and one or more asset types, then export matching equipment records.</div>
+            <div class="asset-export-grid">
+              <div><label class="field-label">Employees</label><select id="asset-export-employees" class="field-input" multiple size="6"></select></div>
+              <div><label class="field-label">Asset Types</label><select id="asset-export-types" class="field-input" multiple size="6"></select></div>
+            </div>
+            <button class="btn-edit" style="margin-top:10px;" onclick="exportAssetsToCsv('admin')">Export CSV</button>
+            <div class="login-error" id="asset-export-message"></div>
+          </div>
+        </div>
+      </div>
+      <div class="screen" id="screen-burndown">
+        <div class="subtab-bar">
+          <button class="subtab-btn active" data-bdsubtab="customers" onclick="switchBurndownSubtab('customers')">Customers &amp; Contracts</button>
+          <button class="subtab-btn" data-bdsubtab="tree" onclick="switchBurndownSubtab('tree')">Billing Tree</button>
+          <button class="subtab-btn" data-bdsubtab="slintable" onclick="switchBurndownSubtab('slintable')">SLIN Table</button>
+        </div>
+        <div class="bd-subscreen active" id="bd-customers">
+          <div id="bd-customers-list"><div class="tk-empty">Loading...</div></div>
+        </div>
+        <div class="bd-subscreen" id="bd-tree">
+          <div id="bd-tree-contract-picker" style="margin-bottom:16px;"></div>
+          <div class="bd-layout">
+            <div class="bd-tree-panel" id="bd-tree-panel"></div>
+            <div class="bd-detail-panel-col" id="bd-detail-panel"></div>
+          </div>
+        </div>
+        <div class="bd-subscreen" id="bd-slintable">
+          <div id="bd-st-contract-picker" style="margin-bottom:16px;"></div>
+          <div id="bd-st-existing-wrap"></div>
+          <div class="tk-entry-card" style="margin-top:20px;">
+            <div class="tk-section-title">Add New SLINs</div>
+            <div id="bd-st-bulk-wrap"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- UNSAVED CHANGES MODAL -->
+  <div class="modal-overlay" id="unsaved-modal">
+    <div class="modal-box">
+      <div class="modal-title">Discard changes?</div>
+      <div class="modal-text">You have unsaved changes to your profile. Leaving now will discard them.</div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeUnsavedModal()">Keep Editing</button>
+        <button class="btn-save" onclick="confirmDiscard()">Discard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DYNAMIC MODAL (generic reusable overlay -- content injected via
+       showDynamicModal() in app-core.js; used by the pay period
+       certification popups in screen-timekeeping.js) -->
+  <div class="modal-overlay" id="dynamic-modal"></div>
+
+  <!-- PRINT BATCH CONTAINER (populated and shown only during print) -->
+  <div id="print-resume-batch" style="position:absolute;top:-99999px;left:-99999px;"></div>
+  <div id="print-travel-estimate" style="position:absolute;top:-99999px;left:-99999px;"></div>
+
+  <!-- DEMO FEEDBACK BUTTON — internal-only Microsoft Forms link. Visible on
+       every screen (including login) for the lifetime of the demo/POC build.
+       Remove this block (and the .demo-feedback-btn rules in styles.css)
+       before any production/Azure Gov cutover. -->
+  <a class="demo-feedback-btn" id="demo-feedback-btn"
+     href="https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=GXQ-o1hyFkapWq2EUFMejy4z-l_GA89Nvjw4zt-GA9JURDFJRlpOUkFaRzJFM0tVNzBSUDFOTjFJRC4u"
+     target="_blank" rel="noopener noreferrer"
+     title="Opens the demo feedback form in a new browser window (Microsoft Forms, internal access only)">
+    <span class="demo-feedback-btn-label">Demo Feedback</span>
+    <span class="demo-feedback-btn-sub">Opens in new window &#8599;</span>
+  </a>
+
+  <script src="app-core.js"></script>
+  <script src="screen-auth.js"></script>
+  <script src="screen-profile.js"></script>
+  <script src="screen-directory.js"></script>
+  <script src="screen-staffrecall.js"></script>
+  <script src="screen-timekeeping.js"></script>
+  <script src="screen-dashboard.js"></script>
+  <script src="screen-travel.js"></script>
+  <script src="screen-travel-estimate.js"></script>
+  <script src="screen-travel-expense.js"></script>
+  <script src="screen-training.js"></script>
+  <script src="screen-myteam.js"></script>
+  <script src="screen-admin.js"></script>
+  <script src="screen-burndown.js"></script>
+</body>
+</html>

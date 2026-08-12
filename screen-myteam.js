@@ -1,0 +1,88 @@
+/* COA Employee Portal — screen-myteam.js
+   Supervisor ("My Team") view: subtab switcher + team dashboard. Timekeeping,
+   resumes, assets, and travel review are NOT duplicated here — this calls
+   the shared scope-parameterized functions in screen-timekeeping.js,
+   screen-profile.js, and screen-travel.js with scope='myteam'.
+   Depends on app-core.js: getSession, dbRequest, getRecursiveReportIds(AsRows). */
+
+  // ---------- My Team subtabs ----------
+  function switchMyTeamSubtab(name){
+    document.querySelectorAll('#screen-myteam .myteam-subscreen').forEach(function(s){ s.classList.remove('active'); });
+    document.querySelectorAll('#screen-myteam [data-myteamsubtab]').forEach(function(b){ b.classList.toggle('active', b.dataset.myteamsubtab === name); });
+    document.getElementById('myteam-' + name).classList.add('active');
+    if(name === 'dashboard'){ loadTeamDashboard(); }
+    if(name === 'timekeeping'){ loadTeamTimekeeping('myteam'); }
+    if(name === 'resumes'){ loadTeamResumes('myteam'); }
+    if(name === 'assets'){ loadTeamAssets('myteam'); }
+    if(name === 'travel'){ switchTeamTravelSubtab('myteam', 'estimate'); }
+    if(typeof tkRenderSimBanner === 'function'){ tkRenderSimBanner(); }
+    if(typeof tkRenderSimWizard === 'function'){ tkRenderSimWizard(); }
+  }
+
+  // ---------- My Team Dashboard ----------
+  // ---------- My Team Dashboard ----------
+  async function loadTeamDashboard(){
+    var container = document.getElementById('myteam-dashboard-content');
+    var session = getSession();
+    if(!session || !session.user){ return; }
+
+    try{
+      var reports = await getRecursiveReportIdsAsRows(session.user.id);
+      var reportIds = reports.map(function(r){ return r.id; });
+
+      var pendingHtml = '<div class="dash-card-empty">Nothing pending.</div>';
+      var assetRequestsHtml = '<div class="dash-card-empty">Nothing pending.</div>';
+      var outTodayHtml = '<div class="dash-card-empty">No one on approved PTO today.</div>';
+
+      if(reportIds.length){
+        var idFilter = 'employee_id=in.(' + reportIds.join(',') + ')';
+        // status='submitted' = regular time card entries awaiting approval;
+        // status='pending' = Vacation entries awaiting PTO request approval
+        // (the only time code that goes through this flow — see tkVacationCode).
+        var pendingRows = await dbRequest('time_entries?' + idFilter + '&status=in.(submitted,pending)&select=id,status');
+        var groups = { timecard: [], pto: [] };
+        pendingRows.forEach(function(r){
+          groups[r.status === 'submitted' ? 'timecard' : 'pto'].push(r);
+        });
+        var groupLabels = { timecard:'Time Cards', pto:'PTO' };
+        var sectionsHtml = '';
+        Object.keys(groups).forEach(function(key){
+          if(!groups[key].length){ return; }
+          sectionsHtml += '<div class="pending-group-header">' + groupLabels[key] + '</div>'
+            + '<div class="dash-card-empty" style="padding:4px 0 8px;">' + groups[key].length + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'myteam\');setTimeout(function(){switchMyTeamSubtab(\'timekeeping\');},0);return false;">Review</a></div>';
+        });
+        try{ sectionsHtml += await travelPendingSummaryHtml('myteam', reportIds); }catch(e){ console.error(e); }
+        pendingHtml = sectionsHtml || pendingHtml;
+
+        var equipRows = await dbRequest('asset_requests?requested_by=in.(' + reportIds.join(',') + ')&status=eq.pending&select=id');
+        assetRequestsHtml = equipRows.length
+          ? '<div class="dash-card-empty">' + equipRows.length + ' asset request' + (equipRows.length===1?'':'s') + ' awaiting approval. <a href="#" onclick="requestSwitchScreen(\'myteam\');setTimeout(function(){switchMyTeamSubtab(\'assets\');},0);return false;">Review</a></div>'
+          : assetRequestsHtml;
+
+        var todayISO = new Date().toISOString().slice(0,10);
+        var vacationCode = tkVacationCode(await tkGetTimeCodes());
+        var ptoToday = vacationCode
+          ? await dbRequest('time_entries?' + idFilter + '&time_code_id=eq.' + vacationCode.id + '&status=eq.approved&work_date=eq.' + todayISO + '&select=employee_id')
+          : [];
+        if(ptoToday.length){
+          var nameById = {};
+          reports.forEach(function(r){ nameById[r.id] = r.full_name; });
+          outTodayHtml = '<div class="dash-card-empty">' + ptoToday.map(function(p){ return nameById[p.employee_id] || 'Unknown'; }).join(', ') + '</div>';
+        }
+      }
+
+      var upcomingTravelHtml = '<div class="dash-card-empty">No upcoming travel.</div>';
+      try{ upcomingTravelHtml = await buildUpcomingTravelHtml(reportIds); }catch(e){ console.error(e); }
+
+      container.innerHTML = '<div class="dash-grid-2col">'
+        + '<div class="dash-card"><div class="dash-card-title">Pending Requests</div>' + pendingHtml + '</div>'
+        + '<div class="dash-card"><div class="dash-card-title">Asset Requests</div>' + assetRequestsHtml + '</div>'
+        + '<div class="dash-card"><div class="dash-card-title">Out Today (Approved PTO)</div>' + outTodayHtml + '</div>'
+        + '<div class="dash-card"><div class="dash-card-title">Upcoming Travel</div>' + upcomingTravelHtml + '</div>'
+        + '<div class="dash-card"><div class="dash-card-title">Training Requirements<span class="dash-card-badge soon">Soon</span></div><div class="dash-card-empty">Coming soon.</div></div>'
+        + '</div>';
+    }catch(e){
+      container.innerHTML = '<div class="placeholder-card"><div class="placeholder-title">Couldn\'t load team dashboard</div><div class="placeholder-sub">Try refreshing the page.</div></div>';
+      console.error(e);
+    }
+  }

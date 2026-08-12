@@ -1,0 +1,1012 @@
+# SSP Log (NIST 800-171 raw facts)
+
+## 2026-07-15 — Travel Estimate audit trail (AU-3 / AU-2)
+Implemented field-level audit logging for `travel_estimates` writes: every
+create/edit/submit writes a row to `travel_estimate_audit_log` with
+`changed_by`, `changed_at`, `action` (edit/status_change), `field_changes`
+(jsonb before/after diff via `teDiffFields`), `previous_status`, `new_status`.
+Status: Implemented (client-side write, Supabase POC — no RLS yet).
+Gap/follow-up: not yet enforced at the DB level; a client that skips the app
+UI could write to `travel_estimates` without a corresponding audit row until
+Postgres RLS/triggers are in place on Azure. Approval-action audit entries
+(manager/admin approve-return-deny) are not yet implemented — deferred with
+the approval-workflow UI itself.
+
+## 2026-07-15 — Travel Estimate edit lock (AC-3)
+Once an estimate's `status` is `submitted`/`approved`/`expensed`/`paid`, the
+employee-facing screen renders a read-only detail view instead of the edit
+form — only `draft` rows show the editable form.
+Status: Implemented at UI level only. Gap/follow-up: not enforced by RLS —
+a direct API call could still edit a non-draft row in the current Supabase
+POC (no live data, accepted risk). Must be enforced via Postgres RLS policy
+before go-live per CLAUDE.md data-layer rule.
+
+## 2026-07-16 — Profile field edit gate (AC-3)
+Fixed a bug found live on the Vercel POC deploy: `renderProfile()` referenced
+`adminEditableFields`/`employeeEditableFields` (screen-profile.js) which were
+never declared anywhere in the codebase, throwing a ReferenceError and
+breaking the entire My Profile > Overview screen. Declared both lists in
+app-core.js. Split confirmed with user: contact info (preferred name, phone,
+home email/phone, known traveler number) is employee self-service editable;
+org placement (department, location), HR status (start date, employment
+status), and security clearance fields are admin-only.
+Status: Implemented at UI level (isEditable() gate in renderProfile()).
+Gap/follow-up: not enforced by RLS or a server-side check — a direct API
+call could still PATCH an admin-only field on someone else's profile in the
+current Supabase POC (no live data, accepted risk). Must be enforced via
+Postgres RLS policy against the Entra ID JWT role claim before go-live.
+
+## 2026-08-07 — Profile field edit gate correction (AC-3)
+Corrected the 2026-07-16 split: `adminEditableFields` was being applied to
+the My Profile (self-edit) screen, meaning an admin viewing their own
+profile could edit their own job title, start date, employment status, and
+clearance fields — no separation of duties, since there is no separate
+admin-edits-another-employee screen yet. Moved job_title, start_date,
+employment_status, clearance_level, clearance_investigation_type,
+clearance_granted_date, and clearance_expiration_date out of both editable
+lists — display-only for everyone on this screen, including admins, until
+a proper other-employee admin edit screen exists. Also fixed a second bug:
+`bio` had an isEditable() input path in renderProfile() but was never in
+either editable list, so no one could actually edit it — added `bio` to
+employeeEditableFields (self-service, same as contact info).
+Status: Implemented at UI level (isEditable() gate in renderProfile()).
+Gap/follow-up: same as 2026-07-16 entry — not enforced by RLS or a
+server-side check yet; must be enforced via Postgres RLS policy against
+the Entra ID JWT role claim before go-live. Re-enable HR/clearance
+self-view-only fields for admin editing only once a dedicated
+admin-edits-another-employee screen exists that operates on someone else's
+profile row, not the logged-in admin's own.
+
+## 2026-07-16 — Directory roster/org chart cache bug (bug fix, no control impact)
+`dirFetchAllProfiles()` (screen-directory.js) referenced `dirAllProfiles`
+without ever declaring it, throwing a ReferenceError and breaking both
+Directory subtabs. Declared `var dirAllProfiles = []` in screen-directory.js.
+No access-control implications — this is a plain missing-variable bug from
+the original monolith-to-multi-file split, not a permission decision.
+
+## 2026-07-16 — Customer/Prime copy gated on approval status (AC-3)
+Redesigned the Travel Estimate Internal/Customer toggle after user review:
+originally it was a free-toggle on the live draft-edit form, which would
+have let anyone preview marked-up customer figures before a manager
+approved the underlying estimate. Removed the toggle from the edit form
+entirely (Internal-only while draft/submitted). Added a "Generate
+Customer/Prime Copy" action to the read-only detail view, gated to only
+appear when `status` is `approved`/`expensed`/`paid`. Recomputes the
+markup view from the stored internal totals + snapshotted
+`fee_multiplier_used` — view/print only, never written back to the row.
+Status: Implemented at UI level only.
+Gap/follow-up: who may trigger the Customer/Prime copy is intentionally
+unrestricted for now (any viewer of the estimate, not just the approving
+manager/admin) per user's explicit call 2026-07-16 — flagged to confirm
+this whole flow concept with the client before it's relied on. Also not
+enforced server-side: a direct API read of `travel_estimates` still
+exposes the raw fields regardless of status in the current Supabase POC
+(no live data, accepted risk).
+
+## 2026-07-16 — Travel Expense Report: audit trail + storage bucket (AU-2/AU-3, SC-28)
+New `travel_expenses`, `travel_expense_receipts`, `travel_expense_audit_log`
+tables (user-run SQL, this session). Field-level audit logging mirrors the
+Travel Estimate pattern: every create/edit/submit writes a row to
+`travel_expense_audit_log` via `texDiffFields()`. Receipts are stored in a
+new public Supabase Storage bucket `travel-receipts`, simulating the future
+Azure Blob Storage migration, with a permissive "any authenticated user can
+insert/select" policy — accepted risk for the no-live-data POC, same stance
+as the rest of the data layer.
+Status: Implemented (client-side, Supabase POC).
+Gap/follow-up:
+- Storage bucket policy is intentionally permissive (any authenticated user
+  can read/write any object in the bucket, not just their own receipts) —
+  must be tightened to per-user/per-report scoping before go-live.
+- Only `draft` reports are editable in the UI; not enforced by RLS (same
+  gap as travel_estimates).
+- Submitting an expense report sets the linked `travel_estimates.status` to
+  `expensed` — this is a client-side write, not a DB trigger, so it's only
+  as reliable as the app's error handling; a failed follow-up write would
+  leave the two tables inconsistent. Worth a DB trigger before go-live.
+- Two-stage approval fields (`supervisor_status`, `principal_status`) exist
+  on the table but no approval-review UI is built yet — deferred to a
+  follow-up session per user's explicit call, same as the Travel Estimate
+  approval workflow.
+
+## 2026-07-16 — Travel Estimate + Expense approval-review UI (AC-3, AU-2/AU-3)
+Built the deferred My Team / Admin approval screens for both Travel
+Estimate and Travel Expense Report, nested as new subtabs under each
+role's existing Travel tab (Travel Requests / Travel Estimates / Travel
+Expense Reports). Also discovered and fixed a pre-existing gap: Admin's
+Travel tab was still a static "Coming next session" placeholder — the
+`switchAdminSubtab()` router already called `loadTeamTravel('admin')` but
+the container it targeted was never built, so Admin could never actually
+review travel_requests either.
+
+Travel Estimate approval (screen-travel-estimate.js): single-stage, since
+`travel_estimates` has only one `approved_by`/`approved_at` slot. My Team
+(the employee's manager chain, via `getRecursiveReportIds`) gets
+Approve/Return/Deny; Admin sees the identical data read-only (no action
+buttons) to avoid two roles racing to decide the same field. This is an
+assumption, not a confirmed business rule — logged in coa_travel_backlog
+memory to check with the client (who should approve Estimates was never
+explicitly stated, unlike Expense Reports where the chain was given).
+Every decision writes to `travel_estimate_audit_log`.
+
+Travel Expense approval (screen-travel-expense.js): two-stage per the
+chain the user gave (supervisor then principal). My Team decides
+`supervisor_status` first; approving there doesn't change
+`current_status` (report stays `submitted`, now visible in Admin's
+queue) — denying/returning is terminal immediately. Admin then decides
+`principal_status`; approving is terminal (`current_status` → `paid`)
+and also flips the linked `travel_estimates.status` to `paid` (the
+intended purpose of that estimate status). Every decision writes to
+`travel_expense_audit_log`.
+
+Status: Implemented at UI level only (both).
+Gap/follow-up:
+- Not enforced by RLS — a direct API call could set `approved_by`/
+  `supervisor_status`/`principal_status` on any row regardless of actual
+  role or team membership in the current Supabase POC (no live data,
+  accepted risk). Must be enforced via Postgres RLS against the Entra ID
+  JWT role/manager-chain claims before go-live.
+- Who approves Travel Estimates (My Team only vs. also Admin) is an
+  assumption pending client confirmation — see coa_travel_backlog memory.
+- "Principal" is a label only, not a distinct role/permission in the
+  app — anyone who can reach the Admin screen (`isAdmin()` gate) can act
+  as principal. If the client wants a narrower "Principal" role distinct
+  from general Admin, that needs its own role/permission work.
+
+## 2026-07-16 — Admin given full approve/return/deny power on Travel Estimates (AC-3, supersedes prior entry)
+User clarified: Admin is a deliberately small role (2-3 people — the
+principal, the main Admin, and the user for testing/troubleshooting) with
+"superpower over everything." Changed `renderTeamEstimateDetail()` /
+`loadTeamTravelEstimates()` (screen-travel-estimate.js) so Admin now gets
+the same Approve/Return/Deny actions on Travel Estimates that My Team has,
+instead of the read-only oversight view from the earlier entry. Both
+scopes can independently decide the same `approved_by`/`approved_at`
+field — accepted as a low-probability race given the very small number of
+Admin accounts, not something worth blocking on for this POC.
+Status: Implemented at UI level only. Same RLS gap as noted above applies.
+
+## 2026-07-16 — Dashboard: pending-approval counts + Upcoming Travel wired to real data (no control impact)
+Found and fixed a pre-existing display bug the user hit while testing:
+after approving a Travel Estimate, it appeared to "disappear" because the
+Dashboard's "Upcoming Travel" card (My Dashboard, My Team, and Admin) was
+a static "Coming soon" placeholder that had never been wired to any
+table — not a bug in the approval write path itself, and not date-gated
+as the user suspected. Added `buildUpcomingTravelHtml()` (screen-travel.js,
+shared) which lists approved `travel_estimates` + approved
+`travel_requests` with a future date, and wired it into all three
+dashboards. Also added `travelPendingSummaryHtml()` (screen-travel.js,
+shared) so the existing "Pending Requests" dashboard card (which already
+listed Time Cards/PTO counts) now also surfaces Travel Requests/Estimates/
+Expense Reports awaiting approval, with a Review link that jumps straight
+to the right nested subtab. No access-control implications — purely a
+missing-query / stale-placeholder fix, not a permission change.
+
+## 2026-07-16 — Expand-to-full-cost-breakdown on approval review (no control impact)
+Added a "Show Full Cost Breakdown" toggle (`toggleDetailBreakdown()`,
+screen-travel.js, shared) to both the Travel Estimate and Travel Expense
+Report team-review detail cards, so an approver can see the underlying
+line items (per diem rates, airfare, lodging, EWW hours, etc.) before
+deciding, not just the rolled-up totals. Purely additive display — no
+access-control implications.
+
+## 2026-07-16 — Collapsed redundant supervisor+principal approval on Expense Reports (AC-3)
+User flagged a real workflow problem while testing: in this org, the
+Principal approver is the same person as the employee's direct
+Supervisor, so the two-stage chain made him approve the identical report
+twice — once under My Team, once under Admin — for no reason.
+`teamExpenseAction()` (screen-travel-expense.js) now detects when the
+actor is viewing as `myteam` (i.e., is the report's supervisor by
+definition of the recursive-reports scope) AND also holds the Admin role
+(`isAdmin()`); if so, a single Approve sets both `supervisor_status` and
+`principal_status` to `approved` and finalizes `current_status` in one
+write, instead of requiring a second visit to the Admin screen. A note is
+shown in the review card when this collapse will happen, so it isn't a
+silent behavior change. Deny/Return are NOT collapsed — either stage can
+still independently stop the report regardless of the actor's other
+roles, since a return/deny is meant to halt progress, not skip it.
+Status: Implemented at UI level only. Same RLS gap as other approval
+actions — not enforced server-side yet.
+
+## 2026-07-16 — Date-display timezone bug found and fixed (no control impact, correctness)
+`formatDate()` (app-core.js) parsed plain `YYYY-MM-DD` strings via
+`new Date(d)`, which JS parses as UTC midnight — `.toLocaleDateString()`
+then converts to the browser's local timezone, so anyone west of UTC saw
+every date-only field rendered one calendar day earlier than what's
+actually stored (confirmed live: a trip entered as Aug 10–14 displayed as
+Aug 9–13). This affected every date-only column shown anywhere in the
+app — Timekeeping, PTO, Travel Requests/Estimates/Expenses, Directory
+start dates, clearance dates, etc. — not just Travel. Fixed by parsing
+`YYYY-MM-DD` strings as local calendar components (year/month/day)
+instead of routing them through UTC. Timestamp strings (with a time
+component) are unaffected and still parse via the original path.
+Status: Implemented, fixes display only — the underlying stored dates
+were never wrong, only how they rendered.
+
+## 2026-07-16 — BACKLOG: expense-report terminal status should be "approved," not "paid" (planning note, no code change)
+User flagged: once Principal approval clears, the pill currently shows
+`paid` (both `travel_expenses.current_status` and the linked
+`travel_estimates.status`), but the real-world process needs an
+intermediate `approved` state — `paid` should only be set by a separate,
+explicit Admin action ("mark as sent in this payroll run"), decoupled
+from the approval decision itself. Per user's explicit instruction, this
+is a backlog note only — no code changed. User also noted the
+timekeeping/payroll module has a chunk of work still ahead of it before
+shipping data to the 3rd-party payroll processor's API, and this
+"mark as paid" mechanism likely belongs alongside that effort rather than
+as a standalone toggle. See coa_travel_backlog memory.
+
+## 2026-07-16 — Corrected calc formulas against source-of-truth spreadsheet (correctness, financial)
+User provided the client's actual Excel template
+(CyberOffset_Travel_estimate_V26.0, "To Prime"/"COA Internal" tabs) and
+confirmed it is the source of truth for these calculations, correcting
+two prior assumptions:
+1. "Travel Days" per diem is 1.5x M&IE **once**, not once per departure
+   day AND return day. An earlier session had confirmed "both ends" —
+   that was wrong; the spreadsheet formula (`D15=G7*1.5`) is authoritative.
+2. Only Airfare, Airport Parking/Transport, Baggage, Per Diem, and Hotel
+   are multiplied by Number of Trainers (the "per-traveler" bucket).
+   Rental Car/Gas/Parking/Tolls, Mileage, and Shipping To/Back are
+   trip-level costs added once regardless of headcount (the spreadsheet's
+   separate "Trip lead total" group, `D25:D29`) — previously Rental Car
+   and Mileage were wrongly included in the per-traveler (multiplied)
+   bucket in both `teCalc()` (screen-travel-estimate.js) and `texCalc()`
+   (screen-travel-expense.js).
+Fixed both functions to match. Verified via direct JS execution against a
+test scenario (4 nights, 2 trainers) — Internal grand total moved from an
+incorrectly-inflated $4,406.00 to a correct $3,942.00; Customer/Prime
+grand total to ≈$4,274.51.
+Status: Implemented. This affects every Estimate/Expense total computed
+before this date — historical rows already submitted/approved before this
+fix carry the old (incorrect) stored totals and were not retroactively
+recalculated (no request to do so; flag if COA wants existing test rows
+corrected or discarded).
+
+## 2026-07-16 — EWW shown as a real dollar total on Customer/Prime copy (BACKLOG: verify with client)
+The source spreadsheet's "To Prime" tab has a mini-summary box that
+references a blank cell (`D38`) instead of the actual EWW total cell
+(`D39`), so it always displays $0 for EWW there — while still showing the
+raw EWW hours elsewhere on the same sheet. Could be intentional (hide the
+EWW dollar figure from the customer-facing copy) or a leftover template
+bug. Per user's explicit call, the app's Customer/Prime copy will
+continue showing the real computed EWW dollar total (unchanged from
+current behavior) rather than matching the spreadsheet's apparent
+suppression. Flagged in coa_travel_backlog memory to confirm with the
+client which behavior they actually want.
+
+## 2026-07-20 — Timekeeping rebuilt: weekly Time Code matrix + DCAA audit log (AU-2/AU-3, AC-3)
+Replaced the biweekly start/stop-time timekeeping model with a weekly
+Time Code x Mon-Sun matrix per user direction: dropped `day_start`/`day_end`
+and the "Now" fill buttons entirely; time is entered directly in 0.5-hour
+increments (dropdown, no loose minutes); periods changed from 14-day pay
+periods to Monday-Sunday weeks (`TK_WEEK_ANCHOR` = Mon 1/5/2026 = Week 1,
+same "first full week entirely in January" convention the old biweekly
+scheme used for Period 1). Approval/return flows (`teamTkApproveAll`/
+`teamTkSubmitReturn`, screen-timekeeping.js) carry over unchanged in
+substance, just re-pointed at weekly bounds; the per-day Flag toggle moved
+to a day-COLUMN toggle since rows are now Time Codes, not days.
+
+New `time_codes` table replaces `projects`/earning_type as the thing
+selected per row (labor category / customer / CLIN-SLIN / indirect, e.g.
+Bid & Proposal, Business Development, Holiday, Vacation). `earning_type`
+is kept on `time_entries`, now populated only for billable
+(gov_contract/commercial_customer) rows, system-computed regular-vs-
+overtime past 40 billable hrs/week — indirect codes never generate OT.
+
+New `time_card_audit_log` table (DCAA compliance): every submit/edit/
+approve/return writes a row via `tkLogAudit()` (screen-timekeeping.js) —
+employee, week, time code, action, field/old/new value, performed_by/at,
+reason. Append-only from the app's side; no UPDATE/DELETE should ever be
+granted on this table at the DB level.
+
+Vacation/PTO integration (explicit design discussion with user before
+building): Vacation is a normal, selectable Time Code, but linked to the
+existing PTO Request/Balance system — entering Vacation hours on a date
+with no covering pending/approved PTO request blocks that cell's save and
+prompts an inline single-date PTO request (`submitInlinePtoRequest`) with
+editable hours. Per user's explicit calls: (1) PTO requests now support a
+custom "Hours per day" (previously hardcoded to 8), (2) pending Vacation
+entries count toward the day/week total until denied, (3) requests that
+would put the PTO balance negative are still allowed via "Submit Anyway" —
+no hard block — pending an actual policy answer from the team.
+
+Status: Implemented at UI level only (client-side Supabase POC, no RLS).
+Gap/follow-up:
+- Requires user-run Supabase SQL (provided to user, not committed to this
+  repo — no other SQL lives in-repo for this project) to create
+  `time_codes`, `time_card_audit_log`, and alter `time_entries`
+  (drop day_start/day_end, add time_code_id, new unique constraint on
+  employee_id+work_date+time_code_id). Not yet applied as of this entry.
+- `time_card_audit_log` has no RLS/append-only enforcement yet — a direct
+  API call could bypass tkLogAudit() or tamper with existing rows in the
+  current POC. Must be enforced (INSERT-only policy, no UPDATE/DELETE
+  grants) before this satisfies DCAA in any environment with live data.
+- Pre-existing `time_entries` test rows (from before this change) have no
+  `time_code_id` and will render oddly grouped under one blank row in the
+  new matrix — not data-migrated, since this is demo/POC data only
+  (flagged to user; recommend truncating test data before trying the new
+  screen).
+- `pto_accrual_rate` on `profiles` may still represent a biweekly rate;
+  the projection math in `tkComputePtoStats()` now assumes hours/week —
+  needs confirming with payroll/HR before this number is trusted.
+- Old `project_id` column on `time_entries` is no longer written by the
+  app but was not dropped, pending the customer/contract data-model
+  cleanup noted below.
+- BACKLOG (explicitly deferred, not solved this session): unifying
+  `projects`/`gov_contracts`/commercial customers into one real
+  customer/contract/CLIN-SLIN data model — `time_codes.gov_contract_id`
+  is a nullable placeholder link, not a resolved design.
+
+## 2026-07-16 — Travel Estimate print rebuilt to match spreadsheet groupings (no control impact)
+Rewrote `buildTePrintHtml()` (screen-travel-estimate.js) — previously a
+6-line summary of rolled-up totals only — to mirror the source
+spreadsheet's "To Prime" tab layout and labels line-for-line: header/
+destination, Leave On/Return On dates, Per Diem Rates (Lodging*/M&IE
+columns) with "*includes taxes" footnote, Number of Trainers, an
+"ODC (Per Traveler)" section (Airfare, Airport Parking/Transport,
+Baggage, Per Diem Travel/Full Days, Hotel, then Per Traveler/Subtotal),
+a "Trip Lead Total" section (Rental Cars/Gas/Parking/Tolls, Mileage,
+Shipping To/Back, then Trip lead total), the combined "Estimated Total
+Travel Cost (ODC)", an EWW section (hours per trainer, hours total,
+dollar total), and a final Grand Total. Applies for both Internal and
+Customer/Prime views — the fee multiplier is applied per line item
+(matching how the spreadsheet itself displays marked-up figures), not
+just to the summary totals.
+Status: Implemented. Verified the recomputed "Estimated Total Travel
+Cost (ODC)" line matches `teCalc()`'s own `odcInternal`/`odcCustomer`
+values exactly (both true) for a test scenario, confirming the
+per-line-item math is internally consistent with the stored totals.
+No access-control implications — display/print layout only.
+
+## 2026-07-21 — Profile photo upload (SC-13 / SC-28, storage)
+Added employee profile photo upload on My Profile > Overview
+(screen-profile.js: `uploadProfilePhoto`, `removeProfilePhoto`,
+`deleteProfilePhotoFile`). Uploads write to a new Supabase Storage
+bucket `profile-photos` (public-read, path-scoped by `auth.uid()`),
+then PATCH `profiles.photo_url`. Client-side validation: image
+MIME type only, 5MB max. Replacing a photo deletes the prior storage
+object. Requires a `photo_url` text column on `profiles` and storage
+policies (self-scoped insert/delete by path prefix, plus admin
+insert/delete) — schema/bucket/policy SQL provided to user to run in
+Supabase directly (no DB credentials available to the assistant).
+Status: Implemented at UI level (client-side MIME/size checks only,
+Supabase POC — no server-side file-type validation yet, matching the
+travel-receipts precedent). Gap/follow-up: storage policies must be
+applied before this is usable; RLS/policy enforcement still pending
+broader Postgres RLS pass called out elsewhere in this log.
+
+## 2026-07-21 — Profile photo shown on Dashboard, Roster, Org Chart (no control impact)
+Extended the profile photo (added earlier this session) to render wherever
+an employee's avatar circle already appears: My Dashboard header,
+Directory > Roster rows, and Directory > Org Chart cards. Added a shared
+`avatarHtml()` helper in app-core.js (img when photo_url is set, initials
+circle fallback otherwise) instead of duplicating the conditional per
+screen. Directory's shared profile fetch (`dirFetchAllProfiles`) now also
+selects `photo_url`.
+Status: Implemented (display only — reuses the existing public
+'profile-photos' bucket and profiles.photo_url column set up earlier;
+no new data exposure since profile photos were already public-readable).
+
+## 2026-07-23 — Profile field edit gate fix: removed nonexistent 'department' column (AC-3)
+Found while fixing an unrelated Department-display bug: `adminEditableFields`
+(app-core.js) listed `department` as an admin-editable profile field, but
+`profiles` has no `department` column (only `department_id`, a `departments`
+FK, and a deprecated `department_legacy_text`). Since `saveProfile()` bundles
+every editable field into a single PATCH, this caused PostgREST to reject
+the entire request — meaning **any admin edit of any My Profile > Overview
+field was failing**, not just Department. Removed `department` from
+`adminEditableFields`; the field is now display-only, rendering the resolved
+`departments.name` via `profiles.department_id`. No UI currently exists to
+change an employee's `department_id` from this card — deferred, not asked
+for in this pass.
+Status: Fixed at UI level. Gap/follow-up: same RLS caveat as the 2026-07-16
+entry above (admin-only field gating is UI-only, not enforced server-side
+in the current Supabase POC).
+
+## 2026-07-23 — Session restore on refresh + 15-minute idle auto-logout (AC-11 / AC-12)
+Fixed two gaps found while investigating a user report ("refresh logs me
+out", "info can't be shown, try refreshing"): (1) the app never checked for
+an existing valid session on page load — sessionStorage held a still-valid
+token, but the UI always reset to the login screen on refresh, since
+showApp() was only ever called from handleLogin(). (2) There was no session
+expiry/idle handling at all, so once the Supabase access token aged out
+(no refresh-token flow implemented), API calls started failing with 401s
+and users had no clear path back except to re-login manually.
+Added to app-core.js: tryRestoreSession() runs on DOMContentLoaded and
+restores the signed-in view if a session exists, its token hasn't expired
+(computed from a self-recorded `_savedAt` timestamp + `expires_in`, not
+trusting the API's `expires_at` format), and the user wasn't idle past 15
+minutes when the page was last open. A 15-minute idle timer
+(resetIdleLogoutTimer/handleUserActivity, listening on click/keydown/
+mousemove/scroll/touchstart) auto-logs-out via handleLogout('idle'), which
+now shows "Signed out after 15 minutes of inactivity." on the login screen.
+Status: Implemented (demo-scoped). Explicitly does not implement
+refresh-token rotation — access tokens still just expire and require
+re-login; deferred since this whole flow is Supabase-POC-only and will be
+replaced by Entra ID Gov SSO. Idle timeout is currently hardcoded at 15
+minutes (IDLE_TIMEOUT_MS in app-core.js), not admin-configurable.
+
+## 2026-07-23 — Staff Recall broadcast (AC-3 / AU-2 / AU-3)
+Added Directory > Staff Recall (admin-only): broadcasts an email to every
+matching employee's work + home address (optionally filtered by a
+free-text substring match against profiles.location), with a per-recipient
+unique confirm-receipt link. New tables: `staff_recall_broadcasts` (who
+sent it, when, subject/message, location filter used, recipient count) and
+`staff_recall_recipients` (one row per person actually emailed, their
+ack_token, and acknowledged_at once they click the link). This is the
+first feature in the app with a real server-side component — a Supabase
+Edge Function (`supabase/functions/staff-recall`) — since browser JS can
+never safely hold an email-provider API key or send on behalf of "every
+employee" without a trusted authorization check. The function independently
+verifies the caller's role against `profiles.role` server-side before
+sending anything; this is notable because every other admin-only gate in
+the app so far (Admin nav tab, My Team, editable profile fields, etc.) is
+UI-only and technically bypassable by a direct API call, since there is no
+RLS yet. Email sent via Resend; confirmation clicks require no login (token
+in the URL is the only credential, matching common "click to confirm"
+patterns — not used for anything sensitive beyond marking receipt).
+Status: Implemented (demo-scoped, best-effort — no delivery guarantee, no
+SMS/Teams channel yet, deferred per user decision until the Entra ID/Azure
+crossover). Gap/follow-up: no RLS on the two new tables (matches every
+other table in this Supabase POC); location filtering is free-text
+substring match, not a structured field, per user's explicit choice to
+defer until office/location data entry conventions are confirmed.
+
+## 2026-07-23 — Staff Recall recipient selection UI (AU-2 / AU-3, before first use)
+Reworked Staff Recall's recipient selection before its first real send (no
+broadcasts had been sent yet, so this was a clean schema change, not a
+migration). Replaced the single free-text location-substring filter with
+three explicit modes: Email All, Select Region (a clickable gallery of the
+exact distinct location values found on file — exact match, not substring,
+since the gallery only ever offers values that actually exist), and
+Hand-Pick Staff (a checkbox list of individual employees). Hand-Pick exists
+specifically so a deliberate, individually-selected send is distinguishable
+in the audit trail from a broader filtered blast — user's own reasoning for
+wanting it was "so it's logged that the communication went out" to those
+specific people.
+Schema: staff_recall_broadcasts.location_filter renamed to filter_summary;
+added recipient_mode (check constraint: all/region/handpick). Recipient
+matching still happens both client-side (for the live "N employees will be
+contacted" preview, shown above the Subject field per user's UI request)
+and independently server-side in the Edge Function (re-derives the same set
+from recipientMode/locations/employeeIds rather than trusting a recipient
+list posted from the browser).
+Status: Implemented (demo-scoped, pre-first-use). Gap/follow-up unchanged
+from the prior entry — no RLS yet on either table.
+
+## 2026-07-31 — Data model cleanup: onboarding + survey removal (CM-2/CM-3)
+User directed removal of two unfinished concepts ahead of vendor decisions:
+(1) `check_onboarding_status` table — no code in this repo ever referenced
+it (no schema/migration files live in this repo; the table exists only in
+the live Postgres/Supabase instance). Drafted `drop-check_onboarding_status.sql`
+(FK-dependency check + `DROP TABLE ... CASCADE`) for the user to review and
+run themselves — no DB access from this session. Onboarding flow to be
+rebuilt once a payroll processor is selected. (2) Survey concept — no
+tables or data-layer code existed, only four placeholder UI stubs (a
+dashboard warning box and three "Surveys Due" dash-cards marked
+Soon/Coming-soon). Removed all four from screen-dashboard.js, screen-admin.js,
+and screen-myteam.js; survey functionality is moving to Microsoft tools
+instead of this app.
+Status: Implemented (UI removal) / Planned (DB drop — SQL drafted, not yet
+run). Gap/follow-up: user must execute drop-check_onboarding_status.sql
+against the target Postgres/Supabase instance; confirm no other environment
+(e.g. a separate prod-tier DB) still references the table before applying
+there.
+
+## 2026-08-05 — Light theme + Appearance preference (CM-3 / SC-8 not applicable, config change)
+Added a user-selectable Light theme ("Option A — Navy Lead, Red Accent",
+built from the CYBER Offset Alliance logo, approved by user this session)
+alongside the existing default-dark theme, plus a Dark/Light toggle on
+Profile > Overview that persists the choice. New column
+`profiles.theme_preference text NOT NULL DEFAULT 'dark' CHECK (IN
+('dark','light'))` — self-service editable via the existing PATCH path used
+for other profile fields (no new RLS surface; same trust boundary as
+preferred_name/phone). Migration drafted in `add-theme-preference.sql`, not
+yet run — user applies to the Supabase POC themselves. Theme is applied via
+a `data-theme` attribute on `<html>` (styles.css `[data-theme="light"]`
+token overrides) and cached in `localStorage` (theme name only, no PII) so
+a refresh doesn't flash the wrong theme before the profile loads.
+Status: Implemented (app code) / Planned (DB migration — SQL drafted, not
+yet run). Gap/follow-up: satisfies the CLAUDE.md accessibility requirement
+("Light/dark mode user-selectable... default to dark") which had not been
+built until now. No RLS change needed. Light-theme semantic colors (amber,
+purple status pills) were manually re-picked for WCAG AA contrast on white
+rather than reused as-is from the dark palette — worth a contrast-checker
+pass before go-live alongside the rest of the AA audit.
+
+## 2026-08-06 — Burndown estimating data model: schema + RLS (AC-3 / AC-6 / AU-2 / AU-9)
+Drafted `burndown-schema.sql`: 15 new tables for the contract/customer/
+timekeeping burndown backend (customers, contracts, contract_contacts,
+billing_nodes self-referencing tree, slins, slin_funding_history,
+slin_employee_authorization, labor_categories, employee_rates,
+indirect_pools, indirect_rates, admin_audit_log, qbo_sync_mapping). Unlike
+every prior POC table in this repo, RLS is turned ON for all 15 tables now
+(explicit user decision this session, not deferred) via a shared
+`public.is_admin()` SECURITY DEFINER helper that checks `profiles.role =
+'admin'` for `auth.uid()`.
+- Admin-only tables (customers, contracts, contract_contacts,
+  employee_rates, indirect_pools, indirect_rates, qbo_sync_mapping): full
+  CRUD gated on `is_admin()`.
+- `billing_nodes`: admin full CRUD; read allowed for any authenticated user
+  (navigation structure only, not financial detail) — the actual billing
+  gate is on `slins`.
+- `slins`: admin full CRUD; employee SELECT scoped to rows where an active
+  `slin_employee_authorization` row exists for `auth.uid()` as of the
+  current date.
+- `slin_funding_history` and `slin_employee_authorization`: admin-only,
+  and genuinely append-only at the RLS layer — SELECT + INSERT policies
+  only, no UPDATE/DELETE policy exists at all, so both are blocked
+  regardless of role (not just a UI convention, unlike the
+  `time_card_audit_log` gap noted 2026-07-31). Employees additionally get a
+  narrow SELECT on their own `slin_employee_authorization` rows.
+- `admin_audit_log`: same append-only pattern (admin SELECT + INSERT only).
+- `labor_categories`: admin write, read open to all authenticated users
+  (non-sensitive reference data).
+- `employee_rates` intentionally has no employee read policy at all —
+  `pay_rate` is compensation data; access is admin-only in both directions.
+Status: Implemented (SQL run successfully against the Supabase POC by the
+user). Gap/follow-up: policies assume `profiles.id`/`profiles.role`
+continue to match current app-core.js `isAdmin()` logic; if `profiles`
+schema changes, `is_admin()` must be revisited.
+
+## 2026-08-06 — Burndown screen: admin-gated UI (AC-3 / AC-6)
+Added `screen-burndown.js` + a new "Burndown" nav item, first UI increment
+against the schema above: Customers/Contracts CRUD (create + edit, no
+delete) and a Billing Tree view (billing_nodes, expand/collapse,
+click-to-select) with SLIN detail (slin fields, funding-mod entry,
+employee-authorization grant/revoke). Nav button `nav-btn-burndown` follows
+the exact same visibility gate as `nav-btn-admin` in
+`checkAdminNavVisibility()` (queries `profiles.role` for the signed-in
+user, hidden unless `admin`) — this is a client-side convenience only, not
+a trust boundary; the real gate is the `is_admin()` RLS policies from the
+2026-08-06 schema entry above, so a non-admin hitting the API directly is
+still blocked at the DB layer regardless of what the nav shows. No delete
+UI anywhere in this screen (create/edit only, deferred). "Revoke" on an
+authorization row inserts a new `status='revoked'` row rather than
+mutating the existing one, consistent with the append-only enforcement on
+that table. Out of scope this pass: contract_contacts, labor_categories,
+employee_rates, indirect_pools, indirect_rates, admin_audit_log,
+qbo_sync_mapping — no UI yet, later sessions.
+Status: Implemented (app code, static read-through verified — no dangling
+onclick references). Not yet browser-tested live (per CLAUDE.md UI rule,
+user verifies after deploy). Gap/follow-up: relies on `crypto.randomUUID()`
+(client-generated PKs for billing_nodes/slins/funding/authorization rows,
+needed so a new node's id is known immediately for a same-submit SLIN
+insert) — fine for the evergreen-browser internal admin audience of this
+POC, would need a fallback if IE11/very old browser support were ever
+required (not expected here).
+
+## 2026-08-06 — Burndown: contract_contacts UI, option_year, bulk SLIN entry (AC-3)
+Driven by a real Task Order Mod document the user provided as a test case.
+`add-slin-option-year.sql`: adds `slins.option_year` (free text — "Base
+Year"/"OY1"/"OY2"/etc. vary by contract, deliberately not a CHECK enum),
+plus an index for filtering. Not yet run against the Supabase POC — user
+applies it (same as every other standalone migration file in this repo).
+
+`screen-burndown.js` additions:
+- Contract Contacts UI (Technical/Contractual/Security/Billing POC —
+  name/email/phone) wired into Add Contract, Edit Contract, and the new
+  Add Customer combined flow. Upsert-by-role (PATCH existing, POST new);
+  no delete UI, consistent with the rest of this file.
+- Option Year exposed on both the single Add/Edit SLIN forms and the new
+  bulk-entry rows; the Billing Tree gained an Option Year filter (SLIN-
+  level match plus its ancestor chain stays visible so the tree doesn't
+  show orphaned leaves) and a new "SLIN Table" subtab shows a flat,
+  option-year-filterable view of a contract's existing SLINs with each
+  one's latest cumulative funding.
+- New reusable bulk-entry widget (`bdBulk*`): add N SLIN rows in one
+  screen (SLIN code/description/category/contract type/option year/PoP/
+  previous-award-cumulative funding), review, then save all in one
+  Confirm action. One shared mod_number/mod_date/source_document per
+  batch, matching how a real mod document lists many SLINs under one mod.
+  Mounted standalone in SLIN Table (own Review/Save flow) and embedded
+  inside Add Customer's "also add first contract" toggle (no separate
+  save button there — the outer Add Customer submit collects the staged
+  rows and commits customer -> contract -> contacts -> SLINs/funding in
+  one sequence using client-generated UUIDs throughout).
+Status: Implemented (app code; `node -c` syntax-checked; static
+onclick/onchange reference check — no dangling calls). Not yet browser-
+tested live. Gap/follow-up: no real DB transaction — if a multi-row Add
+Customer or bulk-save submit fails partway through, earlier rows in that
+sequence are already committed and the error message says so, but nothing
+auto-rolls-back; admin needs to check the Customers list / SLIN Table
+before retrying. Signature capture and document file upload/Blob Storage
+wiring remain explicitly out of scope per this session's direction (doc
+stays wherever it's currently kept; storage can go on the backlog later).
+
+## 2026-08-06 — Burndown: atomic multi-step submits (CM-3 / SI-10)
+Fixes the transaction-safety gap flagged in the entry directly above.
+`add-burndown-atomic-rpcs.sql` adds three Postgres functions —
+`bd_add_contract`, `bd_bulk_add_slins`, `bd_add_customer_with_contract`
+(the last calls the first two) — each doing its entire multi-row insert
+inside a single function call, which Postgres runs as one transaction: if
+any insert inside raises (including an is_admin() RLS denial), everything
+the function did rolls back automatically. None are SECURITY DEFINER —
+they run as the calling user, so the existing is_admin() RLS policies on
+customers/contracts/contract_contacts/billing_nodes/slins/
+slin_funding_history are still enforced exactly as before on every row; a
+non-admin caller now gets the whole transaction aborted rather than one
+insert failing partway through.
+`screen-burndown.js` updated to call these via `dbRpc()` in place of the
+prior sequential `dbWrite()` loops: `bdSubmitAddContract` (Add Contract
+under an existing customer), `bdSubmitAddCustomer`'s "also add first
+contract" branch, and `bdBulkSaveRows` (standalone SLIN Table bulk save).
+Numeric fields (fee_percentage, funding amounts) are now passed as raw
+strings and cast server-side via `nullif(...,'')::numeric`, so a blank
+field becomes SQL NULL instead of relying on client-side `parseFloat`.
+Edit Contract's contacts save (`bdSaveContactsForContract`) intentionally
+left as-is — it edits existing rows (per-role upsert), not a chain of new
+dependent inserts, so the partial-failure blast radius is much smaller
+than the create flows this fixes.
+Status: Implemented (app code + SQL; `node -c` syntax-checked, no
+dangling onclick/onchange references). Not yet browser-tested live.
+
+## 2026-08-06 — Timekeeping Save Week 400 error + OT redesign (SI-11 / CM-3)
+Root cause found via live DevTools Network response: `time_entries.earning_type`
+has a NOT NULL constraint, but the prior code (`saveTkWeek`, screen-timekeeping.js)
+only classified billable (gov_contract/commercial_customer) rows as
+regular/overtime and left indirect codes (B&P, BD, Holiday, Vacation, etc.)
+null — every Save Week containing a non-billable row failed with Postgres
+error 23502 (not-null violation).
+Design discussion with user before fixing: decided OT should be computed off
+total weekly hours worked (billable + indirect combined), not billable-only —
+matches standard DCAA/FLSA practice where OT is a labor-cost concept, separate
+from billability. Implemented by classifying every saved row regular/overtime
+based on cumulative hours across the whole week (walking all entries in
+date order), which also fixes a second pre-existing bug: OT was previously
+computed only from the hours being changed in the current save, not the full
+week's total, so a second save later in the week could under/over-count OT
+against hours already saved from an earlier save. `earning_type` is now
+always non-null on insert/update, so no DB migration is needed (dropped the
+`fix-time-entries-earning-type-nullable.sql` migration drafted earlier —
+unnecessary once earning_type is always populated).
+Status: Implemented (screen-timekeeping.js `saveTkWeek`). Not yet browser-
+tested live.
+
+## 2026-08-06 — My Team / Admin dashboard: fix stale pending/PTO queries (AC-3)
+Follow-up from the OT redesign above: `loadTeamDashboard`/`loadAdminDashboard`
+(screen-myteam.js, screen-admin.js) grouped pending time_entries by
+`earning_type` values (`pto`/`training`/`travel`/`admin`/`award`) that never
+match this table's actual values (`regular`/`overtime`/null) — leftover from
+a pre-Time-Code design where those were apparently separate earning types.
+In the current model the only non-`submitted` status a time_entries row ever
+gets is `pending` (a Vacation entry awaiting its linked PTO request's
+approval, per tkVacationCode) — travel/training/asset requests already live
+in their own tables and are already surfaced by the dashboard's other cards
+(travelPendingSummaryHtml, asset_requests query). Simplified grouping to just
+timecard (`status='submitted'`)/pto (`status='pending'`). Also fixed the "Out
+Today (Approved PTO)" query, which filtered `earning_type=eq.pto` (a value
+that never occurs) instead of the Vacation time code — now resolves the
+Vacation time_code_id via tkVacationCode/tkGetTimeCodes and filters on that
+plus `status=eq.approved`.
+Status: Implemented (screen-myteam.js, screen-admin.js). Not yet browser-
+tested live.
+
+## 2026-08-06 — Pay period certification, Step 1: schema + employee flow (AC-3 / AU-2 / AU-9 / SC-28)
+Design discussion with user before building (semi-monthly 1-15/16-end pay
+periods, separate from the existing Mon-Sun weekly entry grid): employees
+must certify a DCAA-style attestation at the end of each pay period before
+it's submitted for admin approval; admin certifies separately before
+payroll (Step 2); admin can enter time on an employee's behalf under
+special circumstances and can reopen a certified period for correction
+(Step 3). Full 3-step build plan agreed; this entry covers Step 1.
+New table `pay_period_certifications` (pay-period-certifications-schema.sql)
+tracks status (open/employee_certified/admin_certified) per employee per
+period. Deliberately given NO insert/update/delete RLS policies at all —
+every write goes through one of three SECURITY DEFINER Postgres functions
+(certify_period_employee implemented this step; certify_period_admin and
+reopen_period created now but not yet called from the UI, landing in
+Steps 2-3) that enforce the real business rules (every weekday in the
+period must have hours before certifying; admin can't certify before the
+employee; reopen requires a reason) — RLS alone can't express those
+cleanly. This is a deliberate, documented deviation from
+add-burndown-atomic-rpcs.sql's "no SECURITY DEFINER, rely on table RLS"
+convention (explained in the SQL file's header comment). Also added
+`time_entries.entered_by` (nullable), for the Step 3 admin-entry feature.
+Employee flow (screen-timekeeping.js): after every Save on the Current
+week, checks whether the pay period containing today is now fully covered
+(every weekday has a non-rejected entry with hours > 0) and not yet
+certified; if so, auto-shows a popup with the canned certification
+statement. Cancel leaves a persistent "Submit Pay Period for Approval"
+button next to Save Week so they can keep correcting entries and submit
+later without re-triggering the popup. Confirming calls
+certify_period_employee via RPC, then logs the event to the existing
+time_card_audit_log (action `period_certify_employee`) — no new logging
+table needed. Once certified, that period's dates become read-only on the
+weekly grid (per-day, not per-week, since a week can straddle a period
+boundary).
+Added a generic reusable `#dynamic-modal` overlay (index.html + app-core.js
+showDynamicModal/closeDynamicModal) so Steps 2-3's popups don't each
+reinvent modal markup. Also improved dbRpc() to surface the actual
+Postgres exception message instead of a bare status code — needed so the
+"every weekday needs hours" validation message reaches the user, but
+benefits every RPC caller in the app.
+Status: Implemented (schema + employee-side flow). Not yet browser-tested
+live. Gap/follow-up: entry locking is enforced client-side (disabled grid
+cells) only — time_entries itself has no RLS in this POC environment, so a
+direct API call could still write to a certified period's dates until
+Azure/RLS migration. Steps 2 (admin certify-for-payroll UI, notes-on-approve,
+remove bulk Approve All in favor of per-time-code-line approval) and 3
+(admin-entered time, reopen UI) still to come.
+
+## 2026-08-06 — Pay period certification, Step 2: admin certify-for-payroll + notes on approve (AC-3 / AU-2 / AU-9)
+Confirmed with user: Approve All stays exactly as it is (one employee, one
+week, one card at a time) — there is no cross-card/cross-employee bulk
+approval today and none is being built; the earlier "review each
+submission" request was about that distinction, not per-line approval.
+Weekly Approve All (screen-timekeeping.js teamTkApproveAll, shared by
+screen-myteam.js/screen-admin.js) now opens a confirm popup with an
+optional notes field before approving — logged into time_card_audit_log
+alongside the approval, so there's a DCAA-relevant record if an admin
+needs to explain anything unusual (e.g. entering hours on an employee's
+behalf).
+Added a Pay Period admin/My Team review view — a "Weekly Review / Pay
+Period" toggle inside the existing Timekeeping subtab (no new top-level
+nav). Shows a read-only rollup of the whole semi-monthly period (reuses
+tkRenderGridTable, which turned out to already be day-count agnostic — no
+grid changes needed to support >7 columns), the certification status pill,
+and a "Certify & Submit for Payroll" action that's only enabled once the
+employee has certified (status = employee_certified). Confirming opens a
+popup with the second canned statement + an optional notes field, calls
+the certify_period_admin RPC (built in Step 1, wired up now), and logs
+`period_certify_admin` to time_card_audit_log.
+Added tk-status-pill color variants for open/employee_certified/
+admin_certified (styles.css) matching the existing amber/teal convention.
+Status: Implemented. Not yet browser-tested live.
+Gap/follow-up: same as Step 1 — locking/certification gating is
+client-side only, no time_entries RLS in this POC. Step 3 (admin-entered
+time on an employee's behalf, and the mandatory-reason reopen flow) still
+to come.
+
+## 2026-08-06 — Pay period certification, Step 3: admin-entered time + reopen (AC-3 / AU-2 / AU-9)
+Completes the 3-step pay period certification build. Two features:
+
+Admin-entered time on an employee's behalf (special circumstances, e.g.
+employee unable to enter their own time): the My Team/Admin weekly review
+card gets an "Enter Time for Employee" toggle that switches that
+employee's grid from read-only to the same editable grid the employee
+uses on their own Current week. Saving reuses saveTkWeek() itself (now
+generalized with an optional `opts` param: `opts.employeeId` targets the
+employee instead of the caller, `opts.onSaved` replaces the employee-
+self-service reload with dropping back to the read-only card) rather than
+duplicating its validation logic (codeless-row check, missing-PTO
+handling, whole-period OT calc). Writes stamp `entered_by` with the
+admin's id (schema added in Step 1) so the DCAA trail always shows who
+actually entered a row, distinct from `performed_by` on the audit log
+entry. The inline "Submit PTO Request" convenience button (for Vacation
+hours with no covering PTO request) is not offered in admin-entry mode —
+it would submit under the wrong identity — the admin sees guidance to
+have the employee request PTO instead.
+Generalized `tkg-save-error`/`tkg-missing-pto-panel` from fixed global
+ids to containerId-scoped ids (`<containerId>-save-error` etc.) — needed
+once a second editable grid (admin-entry) could exist in the DOM
+alongside the employee's own; a fixed id would have let one card's error
+messages appear in the other's panel.
+
+Reopen (correction path): a Reopen button on the Pay Period admin card,
+available once a period is employee_certified or admin_certified. Opens
+a popup requiring a reason (enforced client-side and inside
+reopen_period's SQL — see Step 1), calls the RPC, and logs
+`period_reopen` with the reason to time_card_audit_log. Resets the period
+to `open`, clearing both certifications — full before/after state is
+preserved via the audit log entry, not attempted to be reconstructed from
+table state after the reset.
+
+Status: Implemented. Not yet browser-tested live — all three steps of
+this feature are now built and ready for the user to run
+pay-period-certifications-schema.sql and verify live.
+Gap/follow-up (carried from Steps 1-2): certification/lock enforcement is
+client-side only in this POC — no RLS on time_entries yet, so a direct
+API call could still bypass the lock or the entered_by stamp. Must be
+closed with real RLS once this moves off the Supabase POC.
+
+## 2026-08-06 — Timekeeping Simulation Mode, Stage 1: sandbox + entry/exit (AU-2 / AU-9 / CM-3)
+Design discussion with user: admins need a way to demo the full daily-
+entry -> employee-certify -> admin-approve -> admin-certify-for-payroll
+cycle at will (not tied to the real calendar) without writing anything to
+the real database, using Ricky's real account
+(954e67be-05cf-4dd9-abaa-ba37790f9032) and the seeded July 16-31 pay
+period (seed-ricky-july-pay-period.sql, deliberately left short one day
+so the simulation can complete it live).
+Built a session-only in-memory sandbox scoped to exactly the 3 tables and
+4 RPCs the Timekeeping/My Team/Admin timekeeping screens touch
+(time_entries, pay_period_certifications, time_card_audit_log;
+certify_period_employee/certify_period_admin/reopen_period/accrue_pto) —
+tkReq/tkWrite/tkRpc in screen-timekeeping.js pass straight through to the
+real dbRequest/dbWrite/dbRpc when simulation mode is off (zero behavior
+change), or read/write an in-memory store seeded once from Ricky's real
+data when it's on. The RPC business rules (weekday-completeness check,
+certify-order enforcement, mandatory reopen reason) are duplicated in JS
+from pay-period-certifications-schema.sql since the real Postgres
+functions can't run against in-memory data — documented as a deliberate
+duplication to keep in sync if the SQL ever changes.
+`tkOffsetForToday()`/`tkCurrentPeriodBounds()` also respect simulation
+mode, resolving to a fixed simulated "today" (2026-07-31, the seeded
+period's last day) instead of the real clock — this one change makes
+every existing week/period-nav, lock, and "Today" button correct for the
+simulation for free, no other date logic needed touching.
+Explicitly out of scope: the PTO tab and Dashboard widgets are NOT
+sandboxed — they still hit the real database even during a simulation.
+Only the screens the walkthrough actually uses are covered.
+Entry point: an admin-only prompt on the Timekeeping screen ("Start
+Simulation"); a persistent amber banner (outside <main>, visible on every
+screen) shows while active, with a Guided Walkthrough checkbox (wired,
+not yet consumed — Stage 2) and an Exit Simulation button that discards
+the sandbox and reloads the real screen.
+Status: Implemented (sandbox + entry/exit + banner). Stage 2 (the actual
+guided-wizard overlay with the 10 walkthrough steps) not yet built.
+Gap/follow-up: My Team/Admin's employee list is entirely replaced by
+Ricky while simulation mode is active — an admin can't review a real
+employee and run the simulation in the same session; acceptable given
+this is a demo aid, not a production workflow.
+
+## 2026-08-06 — Timekeeping Simulation Mode, Stage 2: guided wizard (AU-2 / AU-9)
+Completes the simulation mode build. Added a floating wizard panel
+(#tk-sim-wizard, fixed bottom-right, styled distinctly from modal popups
+so it never blocks them — lower z-index) driven by the Guided Walkthrough
+checkbox already wired into the banner in Stage 1. Ten narration-only
+steps (TK_SIM_STEPS) walk the admin through the full cycle agreed with
+the user: welcome/orientation, enter the last day, watch the auto-popup,
+cancel it once to see the persistent submit button, certify for real,
+approve each week individually, certify for payroll, try Reopen
+(mandatory reason), try Enter Time for Employee, and a closing summary.
+Each step pairs a plain instruction with a short "DCAA:" callout
+explaining which control this maps to (daily entry, dual attestation,
+no-silent-edit locking, audit-attributed exception entry, etc.).
+Deliberately narration-only, not action-gated — the wizard doesn't try to
+detect that the admin actually clicked Save or opened a popup; it just
+shows the next instruction on demand, which is simpler and doesn't break
+if they explore out of order.
+Guided walkthrough can be toggled off entirely (checkbox in the banner or
+"Hide walkthrough" in the panel itself) so a second run can skip the
+narration and just use simulation mode freely, per user's explicit ask —
+the flag isn't reset on simulation start, so it carries over within the
+same session once turned off.
+Status: Implemented. Timekeeping Simulation Mode (Stages 1+2) is now
+complete. Not yet browser-tested live.
+
+## 2026-08-06 — Two fixes from live demo review (AC-3)
+1. Wizard panel (.tk-sim-wizard) was rendering in the same fixed
+   bottom-right corner as the existing .demo-feedback-btn, so the
+   feedback button visually sat on top of the wizard's Back/Next
+   buttons. Moved the wizard's bottom offset from 24px to 100px to clear
+   it — no change to the feedback button itself.
+2. New rule (explicit user request from testing): once a week has been
+   submitted at least once (any saved entries exist for it),
+   Saturday/Sunday cells lock for self-service editing — weekend work is
+   the exception case, not the norm, so any correction after the fact
+   goes through an admin via Enter Time for Employee rather than staying
+   open-endedly editable. Implemented in loadTkWeek (screen-timekeeping.js)
+   by folding weekend dates into the existing lockedDates mechanism
+   tkRenderGridTable already respects — no grid-rendering changes needed.
+   Admin-entry mode (teamTkRenderCard) is untouched and still allows
+   weekend edits, since that's the intended correction path.
+Status: Implemented. Not yet re-verified live.
+
+## 2026-08-06 — Live testing round 2: Return visibility, rejected-day resubmit, Pay Period Overview, admin period edit (AC-3 / AU-2)
+Batch of fixes/features from a second live demo pass:
+
+1. Wizard panel moved out of fixed-position entirely — now sits in normal
+   document flow directly under the sim banner (pushes content down
+   instead of floating over it), fixing the same class of overlap bug as
+   the earlier demo-feedback-button fix.
+2. New `.btn-danger` class (red fill, same size/font as `.btn-primary`)
+   applied to Return and the new Submit Pay Period button — both
+   previously used the low-contrast `.btn-logout` style, which read as
+   near-invisible next to a bold `.btn-primary` sibling.
+3. Fixed a real bug found via Return: a rejected entry's hour cell showed
+   no visual indicator in the employee's own editable grid (only in the
+   read-only admin view), AND if the employee re-selected the same hours
+   value, saveTkWeek's change-detection treated it as "unchanged" and
+   never resubmitted it — the entry stayed status='rejected' forever.
+   Cells now carry data-entry-status and show a "Returned — re-enter to
+   resubmit" pill with the return reason as a tooltip; saveTkWeek always
+   writes a rejected cell through as an update regardless of whether the
+   value changed.
+4. Generalized saveTkWeek to derive its date range from start/end
+   (tkPeriodDays) instead of always assuming a 7-day week, AND fixed the
+   OT calculation to bucket by each entry's own Monday-Sunday week
+   instead of one continuous running total — necessary so a save spanning
+   a whole multi-week pay period doesn't miscompute overtime by treating
+   the entire period as one long week. Verified this produces identical
+   output to the old logic for existing single-week Save Week calls.
+5. New Pay Period Overview (tkRenderPayPeriodOverview): once the current
+   pay period is complete (or already certified), the Current Week tab
+   shows a multi-week grid for the whole period instead of one week, plus
+   a category-hours breakdown table and a Save Pay Period/Submit Pay
+   Period button pair that toggle based on unsaved-edit state (extended
+   tkOnCellChange to detect this) so only one shows at a time. Replaces
+   the old auto-popup-on-save + persistent-fallback-button approach
+   entirely — the popup now only ever fires from an explicit Submit Pay
+   Period click.
+6. Admin Pay Period card gets its own "Enter Time for Employee" toggle
+   (teamTkPeriodEditMode, separate from the Weekly Review card's own
+   toggle), reusing the newly-generalized saveTkWeek to safely save
+   across the whole period's date range in one call. Only available while
+   the period is status='open' (Reopen first if it's already certified).
+7. Certification status now shows who certified and when directly on
+   both the employee's Pay Period Overview and the admin's Pay Period
+   card (not just buried in the audit log) — who/when was already being
+   logged to time_card_audit_log via tkLogAudit; this is a display-only
+   addition (teamTkPreloadAdminName resolves the certifying admin's name).
+8. New update-ricky-july-weeks-approved.sql: marks 7/16-7/24 as
+   status='approved' (the seed script left everything 'submitted') so the
+   Pay Period admin view starts from a realistic partially-reviewed state
+   — 7/27-7/31 is what actually gets reviewed live in the walkthrough.
+9. Explained (not changed) the Flag/Approve-All-greys-out mechanic per
+   user's question — it's an intentional but subtle UI: Flag just
+   relabels a header link and disables Approve All; the actual action is
+   the separate Return button. Flagged as a real usability gap (little
+   visible feedback) but not fixed this round — user's focus was
+   confirming it works as designed before deciding whether to improve it.
+Status: Implemented. Not yet re-verified live.
+Gap/follow-up: Reopen button still uses the low-contrast .btn-logout
+style (same class as items 2 fixed for Return/Submit) — not reported as
+an issue this round, left as-is; worth the same treatment if it comes up.
+
+## 2026-08-06 — Live testing round 3: visibility, locking, cert display (AC-3 / AU-2)
+1. Wizard header brightened (stronger background + top/bottom teal
+   border) — was too easily missed against the page background.
+2. Reopen button given the same .btn-danger treatment as Return/Submit
+   Pay Period from the previous round (was still on the low-contrast
+   .btn-logout style). Audited every other Timekeeping button for the
+   same issue — only one other instance exists (PTO tab's "Cancel
+   Request" button), left as-is since the PTO tab is out of scope for
+   this simulation work; flagged as a follow-up if it comes up.
+3. Fixed a real gap in the Pay Period Overview and the admin Pay Period
+   edit-mode: entries from an already admin-approved week were still
+   editable there (only the certified-period-wide lock and the weekend
+   lock applied). Now any date with an approved entry locks too —
+   correcting it means flagging/returning that week in Weekly Review
+   first, not quietly editing already-reviewed hours from the period
+   view.
+4. Certification status pill relabeled to plain "Certified" (was
+   "Employee Certified") once the employee has certified, and the
+   who/when text now sits directly to the right of the pill instead of
+   below the grid — on the admin Pay Period card, the employee's own Pay
+   Period Overview, the Weekly Review card, and History (each week's
+   containing pay period status now shows next to the Week N label too)
+   — this was already being logged to time_card_audit_log; the display
+   was the gap.
+Status: Implemented. Not yet re-verified live.
+Open question sent to user (not built yet): what should happen if an
+admin flags/returns an entry from an already-approved week after the
+employee has otherwise completed the pay period — does fixing it need to
+go through a full re-approval of that week before the period can be
+certified, or is completing/resaving the fixed entry (already possible
+per the earlier rejected-resubmit fix) sufficient on its own? Multiple
+reasonable designs exist here; holding off on building any of them until
+that's confirmed.
+
+## 2026-08-06 — Recertification gate: certify_period_admin requires every entry approved (AC-3)
+Confirmed with user: if an admin returns an entry from a week that was
+already approved, that week must be re-approved (Approve All run again)
+before the pay period can be certified for payroll — resaving the fixed
+entry on its own isn't enough.
+certify_period_admin (both the real RPC in
+pay-period-certifications-schema.sql and the simulation sandbox mock in
+screen-timekeeping.js) now checks every time_entries row in the period is
+status='approved', not just that the employee has certified. Since a
+returned-then-resaved entry comes back as 'submitted' (per the earlier
+rejected-entry resubmit fix), this naturally blocks period certification
+until the admin re-approves that specific week — no new status or table
+needed, just a stricter check in the existing gate.
+add-certify-admin-approval-gate.sql: standalone patch for anyone who
+already ran the original schema file, since certify_period_admin already
+exists live. pay-period-certifications-schema.sql itself was also updated
+so a fresh install includes the rule from the start.
+Status: Implemented. Not yet re-verified live.
+
+## 2026-08-06 — Scope simulation banner/wizard to Timekeeping pages only (AC-3)
+Previously the sim banner and wizard were visible on every screen while
+simulation mode was active (rendered outside <main>, only gated on
+tkSimMode). Per user request, now only shows on the Timekeeping screen
+(any subtab) or My Team/Admin specifically while their Timekeeping
+subtab is active — navigating to Dashboard, Profile, Travel, etc. (even
+My Team/Admin's own Dashboard subtab) hides both.
+tkSimBannerVisibleHere() checks the active .screen and, for My Team/
+Admin, whether their Timekeeping subtab specifically is active. Hooked
+into switchScreen (app-core.js), switchMyTeamSubtab, switchAdminSubtab,
+and switchTkSubtab so visibility re-evaluates on every navigation —
+app-core.js calls are typeof-guarded (matches an existing pattern already
+in that file) since it loads before screen-timekeeping.js, even though by
+call-time (after a user click) the function always exists.
+Status: Implemented. Not yet re-verified live.
