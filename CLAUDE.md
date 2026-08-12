@@ -1,9 +1,13 @@
 # Consulting Employee Portal — Project Rules
 
-Stack: GitHub → Azure Static Web Apps (Gov). Azure Functions (C#/.NET) API layer.
+Stack: GitHub → Vercel (auto-deploy on push to main). Azure Functions (C#/.NET) API layer.
 Azure Database for PostgreSQL (Gov) backend. Entra ID (Azure AD Gov) for auth.
 Azure Blob Storage (Gov) for files. No frontend frameworks, no build step —
 plain multi-file HTML/CSS/JS served directly.
+
+Current build environment (transitional): Vercel + Supabase. Target
+production environment: the Azure Gov stack above — do not treat divergence
+between the two as errors to fix; migration happens later, deliberately.
 
 Cloud tier: Azure Government GCC (standard). Stay upgrade-compatible with GCC
 High — keep audit logging structured from day one, avoid non-US-persons-only
