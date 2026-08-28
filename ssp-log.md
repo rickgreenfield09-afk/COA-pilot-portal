@@ -1021,14 +1021,14 @@ index.html, so this has zero effect on the live demo's Supabase auth
 (handleLogin/tryRestoreSession/isAdmin in app-core.js/screen-auth.js are
 unmodified).
 Status: Planned (decisions locked, scaffold code written; not yet wired
-to a login flow or tested). Gap/follow-up: blocked on Sly Penguin fixing
-the Entra app registration's redirect URI (currently registered under
-"Web" platform; MSAL.js's PKCE public-client flow requires "SPA") before
-this can be tested end-to-end. Wiring this into the actual login flow
-(replacing handleLogin's Supabase call, repointing getSession()/isAdmin()
-at the MSAL account object) is a separate, larger change planned for once
-the Aeris track is ready to go live — explicitly not done in this pass to
-avoid any risk to the working demo.
+to a login flow or tested). Gap/follow-up: the redirect-URI blocker
+cleared 2026-08-28 — Sly Penguin moved the app registration's redirect
+URI from "Web" to "SPA" platform, so end-to-end MSAL testing is now
+unblocked. Wiring this into the actual login flow (replacing
+handleLogin's Supabase call, repointing getSession()/isAdmin() at the
+MSAL account object) is still a separate, larger change, planned for once
+the Aeris track is ready to go live — not done in this pass, to avoid any
+risk to the working demo.
 
 ## 2026-08-06 — Scope simulation banner/wizard to Timekeeping pages only (AC-3)
 Previously the sim banner and wizard were visible on every screen while
