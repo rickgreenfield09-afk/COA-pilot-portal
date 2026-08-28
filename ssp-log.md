@@ -995,6 +995,41 @@ exists live. pay-period-certifications-schema.sql itself was also updated
 so a fresh install includes the rule from the start.
 Status: Implemented. Not yet re-verified live.
 
+## 2026-08-28 — Entra ID auth implementation decisions + inert MSAL scaffold (IA-2 / IA-8 / AC-3)
+Decided the three open implementation details for the Aeris migration
+track's Entra ID Gov auth (separate/parallel effort from this repo's live
+Vercel/Supabase demo — see coa_aeris_migration_track memory):
+1. Role claim: Entra **App Roles**, not security-group claims — roles
+   (Admin/Employee/Supervisor) defined directly in the "COA - Aeris" app
+   registration, token carries a `roles` claim. Chosen so role assignment
+   stays fully under COA's control in the app registration, independent
+   of Sly Penguin's tenant-wide group structure (Sly Penguin owns the
+   shared Azure tenant, not COA).
+2. Token storage: `sessionStorage` (MSAL's `cacheLocation` option) —
+   consistent with the existing Supabase demo's session pattern; balances
+   between forcing re-login on every refresh (in-memory only) and a
+   longer-lived exposure window (localStorage).
+3. Silent renewal: MSAL's built-in `acquireTokenSilent`, falling back to
+   an interactive popup only when the cached token can't be renewed —
+   standard library behavior, avoids hand-rolled refresh logic.
+
+Added an inert scaffold to app-core.js (commit 5066db4) encoding these
+three decisions: `AERIS_MSAL_CONFIG`, `initMsalClient()`, `aerisLogin()`,
+`aerisAcquireTokenSilent()`, `aerisIsAdmin()`. None of it is called from
+any event handler and the MSAL.js library itself isn't loaded in
+index.html, so this has zero effect on the live demo's Supabase auth
+(handleLogin/tryRestoreSession/isAdmin in app-core.js/screen-auth.js are
+unmodified).
+Status: Planned (decisions locked, scaffold code written; not yet wired
+to a login flow or tested). Gap/follow-up: blocked on Sly Penguin fixing
+the Entra app registration's redirect URI (currently registered under
+"Web" platform; MSAL.js's PKCE public-client flow requires "SPA") before
+this can be tested end-to-end. Wiring this into the actual login flow
+(replacing handleLogin's Supabase call, repointing getSession()/isAdmin()
+at the MSAL account object) is a separate, larger change planned for once
+the Aeris track is ready to go live — explicitly not done in this pass to
+avoid any risk to the working demo.
+
 ## 2026-08-06 — Scope simulation banner/wizard to Timekeeping pages only (AC-3)
 Previously the sim banner and wizard were visible on every screen while
 simulation mode was active (rendered outside <main>, only gated on
