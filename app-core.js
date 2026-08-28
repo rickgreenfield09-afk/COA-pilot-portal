@@ -439,4 +439,79 @@
     if(typeof tkRenderSimWizard === 'function'){ tkRenderSimWizard(); }
   }
 
+  // ---------- Aeris/Entra ID MSAL scaffold (INERT — not wired to anything) ----------
+  // Placeholder for the parallel Azure migration track ("Aeris"). The Supabase
+  // login flow above is the live demo auth and is untouched by this block.
+  // Nothing here runs automatically: initMsalClient()/aerisLogin()/etc. are
+  // not called from any event handler yet, and the MSAL.js library itself
+  // isn't even loaded in index.html, so this adds zero behavior and zero
+  // network requests to the demo as it stands today.
+  //
+  // To go live: (1) add the MSAL.js <script> tag to index.html, (2) replace
+  // screen-auth.js's handleLogin() Supabase call with aerisLogin(), (3) point
+  // getSession()/isAdmin() at the MSAL account object instead of sessionStorage
+  // coa_session — that's a bigger change than this scaffold and should wait
+  // until the Sly Penguin SPA-redirect-URI blocker clears and this has been
+  // tested end-to-end outside the live demo.
+  //
+  // Auth implementation decisions locked 2026-08-28 (see memory:
+  // coa_aeris_migration_track.md):
+  //   - Role claim: Entra App Roles, claim name "roles"
+  //   - Token storage: sessionStorage (MSAL's cacheLocation option, same
+  //     pattern as the Supabase session above)
+  //   - Silent renewal: MSAL's built-in acquireTokenSilent
+  var AERIS_MSAL_CONFIG = {
+    auth: {
+      clientId: '7de6fb71-68ef-410a-84e0-6847fd06cd47',
+      authority: 'https://login.microsoftonline.com/a33e7419-7258-4616-a95a-ad8450531e8f',
+      redirectUri: window.location.origin
+    },
+    cache: {
+      cacheLocation: 'sessionStorage',
+      storeAuthStateInCookie: false
+    }
+  };
+
+  var aerisMsalClient = null;
+
+  function initMsalClient(){
+    if(typeof msal === 'undefined'){
+      console.error('MSAL.js is not loaded — add the msal-browser <script> tag to index.html before calling this.');
+      return null;
+    }
+    if(!aerisMsalClient){
+      aerisMsalClient = new msal.PublicClientApplication(AERIS_MSAL_CONFIG);
+    }
+    return aerisMsalClient;
+  }
+
+  // Stub login — popup flow, mirrors handleLogin()'s role in screen-auth.js
+  // but for Entra instead of Supabase. Not called from any button yet.
+  async function aerisLogin(){
+    var client = initMsalClient();
+    if(!client){ return null; }
+    return client.loginPopup({ scopes: ['User.Read'] });
+  }
+
+  // Stub silent renewal — falls back to an interactive popup only if the
+  // cached token can't be renewed silently, per the decision above.
+  async function aerisAcquireTokenSilent(account){
+    var client = initMsalClient();
+    if(!client){ return null; }
+    var request = { scopes: ['User.Read'], account: account };
+    try{
+      return await client.acquireTokenSilent(request);
+    }catch(e){
+      return client.acquireTokenPopup(request);
+    }
+  }
+
+  // Stub role check — reads the "roles" App Role claim off the MSAL account's
+  // ID token once Aeris auth is live. Separate from isAdmin() above, which
+  // stays the Supabase demo's role check until the two are switched over.
+  function aerisIsAdmin(account){
+    if(!account || !account.idTokenClaims || !account.idTokenClaims.roles){ return false; }
+    return account.idTokenClaims.roles.indexOf('Admin') !== -1;
+  }
+
   document.addEventListener('DOMContentLoaded', tryRestoreSession);
