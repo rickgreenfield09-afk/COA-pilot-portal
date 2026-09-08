@@ -1352,3 +1352,34 @@ progress (the first was the redirect URI platform fix, 2026-08-28), and
 standing Owner access would prevent a third occurrence for whatever App
 Registration change comes up next.
 Gap/follow-up: blocks any real end-to-end MSAL login test until resolved.
+
+## 2026-09-08 — UpdateMyProfile: second Functions endpoint, establishes the write pattern (AC-3 / SI-10)
+Added the write counterpart to GetMyProfile — PATCH /api/profile/me.
+Establishes the write pattern every future write endpoint should follow:
+an explicit hardcoded allow-list of updatable columns (EditableFields in
+ProfileFunctions.cs, matching app-core.js's employeeEditableFields plus
+theme_preference), rejecting any request field not on that list rather
+than trusting whatever the client sends — the standard defense against a
+mass-assignment vulnerability, where a client could otherwise PATCH a
+field like `role` or `clearance_level` just by including it in the
+request body. Column names are only ever interpolated from that fixed
+allow-list (safe — never from request input); values are always
+parameterized. Scoped to the caller's own row via the same
+identity-resolution chain as GetMyProfile; profiles_update_self's RLS
+policy (id = current_user_id() OR is_admin()) double-enforces the
+self-only scoping at the database layer even if this code ever had a bug.
+Also added a basic value-type check (string or null only, since every
+editable field is a text column) and a check-violation-specific catch
+(e.g. theme_preference outside its dark/light constraint) returning a
+clean 400 instead of falling through to the generic 500.
+Status: Implemented. `dotnet build` succeeds (0 warnings/errors). Verified
+locally (func start + curl): the route registers correctly and an
+unauthenticated PATCH request returns 401, same as GetMyProfile. The
+field-validation/allow-list logic itself is NOT yet verified against a
+real request, since that requires passing EntraAuthMiddleware first —
+still blocked on the same Expose-an-API blocker logged above.
+Gap/follow-up: not yet consumed by the frontend — screen-profile.js still
+calls Supabase directly for these same fields (theme_preference,
+preferred_name, phone, home_email, home_phone, known_traveler_number,
+bio) via three separate PATCH calls; wiring the frontend over to this one
+consolidated endpoint is a later step, not done here.

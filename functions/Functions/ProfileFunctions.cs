@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using CoaFunctions.Data;
 using CoaFunctions.Utils;
 using Microsoft.AspNetCore.Http;
@@ -12,6 +13,22 @@ namespace CoaFunctions.Functions;
 public class ProfileFunctions(ILogger<ProfileFunctions> logger)
 {
     private readonly ILogger<ProfileFunctions> _logger = logger;
+
+    // Matches app-core.js's employeeEditableFields, plus theme_preference
+    // (a separate PATCH call on the frontend today via setThemePreference(),
+    // but the same self-service trust boundary — no reason to split it into
+    // a second endpoint here). Deliberately excludes full_name/location
+    // (adminEditableFields-only on the frontend) and every HR/clearance
+    // field, which stay display-only even for the profile's own owner —
+    // matches the 2026-08-07 ssp-log decision on this exact split. This is
+    // an allow-list, not just documentation: UpdateMyProfile below silently
+    // ignores any request field not in this set, rather than trusting
+    // whatever the client happens to send.
+    private static readonly HashSet<string> EditableFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "preferred_name", "phone", "home_email", "home_phone",
+        "known_traveler_number", "bio", "theme_preference"
+    };
 
     // FIRST Functions endpoint for the Aeris build — establishes the
     // pattern every later endpoint follows: EntraAuthMiddleware has
@@ -111,6 +128,109 @@ public class ProfileFunctions(ILogger<ProfileFunctions> logger)
         catch (Exception ex)
         {
             _logger.LogError(ex, "GetMyProfile failed for Entra object id {EntraObjectId}", entraObjectId);
+            return new ObjectResult(new { error = "Internal error." }) { StatusCode = 500 };
+        }
+    }
+
+    // Write counterpart to GetMyProfile — establishes the write pattern:
+    // an explicit allow-list of updatable columns (never build an UPDATE
+    // from arbitrary client-supplied field names — that's a mass-assignment
+    // hole), values always parameterized, scoped to the caller's own row
+    // via the same identity-resolution chain as every other endpoint.
+    // profiles_update_self's RLS policy (id = current_user_id() OR
+    // is_admin()) double-enforces the self-only scoping at the database
+    // layer even if this code ever had a bug — WHERE id = @id here matches
+    // it, not a separate trust boundary.
+    [Function("UpdateMyProfile")]
+    public async Task<IActionResult> UpdateMyProfile(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "patch", Route = "profile/me")] HttpRequest req,
+        FunctionContext context)
+    {
+        if (context.Items["User"] is not ClaimsPrincipal user)
+        {
+            return new UnauthorizedResult();
+        }
+
+        var entraObjectId = user.FindFirst("oid")?.Value;
+        if (string.IsNullOrEmpty(entraObjectId))
+        {
+            _logger.LogWarning("Validated Entra token had no 'oid' claim.");
+            return new UnauthorizedResult();
+        }
+
+        var role = AerisRoleMapper.ResolveRole(user);
+
+        Dictionary<string, JsonElement>? body;
+        try
+        {
+            body = await req.ReadFromJsonAsync<Dictionary<string, JsonElement>>();
+        }
+        catch (JsonException)
+        {
+            return new BadRequestObjectResult(new { error = "Invalid JSON body." });
+        }
+
+        if (body is null || body.Count == 0)
+        {
+            return new BadRequestObjectResult(new { error = "No fields provided." });
+        }
+
+        var fieldsToUpdate = body.Keys.Where(k => EditableFields.Contains(k)).ToList();
+        if (fieldsToUpdate.Count == 0)
+        {
+            return new BadRequestObjectResult(new { error = "No editable fields in request body." });
+        }
+
+        // Every value here must be a string or JSON null — every field in
+        // EditableFields is a text column (confirmed against the real
+        // schema), so anything else is a client mistake, not a valid edit.
+        var nonStringField = fieldsToUpdate.FirstOrDefault(f =>
+            body[f].ValueKind is not JsonValueKind.String and not JsonValueKind.Null);
+        if (nonStringField is not null)
+        {
+            return new BadRequestObjectResult(new { error = $"Field '{nonStringField}' must be a string or null." });
+        }
+
+        try
+        {
+            var (conn, profileId) = await AerisDbConnectionFactory.OpenScopedAsync(entraObjectId, role);
+            await using var _ = conn;
+
+            // Column names here come only from EditableFields (a fixed,
+            // hardcoded allow-list checked above), never directly from the
+            // request body — safe to interpolate; values are still always
+            // parameterized below.
+            var setClauses = fieldsToUpdate.Select(f => $"{f} = @{f}");
+            var sql = $"update profiles set {string.Join(", ", setClauses)} where id = @id";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("id", profileId);
+            foreach (var field in fieldsToUpdate)
+            {
+                object value = body[field].ValueKind == JsonValueKind.Null
+                    ? DBNull.Value
+                    : body[field].GetString()!;
+                cmd.Parameters.AddWithValue(field, value);
+            }
+
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+            if (rowsAffected == 0)
+            {
+                // Should be unreachable — OpenScopedAsync already threw if
+                // no profiles row matched the Entra account.
+                return new NotFoundObjectResult(new { error = "No profile found for this account." });
+            }
+
+            return new OkObjectResult(new { updated = fieldsToUpdate });
+        }
+        catch (PostgresException ex) when (ex.SqlState == "23514")
+        {
+            // check_violation — e.g. theme_preference outside ('dark','light').
+            return new BadRequestObjectResult(new { error = "One or more values failed a database constraint." });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "UpdateMyProfile failed for Entra object id {EntraObjectId}", entraObjectId);
             return new ObjectResult(new { error = "Internal error." }) { StatusCode = 500 };
         }
     }
