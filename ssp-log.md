@@ -1757,3 +1757,26 @@ Cyber-Offset-Alliance/coa-employee-portal repo, (3) wire
 POSTGRES_CONNECTION_STRING/ENTRA_TENANT_ID/ENTRA_API_AUDIENCE app
 settings on the Function App itself, (4) configure CORS to the Aeris
 frontend origins per the earlier decision.
+
+## 2026-09-08 — App settings wired; second Sly Penguin role-assignment request (SC-28 / CM-6)
+GitHub secrets added (AZURE_CLIENT_ID, AZURE_TENANT_ID,
+AZURE_SUBSCRIPTION_ID) — workflow is ready to run as soon as the
+Website Contributor role assignment lands. ENTRA_TENANT_ID and
+ENTRA_API_AUDIENCE app settings added directly on the Function App
+(no blocker — plain configuration, not an IAM action).
+POSTGRES_CONNECTION_STRING requires a new Key Vault secret
+(psql-coa-prod-eus-app-api-connection-string, the full Npgsql connection
+string with the app_api password embedded) referenced via
+@Microsoft.KeyVault(...) syntax — this in turn requires the Function
+App's system-assigned managed identity to have Key Vault Secrets User
+on kv-coa-prod-eus, which hit the same Owner/User Access Administrator
+wall as the earlier role assignment. Second Sly Penguin request sent for
+this specific role assignment.
+Status: Two role assignments now pending from Sly Penguin (Website
+Contributor on func-coa-prod-eus-01 for the GitHub Deploy service
+principal; Key Vault Secrets User on kv-coa-prod-eus for the Function
+App's managed identity). Everything else on the Functions deployment
+path is ready and waiting on these.
+Gap/follow-up: CORS (Aeris frontend origins) still not configured on the
+Function App resource — not yet attempted this session, unclear if it
+hits the same permission wall or not.
