@@ -1588,3 +1588,37 @@ load the full app, now a platform-default security header) — each was a
 real, separate root cause, not the same bug resurfacing. Worth a full
 clean end-to-end retest once this deploys, rather than assuming this is
 necessarily the last one.
+
+## 2026-09-08 — Fourth issue and actual root cause found: auth-popup.html used the wrong MSAL mechanism entirely (IA-2 / IA-8)
+The COOP header fix didn't resolve it — retested and got a concrete
+error this time: `BrowserAuthError: timed_out`, thrown in the opener
+window after MSAL's internal wait for the popup elapsed. This is the
+real, definitive signal (earlier attempts only had silence to go on).
+Research (web search + fetching MSAL's own popup-relay bundle) found the
+actual root cause: msal-browser v3+ (we're on v5.21.0) replaced the old
+window.opener-polling popup mechanism with a BroadcastChannel-based
+"popup relay" — specifically because window.opener is exactly what
+Microsoft's own strict Cross-Origin-Opener-Policy: same-origin header on
+login.microsoftonline.com breaks, so MSAL stopped depending on it years
+ago. auth-popup.html was still using the old pattern (constructing a
+full PublicClientApplication and doing nothing else), which was simply
+never going to complete a popup flow correctly under current MSAL — the
+COOP-header fix in the previous entry was solving a real but
+no-longer-relevant problem.
+Fixed: auth-popup.html now loads
+`@azure/msal-browser/lib/popup-relay/msal-popup-relay.min.js` (a small,
+dedicated ~3.6KB bundle, not the full library) and calls
+`window.msalPopupRelay.runPopupRelay({ allowedAuthorityOrigins:
+['https://login.microsoftonline.com'] })` — MSAL's own documented
+mechanism for exactly this dedicated-redirect-page use case. No changes
+needed on the opener side (aerisLogin()/AERIS_MSAL_CONFIG) — the relay
+page is what was wrong.
+Status: Implemented, not yet retested live.
+Gap/follow-up: the earlier COOP header (same-origin-allow-popups) is
+left in place — harmless either way, and may still be relevant for
+things unrelated to this specific popup-relay mechanism. Fourth distinct
+issue across four consecutive live-login attempts; if this doesn't
+resolve it, the next diagnostic step should be checking whether
+BroadcastChannel itself is being blocked (e.g. by a browser
+privacy/extension setting), not re-litigating the redirect
+URI/COOP/window.opener chain already ruled out.

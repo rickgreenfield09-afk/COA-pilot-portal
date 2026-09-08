@@ -7,32 +7,31 @@
 <body>
 <!-- Dedicated MSAL popup redirect target — NOT the main app.
      aerisLogin()/aerisAcquireTokenSilent() (app-core.js) point their
-     redirectUri here instead of the app's own root. Without this, the
-     popup would land back on index.html, which loads the full app (login
-     screen, screen router, etc.) and dynamically fetches MSAL.js itself —
-     racing against MSAL's own popup-completion handshake, which needs the
-     library loaded and a matching PublicClientApplication constructed
-     immediately to detect "I'm a popup MSAL opened" and self-close. This
-     page does only that: load MSAL, construct the client, done. See
-     ssp-log.md for the live symptom this fixed (popup re-rendering the
-     full login page instead of closing).
+     redirectUri here instead of the app's own root.
+
+     Correction 2026-09-08: this page originally constructed a full
+     PublicClientApplication here, matching older MSAL versions'
+     window.opener-polling popup mechanism. That's wrong for MSAL browser
+     v3+ (we're on v5): it uses a BroadcastChannel-based "popup relay"
+     instead, specifically so it doesn't depend on window.opener at all —
+     which matters here because Microsoft's own login.microsoftonline.com
+     sets a strict Cross-Origin-Opener-Policy: same-origin header (not
+     ours to control), severing window.opener the moment the popup
+     navigates there. The dedicated msal-popup-relay bundle sidesteps
+     that entirely. See ssp-log.md for the full sequence of symptoms this
+     replaced (popup re-rendering the full app; then window.opener null;
+     each was a real, separate issue, not the same bug resurfacing).
+
+     This page should do nothing but run the relay — no full app,
+     no other scripts, per MSAL's own guidance for this page.
 
      This exact URL (origin + /auth-popup.html) must be registered as a
-     Redirect URI under the SPA platform in the "COA - Aeris" App
-     Registration, alongside the existing bare-origin one used for
-     silent/acquireTokenSilent calls that don't open a popup. -->
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@5.21.0/lib/msal-browser.min.js"></script>
+     Redirect URI under the SPA platform in the App Registration. -->
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@5.21.0/lib/popup-relay/msal-popup-relay.min.js"></script>
 <script>
-  new msal.PublicClientApplication({
-    auth: {
-      clientId: '7de6fb71-68ef-410a-84e0-6847fd06cd47',
-      authority: 'https://login.microsoftonline.com/a33e7419-7258-4616-a95a-ad8450531e8f'
-    },
-    cache: {
-      cacheLocation: 'sessionStorage',
-      storeAuthStateInCookie: false
-    }
-  }).initialize();
+  window.msalPopupRelay.runPopupRelay({
+    allowedAuthorityOrigins: ['https://login.microsoftonline.com']
+  });
 </script>
 </body>
 </html>
