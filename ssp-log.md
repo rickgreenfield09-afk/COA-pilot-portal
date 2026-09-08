@@ -1426,3 +1426,54 @@ Gap/follow-up: not yet consumed by the frontend. Basic required-field
 validation only (all three fields non-empty) — no validation against a
 fixed set of program_type values, matching the schema (no CHECK
 constraint exists on that column either).
+
+## 2026-09-08 — Found and fixed RLS gap: assets/asset_requests had no self-service access (AC-3 / AC-6)
+While building Profile's Assets tab endpoints, found that `assets` and
+`asset_requests` each have only one RLS policy — assets_admin_all /
+asset_requests_admin_all, both app.is_admin()-only. Under the RLS as
+deployed, a regular employee querying their own assigned assets or their
+own asset requests gets zero rows back, silently — not an error. Every
+other employee-facing table in this schema (profiles, resumes,
+employee_travel_programs, time_entries, etc.) has a matching self-access
+policy alongside its admin one; these two were the only tables missing
+it, and it would have made the Profile/My Team Assets tabs (already built
+and live in the Supabase demo) silently return nothing once ported to
+this backend.
+add-asset-self-service-rls.sql (drafted, not yet run) adds:
+- assets_select_self_or_manager: SELECT, self OR is_manager_of() OR
+  is_admin() — matches this schema's dominant convention for
+  self+manager+admin read access (same shape as profiles_select,
+  time_entries_select, travel_estimates_select). Read-only — editing an
+  asset record stays admin-only, since these are equipment records, not
+  something an employee or their supervisor self-attests.
+- asset_requests_select_self_or_manager: same shape, for viewing requests.
+- asset_requests_insert_self: employees can submit their own requests;
+  approving/denying stays admin-only via the existing admin_all policy.
+Status: Planned (SQL drafted, given to Ricky to run — same pattern as
+every other .sql file in this repo). Gap/follow-up: self-service
+assets/asset_requests endpoints will compile and run either way, but
+return empty for non-admin callers until this SQL is applied.
+
+## 2026-09-08 — Assets self-service: sixth, seventh, eighth endpoints (AC-3 / SI-10)
+GetMyAssets (GET /api/assets/me), GetMyAssetRequests (GET
+/api/asset-requests/me), SubmitAssetRequest (POST /api/asset-requests/me)
+— completes Profile's Assets tab. Two things worth flagging on the write
+side:
+- requested_by is always the resolved profile id from the validated
+  token, never a client-supplied value — the current frontend actually
+  sends session.user.id itself in the request body (screen-profile.js),
+  which this endpoint deliberately ignores rather than trusts.
+- status is restricted to 'draft'/'pending' only, rejecting anything
+  else with a 400. RLS's asset_requests_insert_self policy (added above)
+  doesn't restrict the status value at all — an employee could otherwise
+  submit a request with status='approved' directly, skipping the
+  approval flow entirely. That check has to live here since RLS doesn't
+  cover it.
+Status: Implemented. `dotnet build` succeeds (0 warnings/errors). Verified
+locally — all three routes register, unauthenticated requests to each
+return 401. GetMyAssets/GetMyAssetRequests depend on the RLS fix drafted
+above — will return empty for non-admin callers until that SQL is run.
+Gap/follow-up: admin-side asset management (create/edit assets, review
+and approve/deny requests) and the My Team/Admin team-assets views are
+not built yet — this pass covers only the employee self-service side.
+Not yet consumed by the frontend.
