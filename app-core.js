@@ -485,11 +485,19 @@
     return h.indexOf('azurestaticapps.net') !== -1 || h.indexOf('cyberoffset.com') !== -1;
   }
 
+  // redirectUri points at a dedicated static page (auth-popup.html), NOT
+  // this app's own root — found live 2026-09-08 that using the app's own
+  // URL made the popup re-render the full login screen instead of
+  // self-closing, since it had to dynamically fetch MSAL.js itself before
+  // MSAL's popup-completion handshake could run, racing against the
+  // opener's detection. See auth-popup.html's own comment and ssp-log.md
+  // for the full symptom/fix. This exact URL must be registered as a
+  // Redirect URI under the SPA platform in the App Registration.
   var AERIS_MSAL_CONFIG = {
     auth: {
       clientId: '7de6fb71-68ef-410a-84e0-6847fd06cd47',
       authority: 'https://login.microsoftonline.com/a33e7419-7258-4616-a95a-ad8450531e8f',
-      redirectUri: window.location.origin
+      redirectUri: window.location.origin + '/auth-popup.html'
     },
     cache: {
       cacheLocation: 'sessionStorage',

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Signing in…</title>
+</head>
+<body>
+<!-- Dedicated MSAL popup redirect target — NOT the main app.
+     aerisLogin()/aerisAcquireTokenSilent() (app-core.js) point their
+     redirectUri here instead of the app's own root. Without this, the
+     popup would land back on index.html, which loads the full app (login
+     screen, screen router, etc.) and dynamically fetches MSAL.js itself —
+     racing against MSAL's own popup-completion handshake, which needs the
+     library loaded and a matching PublicClientApplication constructed
+     immediately to detect "I'm a popup MSAL opened" and self-close. This
+     page does only that: load MSAL, construct the client, done. See
+     ssp-log.md for the live symptom this fixed (popup re-rendering the
+     full login page instead of closing).
+
+     This exact URL (origin + /auth-popup.html) must be registered as a
+     Redirect URI under the SPA platform in the "COA - Aeris" App
+     Registration, alongside the existing bare-origin one used for
+     silent/acquireTokenSilent calls that don't open a popup. -->
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@5.21.0/lib/msal-browser.min.js"></script>
+<script>
+  new msal.PublicClientApplication({
+    auth: {
+      clientId: '7de6fb71-68ef-410a-84e0-6847fd06cd47',
+      authority: 'https://login.microsoftonline.com/a33e7419-7258-4616-a95a-ad8450531e8f'
+    },
+    cache: {
+      cacheLocation: 'sessionStorage',
+      storeAuthStateInCookie: false
+    }
+  }).initialize();
+</script>
+</body>
+</html>

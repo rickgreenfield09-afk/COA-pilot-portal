@@ -1526,3 +1526,37 @@ given the small known set of file types today, but needs manual review
 if new sensitive file types get added to the repo root later. Worth
 reconsidering an allow-list once the live site is stable enough to risk
 testing one without breaking the demo.
+
+## 2026-09-08 — First live login attempt: redirect URI mismatch, then popup-vs-app-root race (IA-2 / IA-8)
+First real end-to-end MSAL test against the live Azure SWA deploy.
+Two real issues found and fixed in sequence:
+1. AADSTS50011 redirect URI mismatch — the App Registration's only SPA
+   redirect URI was `.../.auth/login/aad/callback` (Azure Static Web
+   Apps' own built-in auth callback path, unrelated to our custom
+   MSAL.js implementation, evidently a leftover from initial setup).
+   Fixed by Ricky adding the bare origin as a second SPA redirect URI.
+2. After that fix, the popup completed the Entra redirect (URL showed
+   `#code=...`) but never self-closed — instead it rendered this app's
+   entire login screen inside the popup itself, and clicking Sign In
+   again there produced "Sign-in failed." Root cause: the popup's
+   redirect URI was this app's own root, so landing there loaded the
+   full app (screen router, login screen, etc.) AND had to dynamically
+   fetch MSAL.js from the CDN itself before MSAL's popup-completion
+   handshake could run — racing against (and losing to) the opener
+   window's own detection logic, since MSAL's popup self-close requires
+   the library loaded and a matching client constructed immediately on
+   that page. Confirmed via web search this is a known, documented
+   MSAL.js pattern — the standard fix is a dedicated minimal redirect
+   page, not reusing the main app's URL.
+   Added auth-popup.html: loads MSAL, constructs a matching
+   PublicClientApplication, does nothing else. AERIS_MSAL_CONFIG's
+   redirectUri now points there instead of the app root. This new exact
+   URL needs to be added as a third SPA redirect URI in the App
+   Registration before this can be retested.
+Status: Fix implemented, not yet retested live — needs the new
+auth-popup.html redirect URI registered in Entra first.
+Gap/follow-up: the original bare-origin redirect URI (added for issue #1
+above) is still registered and now unused by login — left in place since
+acquireTokenSilent-only flows conventionally reuse it in some setups;
+worth pruning later if it's confirmed unnecessary rather than leaving
+an unused registered redirect URI around indefinitely.
