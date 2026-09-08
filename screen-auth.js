@@ -59,7 +59,19 @@
       resetIdleLogoutTimer();
       showApp(session.user.email);
     }catch(e){
-      console.error(e);
+      // Logged verbosely (not just the bare Error object) since MSAL's
+      // BrowserAuthError carries diagnostic detail (errorCode, subError,
+      // correlationId) that the console's default Error rendering doesn't
+      // always surface without manually expanding the stack trace.
+      console.error('Aeris login failed:', {
+        name: e && e.name,
+        errorCode: e && e.errorCode,
+        errorMessage: e && e.errorMessage,
+        subError: e && e.subError,
+        correlationId: e && e.correlationId,
+        message: e && e.message,
+        raw: e
+      });
       errorEl.textContent = 'Sign-in failed. Please try again.';
     }finally{
       btn.disabled = false;
