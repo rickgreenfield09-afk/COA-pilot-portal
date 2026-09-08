@@ -1401,3 +1401,28 @@ locally — route registers, unauthenticated request returns 401. Same live
 Entra token limitation as the other two endpoints.
 Gap/follow-up: not yet consumed by the frontend. Write side (resume
 edits) not built yet — this is read-only for now.
+
+## 2026-09-08 — Travel programs: fourth/fifth endpoints, transaction-wrapped replace-all (AC-3 / SI-10)
+GET /api/travel-programs/me (list) and PUT /api/travel-programs/me
+(replace-all) for employee_travel_programs (known traveler numbers,
+airline/hotel program memberships). Mirrors the frontend's existing
+pattern exactly — screen-profile.js already does DELETE-all then
+POST-the-new-set rather than per-row upsert — but wraps both statements
+in one Npgsql transaction here, since a failure between the DELETE and
+the INSERT would otherwise silently wipe an employee's saved travel
+programs with nothing to show for it. Same atomicity concern the
+burndown-schema atomic RPCs solved for multi-step Postgres-side writes
+(ssp-log.md 2026-08-06), just handled at the Functions layer this time
+instead of a Postgres function, since this is a straightforward two-step
+sequence rather than something RLS-sensitive enough to need a
+SECURITY DEFINER wrapper. The session variables set by
+AerisDbConnectionFactory persist across the transaction boundary fine
+(set_config's is_local=false scopes them to the whole connection, not
+just one transaction).
+Status: Implemented. `dotnet build` succeeds (0 warnings/errors). Verified
+locally — both routes register, unauthenticated requests to each return
+401.
+Gap/follow-up: not yet consumed by the frontend. Basic required-field
+validation only (all three fields non-empty) — no validation against a
+fixed set of program_type values, matching the schema (no CHECK
+constraint exists on that column either).
