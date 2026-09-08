@@ -1622,3 +1622,28 @@ resolve it, the next diagnostic step should be checking whether
 BroadcastChannel itself is being blocked (e.g. by a browser
 privacy/extension setting), not re-litigating the redirect
 URI/COOP/window.opener chain already ruled out.
+
+## 2026-09-08 — Fifth issue: popup relay needs its own explicit config option, not just a matching redirectUri (IA-2 / IA-8)
+Retested (outside InPrivate mode, to rule that out) — got past account
+picker, password, and the stay-signed-in prompt this time, furthest yet,
+but the popup relay itself threw a named error:
+`BrowserAuthError: popup_relay_unsupported_flow`. Looked up MSAL's own
+error docs directly rather than guessing: this top-level error covers 5
+sub-causes (cross-origin relay page, missing window.opener, unparseable
+relayed request, non-HTTPS target, or untrusted authority origin) — and
+critically, the docs reveal `redirectUri` alone isn't enough to enable
+the relay flow; msal-browser needs a SEPARATE `auth.popupRelayUri` config
+option on the opener's PublicClientApplication telling it which page is
+the designated relay target. AERIS_MSAL_CONFIG only ever set
+`redirectUri`; `popupRelayUri` was never set at all, likely why MSAL
+wasn't engaging the relay flow correctly regardless of what the relay
+page itself did.
+Fixed: added `popupRelayUri` to AERIS_MSAL_CONFIG.auth, same value as
+redirectUri (the one dedicated page we have).
+Status: Implemented, not yet retested live.
+Gap/follow-up: if `popup_relay_unsupported_flow` recurs after this fix,
+the specific sub-cause to check next is missing window.opener (matches
+the null result found two entries above) — the COOP header fix may not
+have actually restored it end-to-end through Microsoft's own
+login.microsoftonline.com hop, which would need a different approach
+than a static config addition to resolve.

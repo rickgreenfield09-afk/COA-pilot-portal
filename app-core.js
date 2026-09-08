@@ -493,11 +493,19 @@
   // opener's detection. See auth-popup.html's own comment and ssp-log.md
   // for the full symptom/fix. This exact URL must be registered as a
   // Redirect URI under the SPA platform in the App Registration.
+  //
+  // popupRelayUri is a SEPARATE required option from redirectUri for
+  // msal-browser's BroadcastChannel-based popup relay (v3+) — without it,
+  // loginPopup() doesn't know auth-popup.html is a valid relay page and
+  // the relay script itself rejects with popup_relay_unsupported_flow.
+  // Same URL as redirectUri here since we only have the one dedicated page.
+  var AERIS_AUTH_POPUP_URI = window.location.origin + '/auth-popup.html';
   var AERIS_MSAL_CONFIG = {
     auth: {
       clientId: '7de6fb71-68ef-410a-84e0-6847fd06cd47',
       authority: 'https://login.microsoftonline.com/a33e7419-7258-4616-a95a-ad8450531e8f',
-      redirectUri: window.location.origin + '/auth-popup.html'
+      redirectUri: AERIS_AUTH_POPUP_URI,
+      popupRelayUri: AERIS_AUTH_POPUP_URI
     },
     cache: {
       cacheLocation: 'sessionStorage',
