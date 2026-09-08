@@ -1,0 +1,43 @@
+name: Deploy Functions API
+
+# Path-filtered to the functions/ project only, per the locked CI/CD
+# decision (2026-09-08) — a frontend-only commit to main should not
+# redeploy the Functions API, matching how the Static Web App's own deploy
+# is separate infrastructure from this one.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - '.github/workflows/functions-deploy.yml'
+
+# No approval gate for now (matches the frontend's auto-deploy-on-merge) —
+# revisit before real production go-live, not before this internal demo.
+jobs:
+  deploy:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build functions/functions.csproj --configuration Release --output ./functions-publish
+
+      # AZURE_FUNCTIONAPP_NAME and AZURE_FUNCTIONAPP_PUBLISH_PROFILE don't
+      # exist as GitHub secrets yet — the Function App resource itself
+      # hasn't been created (Planner: "Create Function App & runtime
+      # storage account" still in progress). Add both once it exists:
+      # the app name as a plain repo variable/secret, and the publish
+      # profile (downloaded from the Function App's Azure Portal
+      # "Get publish profile" action) as a secret. This workflow will not
+      # run successfully until both are set.
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+          package: './functions-publish'
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}

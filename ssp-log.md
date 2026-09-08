@@ -1113,3 +1113,98 @@ Gap/follow-up:
   re-authenticated via SSO on their next login attempt without a password
   prompt. This is normal enterprise SSO behavior, not treated as a gap
   unless COA wants a stricter full-session-termination logout.
+
+## 2026-09-08 — Functions configuration decided; first endpoint scaffolded and validated (CM-6 / IA-2 / IA-8 / AC-3 / SC-8)
+Decided the remaining Step 15/16 open fields (checklist "Decide Functions
+configuration" and "Set up Functions CI/CD pipeline" cards):
+- Hosting tier: Consumption. Matches the current non-VNet Postgres setup
+  (no reason to pay Premium's baseline cost for VNet integration not in
+  use) and is adequate for a low-traffic internal employee portal.
+- CORS: Aeris frontend origins only (Azure SWA default domain +
+  aeris.cyberoffset.com once cutover) — the Vercel/Supabase demo never
+  calls this API, so it's deliberately excluded. Configured as the
+  Function App resource's own CORS setting (standard place for it), not
+  in application code.
+- CI/CD: GitHub Actions, path-filtered to functions/** so a frontend-only
+  commit doesn't redeploy the API — new
+  .github/workflows/functions-deploy.yml. No approval gate for now
+  (matches the frontend's existing auto-deploy-on-merge); revisit before
+  real production go-live. Workflow references
+  AZURE_FUNCTIONAPP_NAME/AZURE_FUNCTIONAPP_PUBLISH_PROFILE secrets that
+  don't exist yet — won't run successfully until the Function App resource
+  is created and those are added.
+
+Scaffolded the Functions project itself (new functions/ folder,
+.NET isolated-worker C#, `func init`) and built the first real endpoint
+(GetMyProfile) to establish the pattern every later endpoint follows:
+- Target framework: .NET 10, not .NET 8 — .NET 8 reaches end-of-life
+  2026-11-09 (2 months from this entry), too close to build a new project
+  against. Flagging for whoever provisions the Function App resource:
+  .NET 10 isolated-worker does NOT run on Linux Consumption plan (only
+  Windows Consumption or Flex Consumption support it) — confirmed via web
+  search, since this wasn't obvious and would have been a deploy-time
+  surprise otherwise.
+- EntraAuthMiddleware (functions/Middleware/): hand-rolled JWT validation
+  (Azure Functions isolated-worker has no built-in equivalent to App
+  Service Easy Auth) — validates issuer/audience/lifetime/signature against
+  Entra's own OIDC discovery document, with signing keys cached and
+  auto-refreshed by ConfigurationManager so a Microsoft key rotation
+  doesn't need a redeploy here. Runs on every HTTP-triggered function via
+  builder.UseMiddleware<T>(); rejects with 401 before the request reaches
+  any function body. Fails closed if Entra's discovery document can't be
+  reached.
+- Found and fixed a real gap while building this: the MSAL scope wired in
+  the 2026-09-08 auth commit (562df56) requested 'User.Read', which gets a
+  token audienced for Microsoft Graph — validating that against our own
+  API would always fail (wrong audience). Corrected app-core.js to request
+  a scope for the API's own App ID URI instead
+  (api://7de6fb71-68ef-410a-84e0-6847fd06cd47/access_as_user). This
+  requires the "COA - Aeris" App Registration to have an API exposed with
+  an access_as_user scope (Expose an API blade) — Azure-side config not
+  yet confirmed done; login will fail until it is.
+- AerisRoleMapper (functions/Utils/): maps the validated token's "roles"
+  App Role claim to the lowercase role string RLS expects
+  (admin/supervisor/employee, most-privileged-wins, defaults to
+  'employee' if unassigned). This is the same "roles" claim locked
+  2026-08-28 — role is trusted directly from the validated JWT, not
+  re-derived from a profiles table lookup, avoiding a chicken-and-egg RLS
+  problem.
+- AerisDbConnectionFactory (functions/Data/): opens a Postgres connection
+  and sets the app.user_id/app.user_role session variables the RLS
+  policies key off (set_config, parameterized, is_local=false so it holds
+  for the connection's whole session) — using ONLY the validated
+  principal's own claims (oid, mapped role), never anything
+  client-supplied. This is the one and only place those two session
+  variables may be set from in this codebase.
+- GetMyProfile (functions/Functions/): the actual first endpoint —
+  GET /api/profile/me, queries `profiles` scoped to the caller's own id.
+  SELECT list deliberately minimal (id, role only) since the real
+  postgres-schema.sql column list for `profiles` isn't available in this
+  repo (drafted in a separate session/Claude project — see
+  coa_aeris_migration_track memory); extend once that schema is in hand
+  rather than guessing column names against a schema this session can't
+  see.
+
+Status: Implemented and verified as far as possible without live Azure
+access. `dotnet build` succeeds (0 warnings/errors). Ran the host locally
+(`func start`) and sent real HTTP requests: a request with no
+Authorization header returns 401 "Missing or malformed Authorization
+header"; a request with a garbage bearer token returns 401 "Token
+validation failed" — confirms EntraAuthMiddleware actually rejects at
+runtime, not just compiles.
+Gap/follow-up:
+- Not tested against a real Entra token or a real Postgres connection —
+  needs the App Registration's Expose-an-API scope added, the Function
+  App resource created (Consumption tier, correct OS per the .NET 10
+  note above), POSTGRES_CONNECTION_STRING wired from Key Vault (still
+  "planned, not yet wired" per the checklist), and the two GitHub Actions
+  secrets, before any of this can run live.
+- Discovered in passing, unrelated to this entry's own work: no GitHub
+  Actions workflow exists anywhere in this repo (local, origin, or
+  history) for the Static Web App, despite Planner showing "Verify GitHub
+  Actions deploy succeeds" as Completed. Flagged to Ricky; not
+  investigated further this session — worth reconciling before trusting
+  that Planner card.
+- isAdmin()/checkAdminNavVisibility() (frontend) and every other screen's
+  data calls still aren't wired to this new API — GetMyProfile is a
+  pattern-establishing endpoint, not yet consumed by anything.

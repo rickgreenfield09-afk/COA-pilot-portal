@@ -498,6 +498,17 @@
   };
   var AERIS_MSAL_CDN_URL = 'https://cdn.jsdelivr.net/npm/@azure/msal-browser@5.21.0/lib/msal-browser.min.js';
 
+  // Scope for OUR OWN Functions API, not Microsoft Graph — 'User.Read'
+  // (what the earlier scaffold requested) gets a token audienced for Graph,
+  // which the Functions API would always reject as a wrong audience. This
+  // requires the "COA - Aeris" App Registration to expose an API with a
+  // scope named access_as_user (Expose an API blade — Azure default App ID
+  // URI is api://<client-id> unless a custom one was set) — Azure-side
+  // config Sly Penguin/Ricky need to do; not something settable from code.
+  // functions/Program.cs's EntraAuthMiddleware validates tokens against
+  // this same scope's audience — keep both sides in sync if this changes.
+  var AERIS_API_SCOPE = 'api://7de6fb71-68ef-410a-84e0-6847fd06cd47/access_as_user';
+
   var aerisMsalClient = null;
   var aerisMsalScriptPromise = null;
   var aerisMsalInitPromise = null;
@@ -551,7 +562,7 @@
   // showApp() unchanged.
   async function aerisLogin(){
     var client = await getMsalClient();
-    var result = await client.loginPopup({ scopes: ['User.Read'] });
+    var result = await client.loginPopup({ scopes: [AERIS_API_SCOPE] });
     return normalizeAerisSession(result);
   }
 
@@ -561,7 +572,7 @@
   // an explicit login click that hits an expired silent token.
   async function aerisAcquireTokenSilent(account, allowPopupFallback){
     var client = await getMsalClient();
-    var request = { scopes: ['User.Read'], account: account };
+    var request = { scopes: [AERIS_API_SCOPE], account: account };
     try{
       return await client.acquireTokenSilent(request);
     }catch(e){
