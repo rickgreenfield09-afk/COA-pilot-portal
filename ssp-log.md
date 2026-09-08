@@ -1383,3 +1383,21 @@ calls Supabase directly for these same fields (theme_preference,
 preferred_name, phone, home_email, home_phone, known_traveler_number,
 bio) via three separate PATCH calls; wiring the frontend over to this one
 consolidated endpoint is a later step, not done here.
+
+## 2026-09-08 — GetMyResume: third Functions endpoint, jsonb handling pattern (AC-3)
+GET /api/resume/me — same read/scoping pattern as GetMyProfile, plus one
+new wrinkle worth documenting for future endpoints: work_history/
+education/certifications/skills are jsonb columns. Npgsql returns jsonb as
+a plain string by default; the code parses each one via
+JsonDocument.Parse() before embedding it in the response, so
+System.Text.Json serializes it as real nested JSON. Skipping that step
+(returning the raw string directly) would double-encode it — the client
+would receive a JSON string containing escaped JSON text instead of a
+usable object. resumes.id is confirmed NOT a separately-generated key —
+it's the same uuid as the owning profiles.id (a 1:1 extension table),
+matching what resumes_select's RLS policy checks.
+Status: Implemented. `dotnet build` succeeds (0 warnings/errors). Verified
+locally — route registers, unauthenticated request returns 401. Same live
+Entra token limitation as the other two endpoints.
+Gap/follow-up: not yet consumed by the frontend. Write side (resume
+edits) not built yet — this is read-only for now.
