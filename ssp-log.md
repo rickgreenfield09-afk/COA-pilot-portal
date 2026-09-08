@@ -1560,3 +1560,31 @@ above) is still registered and now unused by login — left in place since
 acquireTokenSilent-only flows conventionally reuse it in some setups;
 worth pruning later if it's confirmed unnecessary rather than leaving
 an unused registered redirect URI around indefinitely.
+
+## 2026-09-08 — Third live-login issue found and fixed: Azure SWA's default COOP header broke window.opener (SC-8)
+After auth-popup.html deployed and its redirect URI was registered, the
+popup landed correctly (URL showed the auth code) but stayed open,
+blank, never self-closing — no errors in either window's console.
+Diagnosed directly rather than guessing further: had Ricky run
+`window.opener` in the popup's own DevTools console — returned `null`.
+Confirmed via web search that Azure Static Web Apps applies a default
+Cross-Origin-Opener-Policy header, and MSAL's popup flow depends entirely
+on the opener/popup window relationship to hand back the auth result and
+self-close — with window.opener severed, the popup has no way to
+communicate back, regardless of anything MSAL's own JS does correctly.
+Fixed via staticwebapp.config.json globalHeaders:
+Cross-Origin-Opener-Policy: same-origin-allow-popups — the specific COOP
+value designed for exactly this case: preserves the opener relationship
+for popups the page opens itself, while still isolating unrelated
+cross-origin popups. Applied globally (not scoped to just
+auth-popup.html) since the opener side (index.html, wherever login is
+triggered from) also needs a compatible policy for the relationship to
+work at all.
+Status: Implemented, not yet retested live — needs this deploy to
+complete first.
+Gap/follow-up: this is the third distinct issue found in three
+consecutive live-login attempts (redirect URI mismatch, popup racing to
+load the full app, now a platform-default security header) — each was a
+real, separate root cause, not the same bug resurfacing. Worth a full
+clean end-to-end retest once this deploys, rather than assuming this is
+necessarily the last one.
