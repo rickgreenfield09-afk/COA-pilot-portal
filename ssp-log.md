@@ -1492,3 +1492,37 @@ asset_requests self-INSERT are now live.
 Status: Both Implemented and verified against the live tenant/database.
 Next: an actual live login test against the Azure SWA deploy — first
 real end-to-end test of the whole auth chain built this session.
+
+## 2026-09-08 — Found the actual live-deploy blocker: wrong GitHub repo; merged and fixed a static-file exposure gap before pushing (SC-28 / CM-3)
+The login click that "did nothing" traced back to the real root cause:
+the Azure Static Web App deploys from a completely different GitHub
+repository — Cyber-Offset-Alliance/coa-employee-portal (org-owned,
+private), not this repo (rickgreenfield09-afk/COA-pilot-portal). That
+repo's `main` held a one-time 25-day-old snapshot import plus the SWA
+deploy workflow file, never updated since — so none of this session's
+work (or anything from the prior weeks) was ever actually live. This is
+the same "GitHub repo URL / owner not recorded" gap flagged as an open
+checklist question since the very first version of this doc.
+Fixed: Ricky added rickgreenfield09-afk as a collaborator on the org
+repo. Merged aeris-origin/main into this repo's history
+(--allow-unrelated-histories, -X ours to keep this repo's current content
+over the stale import) — picks up only the one thing unique to that
+repo, the SWA deploy workflow, with no force-push needed since their main
+becomes an ancestor of the merge commit. Going forward both repos need
+every commit (Vercel builds from this one, Azure SWA from the other) —
+plan is to push to both remotes each time.
+Before pushing (would have triggered an immediate deploy): read the
+workflow file closely and found `app_location: "/"` uploads the entire
+repo root as public static content, no exclusions. That would have made
+ssp-log.md, every .sql file — including postgres-schema-live.txt and
+app-schema-functions.txt, which contain real RLS policy/function
+internals — and the functions/ C# source all publicly fetchable at the
+live URL the moment this deployed. Added staticwebapp.config.json (deny
+rules for *.sql, *.md, *.txt, /functions/*, /.github/*, /supabase/*,
+/.git/*) before the first real push, not after.
+Status: Merge and config fix implemented, about to push. Gap/follow-up:
+the exclusion list is a deny-list, not a default-deny allow-list — safer
+given the small known set of file types today, but needs manual review
+if new sensitive file types get added to the repo root later. Worth
+reconsidering an allow-list once the live site is stable enough to risk
+testing one without breaking the demo.

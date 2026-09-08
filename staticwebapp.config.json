@@ -1,0 +1,11 @@
+{
+  "routes": [
+    { "route": "/*.sql", "statusCode": 404 },
+    { "route": "/*.md", "statusCode": 404 },
+    { "route": "/*.txt", "statusCode": 404 },
+    { "route": "/functions/*", "statusCode": 404 },
+    { "route": "/.github/*", "statusCode": 404 },
+    { "route": "/supabase/*", "statusCode": 404 },
+    { "route": "/.git/*", "statusCode": 404 }
+  ]
+}
