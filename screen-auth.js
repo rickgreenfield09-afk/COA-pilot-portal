@@ -1,9 +1,17 @@
 /* COA Employee Portal — screen-auth.js
-   Login screen only. Session storage, logout, and the low-level Entra ID
-   Gov auth REST call (authRequest) live in app-core.js since logout/session
-   are shared shell concerns, not login-screen-specific. */
+   Login screen only. Session storage, logout, and the low-level auth REST/
+   MSAL calls (authRequest, aerisLogin) live in app-core.js since logout/
+   session are shared shell concerns, not login-screen-specific.
+
+   handleLogin() branches on isAerisEnv() (app-core.js): the Azure Static
+   Web App / aeris.cyberoffset.com deploy uses MSAL (handleAerisLogin), the
+   Vercel demo keeps using Supabase email/password unchanged. Both deploy
+   from this same main branch, so this has to be a runtime check, not a
+   build-time one. */
 
   async function handleLogin(){
+    if(isAerisEnv()){ return handleAerisLogin(); }
+
     var email = document.getElementById('login-email').value.trim();
     var password = document.getElementById('login-password').value;
     var errorEl = document.getElementById('login-error');
@@ -26,6 +34,33 @@
       showApp(data.user.email);
     }catch(e){
       errorEl.textContent = 'Incorrect email or password.';
+    }finally{
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  }
+
+  // Entra/MSAL login for the Aeris track. Note the email/password fields on
+  // the login card are ignored here — MSAL drives its own popup UI. Leaving
+  // those fields visible-but-unused on this deploy is a known cosmetic gap,
+  // not fixed in this pass since it's a login-form UX question, not part of
+  // finishing the auth wiring itself (see ssp-log.md).
+  async function handleAerisLogin(){
+    var errorEl = document.getElementById('login-error');
+    var btn = document.getElementById('login-btn');
+    errorEl.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    try{
+      var session = await aerisLogin();
+      saveSession(session);
+      recordActivity();
+      resetIdleLogoutTimer();
+      showApp(session.user.email);
+    }catch(e){
+      console.error(e);
+      errorEl.textContent = 'Sign-in failed. Please try again.';
     }finally{
       btn.disabled = false;
       btn.textContent = 'Sign In';

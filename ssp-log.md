@@ -1045,3 +1045,71 @@ app-core.js calls are typeof-guarded (matches an existing pattern already
 in that file) since it loads before screen-timekeeping.js, even though by
 call-time (after a user click) the function always exists.
 Status: Implemented. Not yet re-verified live.
+
+## 2026-09-08 — Entra ID/MSAL login wired end-to-end for Aeris track (IA-2 / IA-8 / AC-3 / AC-11 / AC-12)
+Completes Step 12 (Wire Auth into Frontend) beyond the 2026-08-28 inert
+scaffold — login, logout, and session-restore now actually run against
+Entra ID on the Aeris deploy, gated by a new `isAerisEnv()` runtime check
+(app-core.js) rather than any build-time/deploy-time switch, since the
+Vercel demo and the Azure Static Web App both deploy from this repo's same
+`main` branch and must pick their auth flow at runtime:
+- `handleLogin()` (screen-auth.js) branches to a new `handleAerisLogin()`
+  when `isAerisEnv()` is true; the existing Supabase email/password path is
+  untouched otherwise.
+- `aerisLogin()` (app-core.js): MSAL `loginPopup()`, normalized into the
+  same session shape `saveSession()`/`getSession()` already use for
+  Supabase, so `showApp()`/`isAdmin()` call sites don't need to branch on
+  auth provider.
+- `tryRestoreSession()` branches to `aerisTryRestoreSession()`, which
+  checks MSAL's own account cache (`getAllAccounts()` +
+  `acquireTokenSilent`) instead of the Supabase-shaped expiry check —
+  fails quietly to the login screen on any error, matching the existing
+  Supabase-expired-session behavior. Silent-only (no popup fallback) on
+  this page-load path, since popping a window without a user gesture is
+  bad UX and most browsers block it anyway.
+- `clearSession()` broadened from removing two named sessionStorage keys
+  to `sessionStorage.clear()` — necessary because MSAL's own token cache
+  also lives in sessionStorage (the locked token-storage decision), and
+  the old narrower clear would have left MSAL's cache intact through
+  logout, including the 15-minute idle auto-logout, letting
+  `aerisTryRestoreSession()` silently sign the user back in on next load.
+  Confirmed via repo-wide grep that no screen file uses sessionStorage for
+  anything else, so this is a no-op behavior change for the Supabase demo.
+- MSAL.js itself is loaded dynamically (`loadMsalScript()`) only when
+  `isAerisEnv()` triggers it, not via a static `<script>` tag in
+  index.html — avoids adding an external network request to every page
+  load on the Supabase demo for a library it never uses. Sourced from
+  jsDelivr (`@azure/msal-browser@5.21.0`, pinned), not Microsoft's own
+  CDN — confirmed via web search that Microsoft deprecated CDN hosting for
+  msal-browser v3+ entirely (recommends npm/bundler only, which doesn't
+  fit this repo's no-build-step architecture).
+- MSAL v3+ requires an async `client.initialize()` call before any other
+  API use (breaking change from v2) — `getMsalClient()` handles this
+  behind a shared promise so a login click racing the page-load
+  silent-restore check doesn't create two client instances.
+
+Status: Implemented (Aeris login/logout/session-restore code path).
+Gap/follow-up:
+- Not yet tested live — I cannot browser-test this myself (no access to
+  the Azure SWA deploy or the Entra tenant); needs a live smoke test
+  against the real App Registration.
+- `dbRequest`/`dbWrite`/`dbRpc`/`dbFunction` still point at Supabase
+  regardless of environment — so after a successful Aeris login, every
+  data screen (Dashboard, Profile, etc.) will fail to load until the
+  Functions/Postgres data layer exists (Step 15+). Expected at this stage
+  of the build sequence (auth shell before data screens per CLAUDE.md),
+  not a regression.
+- `isAdmin()`/`checkAdminNavVisibility()` still read `currentProfile` from
+  a Supabase fetch; `aerisIsAdmin()` (reads the `roles` App Role claim) is
+  written but not wired into either yet — same Functions/data-layer
+  dependency as above.
+- Login card still shows email/password fields on the Aeris deploy even
+  though `handleAerisLogin()` ignores them (MSAL drives its own popup) —
+  known cosmetic gap, not fixed this pass; login still functions via the
+  Sign In button regardless of field contents.
+- Full Entra IdP session termination (e.g. `logoutPopup()`) was not
+  wired — logout clears the local MSAL cache (sessionStorage) but not any
+  browser-level Entra SSO cookie, so a signed-out user may get silently
+  re-authenticated via SSO on their next login attempt without a password
+  prompt. This is normal enterprise SSO behavior, not treated as a gap
+  unless COA wants a stricter full-session-termination logout.

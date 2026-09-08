@@ -43,9 +43,18 @@
     var raw = sessionStorage.getItem('coa_session');
     return raw ? JSON.parse(raw) : null;
   }
+  // Broadened from two removeItem calls to a full clear so this also wipes
+  // MSAL's own cached account/tokens on the Aeris track (its cacheLocation
+  // is sessionStorage too, per the locked auth decision — see
+  // AERIS_MSAL_CONFIG below). Without this, logging out (including the
+  // 15-minute idle auto-logout) would leave MSAL's cache intact and
+  // aerisTryRestoreSession() would silently sign the user back in on the
+  // next page load. Confirmed nothing else in the app reads/writes
+  // sessionStorage (grepped every screen-*.js file), so this is safe to
+  // broaden for the Supabase demo too — behavior there is unchanged since
+  // 'coa_session'/'coa_last_activity' were the only keys it ever used.
   function clearSession(){
-    sessionStorage.removeItem('coa_session');
-    sessionStorage.removeItem('coa_last_activity');
+    sessionStorage.clear();
   }
 
   // The token response's own expires_in is trusted over any absolute
@@ -91,6 +100,7 @@
   // login only if there's a session, its token hasn't expired, and the user
   // wasn't idle past the timeout when the page was last open.
   function tryRestoreSession(){
+    if(isAerisEnv()){ aerisTryRestoreSession(); return; }
     var session = getSession();
     if(!session || !session.user){ return; }
     if(sessionTokenExpired(session) || sessionIdleExpired()){
@@ -439,27 +449,42 @@
     if(typeof tkRenderSimWizard === 'function'){ tkRenderSimWizard(); }
   }
 
-  // ---------- Aeris/Entra ID MSAL scaffold (INERT — not wired to anything) ----------
-  // Placeholder for the parallel Azure migration track ("Aeris"). The Supabase
-  // login flow above is the live demo auth and is untouched by this block.
-  // Nothing here runs automatically: initMsalClient()/aerisLogin()/etc. are
-  // not called from any event handler yet, and the MSAL.js library itself
-  // isn't even loaded in index.html, so this adds zero behavior and zero
-  // network requests to the demo as it stands today.
+  // ---------- Aeris/Entra ID auth (MSAL.js) ----------
+  // Wired login/session/logout for the parallel Azure migration track
+  // ("Aeris"). Gated entirely behind isAerisEnv() so the live Supabase demo
+  // on Vercel is untouched — both deploy from this same main branch, so the
+  // app has to pick its auth flow at runtime rather than at deploy time.
   //
-  // To go live: (1) add the MSAL.js <script> tag to index.html, (2) replace
-  // screen-auth.js's handleLogin() Supabase call with aerisLogin(), (3) point
-  // getSession()/isAdmin() at the MSAL account object instead of sessionStorage
-  // coa_session — that's a bigger change than this scaffold and should wait
-  // until the Sly Penguin SPA-redirect-URI blocker clears and this has been
-  // tested end-to-end outside the live demo.
+  // MSAL.js is NOT loaded via a <script> tag in index.html (would add an
+  // external network request to every page load, including the Supabase
+  // demo, for a library it never uses). Instead loadMsalScript() injects it
+  // dynamically, only when isAerisEnv() is true. Microsoft deprecated its
+  // own CDN for msal-browser v3+ (confirmed 2026-09-08 — recommends
+  // npm/bundler only), so this loads the same published package from
+  // jsDelivr instead; the version is pinned and should be bumped
+  // deliberately, not silently, since an auth library is not a safe place
+  // for an unpinned "latest" import.
   //
   // Auth implementation decisions locked 2026-08-28 (see memory:
   // coa_aeris_migration_track.md):
   //   - Role claim: Entra App Roles, claim name "roles"
   //   - Token storage: sessionStorage (MSAL's cacheLocation option, same
-  //     pattern as the Supabase session above)
+  //     pattern as the Supabase session above — see clearSession()'s
+  //     comment for why logout now clears all of sessionStorage)
   //   - Silent renewal: MSAL's built-in acquireTokenSilent
+  //
+  // Deliberately NOT done in this pass (needs the Functions/Postgres data
+  // layer from Step 15+, not just auth): dbRequest/dbWrite/dbRpc/dbFunction
+  // still point at Supabase regardless of environment, and isAdmin()/
+  // checkAdminNavVisibility() still read currentProfile from a Supabase
+  // fetch. So on Aeris today, login/logout/session-restore work end to end,
+  // but every data screen will fail to load until the Functions API exists.
+  // That's expected at this stage, not a bug — see ssp-log.md.
+  function isAerisEnv(){
+    var h = window.location.hostname;
+    return h.indexOf('azurestaticapps.net') !== -1 || h.indexOf('cyberoffset.com') !== -1;
+  }
+
   var AERIS_MSAL_CONFIG = {
     auth: {
       clientId: '7de6fb71-68ef-410a-84e0-6847fd06cd47',
@@ -471,44 +496,106 @@
       storeAuthStateInCookie: false
     }
   };
+  var AERIS_MSAL_CDN_URL = 'https://cdn.jsdelivr.net/npm/@azure/msal-browser@5.21.0/lib/msal-browser.min.js';
 
   var aerisMsalClient = null;
+  var aerisMsalScriptPromise = null;
+  var aerisMsalInitPromise = null;
 
-  function initMsalClient(){
-    if(typeof msal === 'undefined'){
-      console.error('MSAL.js is not loaded — add the msal-browser <script> tag to index.html before calling this.');
-      return null;
-    }
-    if(!aerisMsalClient){
-      aerisMsalClient = new msal.PublicClientApplication(AERIS_MSAL_CONFIG);
-    }
-    return aerisMsalClient;
+  function loadMsalScript(){
+    if(typeof msal !== 'undefined'){ return Promise.resolve(); }
+    if(aerisMsalScriptPromise){ return aerisMsalScriptPromise; }
+    aerisMsalScriptPromise = new Promise(function(resolve, reject){
+      var s = document.createElement('script');
+      s.src = AERIS_MSAL_CDN_URL;
+      s.onload = function(){ resolve(); };
+      s.onerror = function(){ reject(new Error('Failed to load MSAL.js from CDN')); };
+      document.head.appendChild(s);
+    });
+    return aerisMsalScriptPromise;
   }
 
-  // Stub login — popup flow, mirrors handleLogin()'s role in screen-auth.js
-  // but for Entra instead of Supabase. Not called from any button yet.
+  // MSAL browser v3+ requires an async initialize() call before any other
+  // API is used (this was a breaking change from the v2 line, where the
+  // constructor alone was enough) — cached behind a promise so concurrent
+  // callers (e.g. a login click racing the page-load silent-restore check)
+  // share one client/init instead of racing two.
+  function getMsalClient(){
+    if(aerisMsalClient){ return Promise.resolve(aerisMsalClient); }
+    if(!aerisMsalInitPromise){
+      aerisMsalInitPromise = loadMsalScript().then(function(){
+        var client = new msal.PublicClientApplication(AERIS_MSAL_CONFIG);
+        return client.initialize().then(function(){
+          aerisMsalClient = client;
+          return client;
+        });
+      });
+    }
+    return aerisMsalInitPromise;
+  }
+
+  function normalizeAerisSession(result){
+    var account = result.account;
+    var expiresInSec = Math.max(0, Math.round((result.expiresOn.getTime() - Date.now()) / 1000));
+    return {
+      user: { id: account.homeAccountId, email: account.username },
+      access_token: result.accessToken,
+      expires_in: expiresInSec,
+      _aerisAccount: account
+    };
+  }
+
+  // Interactive login — popup flow. Returns a session object already in the
+  // same shape saveSession()/getSession() use for the Supabase path, so the
+  // caller (screen-auth.js handleAerisLogin()) can reuse saveSession()/
+  // showApp() unchanged.
   async function aerisLogin(){
-    var client = initMsalClient();
-    if(!client){ return null; }
-    return client.loginPopup({ scopes: ['User.Read'] });
+    var client = await getMsalClient();
+    var result = await client.loginPopup({ scopes: ['User.Read'] });
+    return normalizeAerisSession(result);
   }
 
-  // Stub silent renewal — falls back to an interactive popup only if the
-  // cached token can't be renewed silently, per the decision above.
-  async function aerisAcquireTokenSilent(account){
-    var client = initMsalClient();
-    if(!client){ return null; }
+  // allowPopupFallback is false for the page-load silent-restore path
+  // (aerisTryRestoreSession) — popping an interactive window without a user
+  // gesture is bad UX and most browsers block it anyway. It's true only for
+  // an explicit login click that hits an expired silent token.
+  async function aerisAcquireTokenSilent(account, allowPopupFallback){
+    var client = await getMsalClient();
     var request = { scopes: ['User.Read'], account: account };
     try{
       return await client.acquireTokenSilent(request);
     }catch(e){
+      if(!allowPopupFallback){ throw e; }
       return client.acquireTokenPopup(request);
     }
   }
 
-  // Stub role check — reads the "roles" App Role claim off the MSAL account's
-  // ID token once Aeris auth is live. Separate from isAdmin() above, which
-  // stays the Supabase demo's role check until the two are switched over.
+  // Aeris counterpart to tryRestoreSession() — checks MSAL's own cache
+  // (getAllAccounts()) instead of the Supabase-shaped coa_session check,
+  // since MSAL manages its own token expiry internally. Fails quietly to
+  // the login screen on any error, matching tryRestoreSession()'s existing
+  // behavior for an expired Supabase session.
+  async function aerisTryRestoreSession(){
+    try{
+      var client = await getMsalClient();
+      var accounts = client.getAllAccounts();
+      if(!accounts.length){ return; }
+      var result = await aerisAcquireTokenSilent(accounts[0], false);
+      var session = normalizeAerisSession(result);
+      saveSession(session);
+      recordActivity();
+      resetIdleLogoutTimer();
+      showApp(session.user.email);
+    }catch(e){
+      console.error('Aeris silent session restore failed', e);
+    }
+  }
+
+  // Reads the "roles" App Role claim off the MSAL account's ID token. Not
+  // yet wired into isAdmin()/checkAdminNavVisibility() — those still read
+  // currentProfile from a Supabase fetch, which won't work in the Aeris env
+  // until the Functions/Postgres data layer exists (Step 15+). Kept here,
+  // ready to be wired in at that point.
   function aerisIsAdmin(account){
     if(!account || !account.idTokenClaims || !account.idTokenClaims.roles){ return false; }
     return account.idTokenClaims.roles.indexOf('Admin') !== -1;
