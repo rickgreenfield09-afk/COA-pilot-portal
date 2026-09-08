@@ -485,27 +485,24 @@
     return h.indexOf('azurestaticapps.net') !== -1 || h.indexOf('cyberoffset.com') !== -1;
   }
 
-  // redirectUri points at a dedicated static page (auth-popup.html), NOT
-  // this app's own root — found live 2026-09-08 that using the app's own
-  // URL made the popup re-render the full login screen instead of
-  // self-closing, since it had to dynamically fetch MSAL.js itself before
-  // MSAL's popup-completion handshake could run, racing against the
-  // opener's detection. See auth-popup.html's own comment and ssp-log.md
-  // for the full symptom/fix. This exact URL must be registered as a
-  // Redirect URI under the SPA platform in the App Registration.
-  //
-  // popupRelayUri is a SEPARATE required option from redirectUri for
-  // msal-browser's BroadcastChannel-based popup relay (v3+) — without it,
-  // loginPopup() doesn't know auth-popup.html is a valid relay page and
-  // the relay script itself rejects with popup_relay_unsupported_flow.
-  // Same URL as redirectUri here since we only have the one dedicated page.
-  var AERIS_AUTH_POPUP_URI = window.location.origin + '/auth-popup.html';
+  // Login uses a full-page redirect flow (loginRedirect), not a popup —
+  // switched 2026-09-08 after five consecutive live-tested popup failures
+  // (redirect URI mismatch, popup racing to load the full app, Azure
+  // SWA's default COOP header, a missing popupRelayUri config option,
+  // then a popup_window_error even after all of that was fixed — see
+  // ssp-log.md for the full sequence). loginRedirect() has none of that
+  // surface area: no popup, no window.opener, no BroadcastChannel relay,
+  // no COOP interaction — the whole tab navigates to Microsoft and back.
+  // redirectUri is back to this app's own root, since the return trip is
+  // now just a normal full page load, handled by aerisTryRestoreSession()
+  // calling handleRedirectPromise(). This exact URL must be registered as
+  // a Redirect URI under the SPA platform in the App Registration (it
+  // already was, from before the popup detour).
   var AERIS_MSAL_CONFIG = {
     auth: {
       clientId: '7de6fb71-68ef-410a-84e0-6847fd06cd47',
       authority: 'https://login.microsoftonline.com/a33e7419-7258-4616-a95a-ad8450531e8f',
-      redirectUri: AERIS_AUTH_POPUP_URI,
-      popupRelayUri: AERIS_AUTH_POPUP_URI
+      redirectUri: window.location.origin
     },
     cache: {
       cacheLocation: 'sessionStorage',
@@ -572,39 +569,56 @@
     };
   }
 
-  // Interactive login — popup flow. Returns a session object already in the
-  // same shape saveSession()/getSession() use for the Supabase path, so the
-  // caller (screen-auth.js handleAerisLogin()) can reuse saveSession()/
-  // showApp() unchanged.
-  async function aerisLogin(){
+  // Interactive login — full-page redirect. Navigates the tab away; never
+  // returns a usable value (the caller, handleAerisLogin() in
+  // screen-auth.js, should not expect one). The return trip is caught by
+  // aerisTryRestoreSession()'s handleRedirectPromise() call on the next
+  // page load.
+  async function aerisLoginRedirect(){
     var client = await getMsalClient();
-    var result = await client.loginPopup({ scopes: [AERIS_API_SCOPE] });
-    return normalizeAerisSession(result);
+    await client.loginRedirect({ scopes: [AERIS_API_SCOPE] });
   }
 
-  // allowPopupFallback is false for the page-load silent-restore path
-  // (aerisTryRestoreSession) — popping an interactive window without a user
-  // gesture is bad UX and most browsers block it anyway. It's true only for
-  // an explicit login click that hits an expired silent token.
-  async function aerisAcquireTokenSilent(account, allowPopupFallback){
+  // allowInteractiveFallback is false for the page-load silent-restore
+  // path (aerisTryRestoreSession) — triggering an interactive redirect
+  // without a user gesture would yank the page away unexpectedly on every
+  // visit with an expired token. It's true only for an explicit login
+  // action hitting an expired silent token; acquireTokenRedirect(), like
+  // loginRedirect(), navigates away rather than returning a value.
+  async function aerisAcquireTokenSilent(account, allowInteractiveFallback){
     var client = await getMsalClient();
     var request = { scopes: [AERIS_API_SCOPE], account: account };
     try{
       return await client.acquireTokenSilent(request);
     }catch(e){
-      if(!allowPopupFallback){ throw e; }
-      return client.acquireTokenPopup(request);
+      if(!allowInteractiveFallback){ throw e; }
+      return client.acquireTokenRedirect(request);
     }
   }
 
-  // Aeris counterpart to tryRestoreSession() — checks MSAL's own cache
-  // (getAllAccounts()) instead of the Supabase-shaped coa_session check,
-  // since MSAL manages its own token expiry internally. Fails quietly to
-  // the login screen on any error, matching tryRestoreSession()'s existing
-  // behavior for an expired Supabase session.
+  // Aeris counterpart to tryRestoreSession(). Two things to check, in
+  // order: (1) handleRedirectPromise() — is this page load actually the
+  // return trip from loginRedirect()? Must be called on every page load
+  // per MSAL's own requirement, resolving null when it isn't. (2) if not,
+  // fall back to MSAL's own cache (getAllAccounts()) instead of the
+  // Supabase-shaped coa_session check, since MSAL manages its own token
+  // expiry internally. Fails quietly to the login screen on any error,
+  // matching tryRestoreSession()'s existing behavior for an expired
+  // Supabase session.
   async function aerisTryRestoreSession(){
     try{
       var client = await getMsalClient();
+
+      var redirectResult = await client.handleRedirectPromise();
+      if(redirectResult){
+        var redirectSession = normalizeAerisSession(redirectResult);
+        saveSession(redirectSession);
+        recordActivity();
+        resetIdleLogoutTimer();
+        showApp(redirectSession.user.email);
+        return;
+      }
+
       var accounts = client.getAllAccounts();
       if(!accounts.length){ return; }
       var result = await aerisAcquireTokenSilent(accounts[0], false);

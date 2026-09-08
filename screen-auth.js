@@ -41,10 +41,11 @@
   }
 
   // Entra/MSAL login for the Aeris track. Note the email/password fields on
-  // the login card are ignored here — MSAL drives its own popup UI. Leaving
-  // those fields visible-but-unused on this deploy is a known cosmetic gap,
-  // not fixed in this pass since it's a login-form UX question, not part of
-  // finishing the auth wiring itself (see ssp-log.md).
+  // the login card are ignored here — MSAL drives its own full-page
+  // redirect instead. Leaving those fields visible-but-unused on this
+  // deploy is a known cosmetic gap, not fixed in this pass since it's a
+  // login-form UX question, not part of finishing the auth wiring itself
+  // (see ssp-log.md).
   async function handleAerisLogin(){
     var errorEl = document.getElementById('login-error');
     var btn = document.getElementById('login-btn');
@@ -53,11 +54,10 @@
     btn.textContent = 'Signing in...';
 
     try{
-      var session = await aerisLogin();
-      saveSession(session);
-      recordActivity();
-      resetIdleLogoutTimer();
-      showApp(session.user.email);
+      await aerisLoginRedirect();
+      // The tab navigates away here on success — nothing below normally
+      // runs. The return trip is handled by aerisTryRestoreSession() on
+      // the next page load (app-core.js), not here.
     }catch(e){
       // Logged verbosely (not just the bare Error object) since MSAL's
       // BrowserAuthError carries diagnostic detail (errorCode, subError,

@@ -1647,3 +1647,50 @@ the null result found two entries above) — the COOP header fix may not
 have actually restored it end-to-end through Microsoft's own
 login.microsoftonline.com hop, which would need a different approach
 than a static config addition to resolve.
+
+## 2026-09-08 — Sixth issue, and a decision to stop chasing the popup entirely: switched to loginRedirect (IA-2 / IA-8)
+The popupRelayUri fix changed behavior (popup now opens instead of
+hanging) but produced a sixth distinct failure:
+`BrowserAuthError: popup_window_error`, with an empty subError (no
+further detail available from MSAL's own error object even after
+expanding it fully in DevTools). Reproduced identically in a second,
+non-Edge browser, ruling out an Edge-specific popup-handle quirk that
+looked plausible at first (a real, documented Edge issue, but not this
+one, since Chrome hit the same error).
+
+After six consecutive live-tested popup failures across two browsers
+(redirect URI mismatch; popup racing to load the full app; Azure SWA's
+default COOP header; missing popupRelayUri; popup_window_error with no
+further diagnostic detail available) — confirmed with Ricky and switched
+architecture rather than continuing to debug the popup mechanism:
+`loginPopup()`/`loginRedirect()` and MSAL replaced with a full-page
+redirect flow, which has none of this surface area (no popup, no
+window.opener, no BroadcastChannel relay, no COOP interaction).
+
+Changes (app-core.js, screen-auth.js):
+- AERIS_MSAL_CONFIG.auth.redirectUri reverted to this app's own root
+  (window.location.origin) — already registered in the App Registration
+  from the earlier AADSTS50011 fix, so no further Entra Portal change
+  needed this time.
+- aerisLogin() replaced with aerisLoginRedirect() — calls
+  client.loginRedirect(), which navigates the tab away and never returns
+  a usable value.
+- aerisTryRestoreSession() now calls client.handleRedirectPromise()
+  first on every page load (MSAL's own requirement) to catch the return
+  trip from loginRedirect(), before falling back to the existing
+  getAllAccounts()/acquireTokenSilent cache check.
+- aerisAcquireTokenSilent()'s interactive fallback (currently unused by
+  any call site, kept for future use) changed from acquireTokenPopup()
+  to acquireTokenRedirect() for consistency — same reasoning, avoid
+  resurrecting the popup mechanism in a secondary path.
+- auth-popup.html deleted (grepped first to confirm no remaining
+  references) — no longer used by anything.
+Status: Implemented, not yet retested live. `dotnet build` N/A (frontend
+only); node --check passed on both changed files; grepped for dangling
+calls to the old aerisLogin() name, none found.
+Gap/follow-up: user experience changes from a popup to a full-page
+navigation to Microsoft and back — a deliberate, confirmed tradeoff for
+reliability, not an oversight. Worth revisiting popup support later only
+if there's a specific product reason to want it back; redirect is the
+more standard, better-supported pattern for exactly this kind of
+reliability problem.
