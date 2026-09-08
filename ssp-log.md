@@ -1694,3 +1694,28 @@ reliability, not an oversight. Worth revisiting popup support later only
 if there's a specific product reason to want it back; redirect is the
 more standard, better-supported pattern for exactly this kind of
 reliability problem.
+
+## 2026-09-08 — First successful live login: entire Aeris auth chain confirmed working end to end (IA-2 / IA-8 / AC-3)
+Ricky signed in successfully against the live Azure SWA deploy — full
+redirect flow completed, silent SSO on subsequent visits already
+working (no repeated password prompt), app shell rendered with his email
+in the header and Sign Out available. This is the first real
+confirmation that the entire chain built and fixed today actually works
+together live: MSAL redirect login -> correctly audienced token
+(api://.../access_as_user, not Graph) -> session storage -> app shell
+render.
+Dashboard shows "Couldn't Load Dashboard" — expected, not a bug. No
+Functions API is deployed yet (Step 15+ still pending: Function App
+resource not created, POSTGRES_CONNECTION_STRING not wired), so every
+data-fetching screen has nothing to call. Login/session is now
+fully solved; the remaining Aeris work is standing up the Functions
+backend so screens have real data to load.
+Status: Implemented and verified live. This closes out Step 12
+(Wire Auth into Frontend) for real — auth was the highest-risk step in
+the whole build per CLAUDE.md, and it's now proven working end to end,
+not just written and locally tested.
+Gap/follow-up: aerisIsAdmin()/nav-visibility scoping still not wired to
+the real profiles.role (needs the Functions data layer, per the
+2026-09-08 GetMyProfile entries above) — today's win was authentication,
+not yet authorization-driven UI. Next real blocker for a working demo:
+create and deploy the Function App resource.
