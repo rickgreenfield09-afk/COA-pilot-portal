@@ -1477,3 +1477,18 @@ Gap/follow-up: admin-side asset management (create/edit assets, review
 and approve/deny requests) and the My Team/Admin team-assets views are
 not built yet — this pass covers only the employee self-service side.
 Not yet consumed by the frontend.
+
+## 2026-09-08 — Expose-an-API blocker cleared; asset RLS SQL run live (IA-2 / IA-8 / AC-3)
+Sly Penguin granted Ricky access on the "COA - Aeris" App Registration.
+Expose an API completed: Application ID URI
+api://7de6fb71-68ef-410a-84e0-6847fd06cd47, scope access_as_user, Admins
+and users consent, Enabled — matches exactly what app-core.js's
+AERIS_API_SCOPE already expected. This was the last blocker on a real
+end-to-end MSAL login test (redirect URI platform and the MSAL wiring
+itself were both already done).
+Also ran add-asset-self-service-rls.sql (three CREATE POLICY confirmed in
+Cloud Shell) — assets/asset_requests self+manager+admin SELECT access and
+asset_requests self-INSERT are now live.
+Status: Both Implemented and verified against the live tenant/database.
+Next: an actual live login test against the Azure SWA deploy — first
+real end-to-end test of the whole auth chain built this session.
