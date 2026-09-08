@@ -13,6 +13,20 @@ on:
 
 # No approval gate for now (matches the frontend's auto-deploy-on-merge) —
 # revisit before real production go-live, not before this internal demo.
+#
+# Deploys via OIDC (azure/login), not a publish-profile — the Function
+# App has Basic Authentication disabled (secure-by-default on new
+# resources), which a publish-profile depends on. OIDC uses short-lived
+# federated tokens instead of a stored long-lived credential. The service
+# principal (App Registration "COA - Aeris - GitHub Deploy", separate
+# from the "COA - Aeris" login app) has a federated credential scoped to
+# this exact repo + main branch, and needs the Website Contributor role
+# on func-coa-prod-eus-01 to actually deploy — see ssp-log.md 2026-09-08,
+# blocked on Sly Penguin granting that role assignment as of this commit.
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   deploy:
     runs-on: windows-latest
@@ -27,17 +41,15 @@ jobs:
       - name: Build
         run: dotnet build functions/functions.csproj --configuration Release --output ./functions-publish
 
-      # AZURE_FUNCTIONAPP_NAME and AZURE_FUNCTIONAPP_PUBLISH_PROFILE don't
-      # exist as GitHub secrets yet — the Function App resource itself
-      # hasn't been created (Planner: "Create Function App & runtime
-      # storage account" still in progress). Add both once it exists:
-      # the app name as a plain repo variable/secret, and the publish
-      # profile (downloaded from the Function App's Azure Portal
-      # "Get publish profile" action) as a secret. This workflow will not
-      # run successfully until both are set.
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Deploy to Azure Functions
         uses: Azure/functions-action@v1
         with:
-          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+          app-name: func-coa-prod-eus-01
           package: './functions-publish'
-          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}

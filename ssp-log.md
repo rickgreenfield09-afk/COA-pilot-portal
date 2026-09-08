@@ -1719,3 +1719,41 @@ the real profiles.role (needs the Functions data layer, per the
 2026-09-08 GetMyProfile entries above) — today's win was authentication,
 not yet authorization-driven UI. Next real blocker for a working demo:
 create and deploy the Function App resource.
+
+## 2026-09-08 — Function App resource created; switched Functions CI/CD to OIDC (CM-6 / IA-8 / SC-28)
+Created func-coa-prod-eus-01 (Flex Consumption, Linux — the supported
+combination for .NET 10 isolated worker; Windows Consumption would also
+have worked, Linux Consumption specifically would not), stfunccoaprodeus
+storage account, Application Insights, in rg-coa-prod-eus / East US 2.
+Closes the "Create Function App & runtime storage account" Planner card.
+
+Found Basic Authentication disabled by default on the new resource (a
+secure modern default) — our drafted GitHub Actions workflow used a
+publish-profile, which depends on Basic Auth and would not have worked.
+Decided with Ricky to switch to OIDC/federated-credential-based
+deployment instead of re-enabling Basic Auth, since it avoids storing a
+long-lived deployment credential in GitHub at all.
+
+Created a dedicated App Registration "COA - Aeris - GitHub Deploy"
+(App ID be14e586-079c-42fa-b407-44cfb9b8829f) — separate from the
+"COA - Aeris" user-facing login app, keeping the CI/CD deploy identity
+and the employee login identity as distinct concerns. Added a federated
+credential scoped to this exact repo/branch (GitHub org ID 314421048,
+repo ID 1329963513, entity type Branch, main) — Azure's federated
+credential setup now validates against GitHub's immutable numeric
+org/repo IDs rather than just names, which are mutable/reassignable.
+
+Status: Blocked on the final piece — granting this service principal the
+Website Contributor role on func-coa-prod-eus-01 requires Owner/User
+Access Administrator, which Ricky doesn't have on this resource group.
+Requested from Sly Penguin (second time this session asking for a
+specific role assignment rather than standing elevated access — same
+recurring pattern as the App Registration Owner request earlier).
+Gap/follow-up: once the role assignment lands, still need to (1) update
+.github/workflows/functions-deploy.yml to use azure/login (OIDC) instead
+of the publish-profile step, (2) add three GitHub secrets
+(AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID) to the
+Cyber-Offset-Alliance/coa-employee-portal repo, (3) wire
+POSTGRES_CONNECTION_STRING/ENTRA_TENANT_ID/ENTRA_API_AUDIENCE app
+settings on the Function App itself, (4) configure CORS to the Aeris
+frontend origins per the earlier decision.
