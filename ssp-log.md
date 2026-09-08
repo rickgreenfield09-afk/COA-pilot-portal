@@ -1333,3 +1333,22 @@ Gap/follow-up:
   EntraAuthMiddleware -> GetMyProfile -> AerisDbConnectionFactory. Still
   blocked on the App Registration's Expose-an-API scope and a deployed
   (or locally-run) Function App pointed at app_api via Key Vault.
+- Key Vault's psql-coa-prod-eus-app-api-password confirmed by Ricky to
+  hold the correct, working password.
+
+## 2026-09-08 — BLOCKED: Ricky lacks edit rights on the App Registration (access control, Sly Penguin-owned tenant)
+Attempted the Expose-an-API step needed for the access_as_user scope
+(required for the MSAL scope fix logged above to actually work) — Ricky
+has no edit rights on the "COA - Aeris" App Registration in Sly Penguin's
+shared tenant. The Expose an API blade showed every control disabled with
+"Some actions may be disabled due to your permissions."
+Status: Blocked. Requested from Sly Penguin: either (a) add Ricky as an
+Owner on the App Registration specifically, or (b) Sly Penguin completes
+the Expose-an-API step directly (Application ID URI
+api://7de6fb71-68ef-410a-84e0-6847fd06cd47, scope access_as_user, Admins
+and users, Enabled). (a) is the better ask long-term — this is the second
+time in this build that a Sly Penguin tenant permission has stalled
+progress (the first was the redirect URI platform fix, 2026-08-28), and
+standing Owner access would prevent a third occurrence for whatever App
+Registration change comes up next.
+Gap/follow-up: blocks any real end-to-end MSAL login test until resolved.
