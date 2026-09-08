@@ -1278,3 +1278,58 @@ Gap/follow-up:
   to re-pull them from the live database. They're point-in-time — reflect
   what existed as of 2026-09-08, not necessarily what's live if the schema
   changes later without a matching re-pull.
+
+## 2026-09-08 — SQL run live; identity chain verified end-to-end against real database (IA-2 / IA-8 / AC-3 / AC-6)
+Ricky ran add-app-api-role-and-identity-resolution.sql against the live
+psql-coa-prod-eus server (Cloud Shell/psql, coaadmin). Hit and resolved
+two real credential-handling issues along the way, both worth noting since
+they'll recur if anyone repeats this kind of setup:
+- A generated password containing a `$` broke when embedded in a
+  double-quoted `psql -c "..."` argument — Bash expanded/stripped part of
+  it before psql ever saw it, surfacing as a confusing partial-fragment
+  SQL syntax error rather than an obvious password problem. Fixed by
+  capturing the password into a shell variable via `read -s` (or
+  `$(openssl rand -base64 24)`) and referencing it inside an unquoted
+  heredoc instead of a quoted -c argument — avoids Bash re-parsing the
+  password's own characters.
+- The role creation silently failed on the very first run (no
+  ON_ERROR_STOP set, so later grant statements ran — and mostly
+  succeeded/no-opped — against a nonexistent role without an obvious
+  top-level failure). Re-ran with `psql -v ON_ERROR_STOP=1` so any future
+  script run stops immediately and visibly on the first error instead of
+  continuing past one silently.
+
+Seeded Ricky's own profiles row (previously empty table — this Postgres
+instance has no migrated/seeded data yet, per Step 14's open status) with
+his real Entra Object ID, role='admin' (id
+29b92693-2c05-4be7-8015-4d84fdc6c380, entra_object_id
+5ffa332e-03c6-4dcf-be3c-38cedf8603d2) — needed for real login testing
+later regardless, not just today's verification.
+
+Verified live, connected as app_api (not coaadmin):
+1. `select count(*) from profiles;` with no session variable set → 0 rows.
+   Confirms RLS actually blocks this role by default — the core point of
+   moving off coaadmin as the app's runtime identity.
+2. With app.user_id manually set to Ricky's profile id via set_config →
+   querying that same id returns exactly 1 row (his own). Confirms the
+   full chain (role → session variable → RLS policy) works.
+3. `select app.resolve_profile_id('5ffa332e-...')` → correctly returns
+   29b92693-... (Ricky's profile id). Confirms the actual bootstrap
+   function real logins will call works against real data, not just the
+   manual session-variable path tested in #2.
+
+Status: Implemented and verified against the live database — this is no
+longer just reviewed code, the identity/RLS chain is confirmed working
+end to end at the database layer.
+Gap/follow-up:
+- Confirm Key Vault's psql-coa-prod-eus-app-api-password secret holds the
+  password that actually worked (there was back-and-forth during
+  troubleshooting above — worth a final check that the value stored there
+  matches what's live on the app_api role before trusting it for
+  deployment).
+- Still not tested through an actual Entra login — everything verified
+  today was via direct psql connections as app_api with manually-set
+  session variables, not a real MSAL token flowing through
+  EntraAuthMiddleware -> GetMyProfile -> AerisDbConnectionFactory. Still
+  blocked on the App Registration's Expose-an-API scope and a deployed
+  (or locally-run) Function App pointed at app_api via Key Vault.
