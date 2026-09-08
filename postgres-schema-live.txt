@@ -1,0 +1,781 @@
+          table_name           |             column_name             |        data_type         | is_nullable |              column_default              
+-------------------------------+-------------------------------------+--------------------------+-------------+------------------------------------------
+ admin_audit_log               | audit_id                            | uuid                     | NO          | gen_random_uuid()
+ admin_audit_log               | entity_type                         | text                     | NO          | 
+ admin_audit_log               | entity_id                           | uuid                     | NO          | 
+ admin_audit_log               | field_changed                       | text                     | YES         | 
+ admin_audit_log               | old_value                           | text                     | YES         | 
+ admin_audit_log               | new_value                           | text                     | YES         | 
+ admin_audit_log               | changed_by_admin_id                 | uuid                     | YES         | 
+ admin_audit_log               | changed_at                          | timestamp with time zone | NO          | now()
+ approval_steps                | id                                  | uuid                     | NO          | gen_random_uuid()
+ approval_steps                | training_request_id                 | uuid                     | NO          | 
+ approval_steps                | participant_id                      | uuid                     | YES         | 
+ approval_steps                | step_type                           | text                     | NO          | 
+ approval_steps                | step_order                          | integer                  | NO          | 
+ approval_steps                | assigned_role                       | text                     | NO          | 
+ approval_steps                | assigned_to                         | uuid                     | YES         | 
+ approval_steps                | status                              | text                     | YES         | 'pending'::text
+ approval_steps                | notes                               | text                     | YES         | 
+ approval_steps                | decided_at                          | timestamp with time zone | YES         | 
+ approval_steps                | created_at                          | timestamp with time zone | YES         | now()
+ asset_requests                | id                                  | uuid                     | NO          | gen_random_uuid()
+ asset_requests                | requested_by                        | uuid                     | NO          | 
+ asset_requests                | asset_name                          | text                     | NO          | 
+ asset_requests                | asset_type                          | text                     | YES         | 
+ asset_requests                | department                          | text                     | YES         | 
+ asset_requests                | location                            | text                     | YES         | 
+ asset_requests                | serial_number                       | text                     | YES         | 
+ asset_requests                | purchase_date                       | date                     | YES         | 
+ asset_requests                | warranty_expiry                     | date                     | YES         | 
+ asset_requests                | condition                           | text                     | YES         | 'good'::text
+ asset_requests                | vendor                              | text                     | YES         | 
+ asset_requests                | model                               | text                     | YES         | 
+ asset_requests                | issued_by_external                  | text                     | YES         | 
+ asset_requests                | issued_date                         | date                     | YES         | 
+ asset_requests                | notes                               | text                     | YES         | 
+ asset_requests                | purchased_from                      | text                     | YES         | 
+ asset_requests                | purchase_price                      | numeric                  | YES         | 
+ asset_requests                | photo_url                           | text                     | YES         | 
+ asset_requests                | status                              | text                     | NO          | 'pending'::text
+ asset_requests                | reviewed_by                         | uuid                     | YES         | 
+ asset_requests                | reviewed_at                         | timestamp with time zone | YES         | 
+ asset_requests                | created_at                          | timestamp with time zone | YES         | now()
+ assets                        | id                                  | uuid                     | NO          | gen_random_uuid()
+ assets                        | asset_name                          | text                     | NO          | 
+ assets                        | asset_type                          | text                     | YES         | 
+ assets                        | assigned_to                         | uuid                     | YES         | 
+ assets                        | department                          | text                     | YES         | 
+ assets                        | location                            | text                     | YES         | 
+ assets                        | serial_number                       | text                     | YES         | 
+ assets                        | purchase_date                       | date                     | YES         | 
+ assets                        | warranty_expiry                     | date                     | YES         | 
+ assets                        | condition                           | text                     | YES         | 'good'::text
+ assets                        | vendor                              | text                     | YES         | 
+ assets                        | model                               | text                     | YES         | 
+ assets                        | issued_by                           | uuid                     | YES         | 
+ assets                        | issued_date                         | date                     | YES         | 
+ assets                        | returned_date                       | date                     | YES         | 
+ assets                        | notes                               | text                     | YES         | 
+ assets                        | purchased_from                      | text                     | YES         | 
+ assets                        | purchase_price                      | numeric                  | YES         | 
+ assets                        | photo_url                           | text                     | YES         | 
+ assets                        | created_at                          | timestamp with time zone | YES         | now()
+ billing_nodes                 | node_id                             | uuid                     | NO          | gen_random_uuid()
+ billing_nodes                 | parent_node_id                      | uuid                     | YES         | 
+ billing_nodes                 | customer_id                         | uuid                     | YES         | 
+ billing_nodes                 | contract_id                         | uuid                     | YES         | 
+ billing_nodes                 | node_type                           | text                     | NO          | 
+ billing_nodes                 | code                                | text                     | YES         | 
+ billing_nodes                 | label                               | text                     | NO          | 
+ billing_nodes                 | billable                            | boolean                  | NO          | false
+ billing_nodes                 | is_leaf                             | boolean                  | NO          | false
+ billing_nodes                 | status                              | text                     | NO          | 'active'::text
+ billing_nodes                 | sort_order                          | integer                  | NO          | 0
+ billing_nodes                 | effective_start                     | date                     | YES         | 
+ billing_nodes                 | effective_end                       | date                     | YES         | 
+ billing_nodes                 | created_at                          | timestamp with time zone | NO          | now()
+ billing_nodes                 | created_by                          | uuid                     | YES         | 
+ billing_nodes                 | updated_at                          | timestamp with time zone | NO          | now()
+ billing_nodes                 | updated_by                          | uuid                     | YES         | 
+ contract_contacts             | contact_id                          | uuid                     | NO          | gen_random_uuid()
+ contract_contacts             | contract_id                         | uuid                     | NO          | 
+ contract_contacts             | contact_role                        | text                     | NO          | 
+ contract_contacts             | name                                | text                     | NO          | 
+ contract_contacts             | email                               | text                     | YES         | 
+ contract_contacts             | phone                               | text                     | YES         | 
+ contract_contacts             | created_at                          | timestamp with time zone | NO          | now()
+ contract_contacts             | created_by                          | uuid                     | YES         | 
+ contract_contacts             | updated_at                          | timestamp with time zone | NO          | now()
+ contract_contacts             | updated_by                          | uuid                     | YES         | 
+ contracts                     | contract_id                         | uuid                     | NO          | gen_random_uuid()
+ contracts                     | customer_id                         | uuid                     | NO          | 
+ contracts                     | prime_contract_number               | text                     | YES         | 
+ contracts                     | delivery_order_number               | text                     | YES         | 
+ contracts                     | subcontract_number                  | text                     | YES         | 
+ contracts                     | contract_type                       | text                     | NO          | 
+ contracts                     | fee_type                            | text                     | YES         | 
+ contracts                     | fee_percentage                      | numeric                  | YES         | 
+ contracts                     | dpas_priority_rating                | text                     | YES         | 
+ contracts                     | payment_terms                       | text                     | YES         | 
+ contracts                     | status                              | text                     | NO          | 'active'::text
+ contracts                     | created_at                          | timestamp with time zone | NO          | now()
+ contracts                     | created_by                          | uuid                     | YES         | 
+ contracts                     | updated_at                          | timestamp with time zone | NO          | now()
+ contracts                     | updated_by                          | uuid                     | YES         | 
+ customers                     | customer_id                         | uuid                     | NO          | gen_random_uuid()
+ customers                     | name                                | text                     | NO          | 
+ customers                     | address                             | text                     | YES         | 
+ customers                     | customer_type                       | text                     | NO          | 
+ customers                     | cage_code                           | text                     | YES         | 
+ customers                     | uei                                 | text                     | YES         | 
+ customers                     | is_active                           | boolean                  | NO          | true
+ customers                     | created_at                          | timestamp with time zone | NO          | now()
+ customers                     | created_by                          | uuid                     | YES         | 
+ customers                     | updated_at                          | timestamp with time zone | NO          | now()
+ customers                     | updated_by                          | uuid                     | YES         | 
+ departments                   | id                                  | uuid                     | NO          | gen_random_uuid()
+ departments                   | name                                | text                     | NO          | 
+ departments                   | sort_order                          | integer                  | YES         | 
+ departments                   | created_at                          | timestamp with time zone | YES         | now()
+ employee_rates                | rate_id                             | uuid                     | NO          | gen_random_uuid()
+ employee_rates                | employee_id                         | uuid                     | NO          | 
+ employee_rates                | labor_category_id                   | uuid                     | NO          | 
+ employee_rates                | slin_id                             | uuid                     | YES         | 
+ employee_rates                | pay_rate                            | numeric                  | YES         | 
+ employee_rates                | bill_rate                           | numeric                  | YES         | 
+ employee_rates                | bill_rate_with_fee                  | numeric                  | YES         | 
+ employee_rates                | effective_start                     | date                     | NO          | 
+ employee_rates                | effective_end                       | date                     | YES         | 
+ employee_rates                | created_at                          | timestamp with time zone | NO          | now()
+ employee_rates                | created_by                          | uuid                     | YES         | 
+ employee_travel_programs      | id                                  | uuid                     | NO          | gen_random_uuid()
+ employee_travel_programs      | employee_id                         | uuid                     | NO          | 
+ employee_travel_programs      | program_type                        | text                     | NO          | 
+ employee_travel_programs      | provider_name                       | text                     | NO          | 
+ employee_travel_programs      | membership_number                   | text                     | NO          | 
+ employee_travel_programs      | created_at                          | timestamp with time zone | YES         | now()
+ fake_pay_rates                | id                                  | uuid                     | NO          | gen_random_uuid()
+ fake_pay_rates                | employee_id                         | uuid                     | NO          | 
+ fake_pay_rates                | hourly_rate                         | numeric                  | NO          | 
+ fake_pay_rates                | effective_date                      | date                     | NO          | '2026-01-01'::date
+ fake_pay_rates                | created_at                          | timestamp with time zone | YES         | now()
+ gov_agencies                  | id                                  | uuid                     | NO          | gen_random_uuid()
+ gov_agencies                  | agency_name                         | text                     | NO          | 
+ gov_agencies                  | poc_name                            | text                     | YES         | 
+ gov_agencies                  | poc_email                           | text                     | YES         | 
+ gov_agencies                  | poc_phone                           | text                     | YES         | 
+ gov_agencies                  | notes                               | text                     | YES         | 
+ gov_agencies                  | created_at                          | timestamp with time zone | YES         | now()
+ gov_contract_requirements     | id                                  | uuid                     | NO          | gen_random_uuid()
+ gov_contract_requirements     | contract_id                         | uuid                     | NO          | 
+ gov_contract_requirements     | requirement_name                    | text                     | NO          | 
+ gov_contract_requirements     | required_by_rule                    | text                     | YES         | 
+ gov_contract_requirements     | renewal_cycle                       | text                     | YES         | 
+ gov_contract_requirements     | notes                               | text                     | YES         | 
+ gov_contract_requirements     | created_at                          | timestamp with time zone | YES         | now()
+ gov_contracts                 | id                                  | uuid                     | NO          | gen_random_uuid()
+ gov_contracts                 | contract_name                       | text                     | NO          | 
+ gov_contracts                 | contract_number                     | text                     | YES         | 
+ gov_contracts                 | agency_id                           | uuid                     | YES         | 
+ gov_contracts                 | notes                               | text                     | YES         | 
+ gov_contracts                 | created_at                          | timestamp with time zone | YES         | now()
+ gov_training_completions      | id                                  | uuid                     | NO          | gen_random_uuid()
+ gov_training_completions      | contract_requirement_id             | uuid                     | NO          | 
+ gov_training_completions      | employee_id                         | uuid                     | NO          | 
+ gov_training_completions      | completed_date                      | date                     | YES         | 
+ gov_training_completions      | expiration_date                     | date                     | YES         | 
+ gov_training_completions      | source_system_reference             | text                     | YES         | 
+ gov_training_completions      | status                              | text                     | YES         | 'upcoming'::text
+ gov_training_completions      | created_at                          | timestamp with time zone | YES         | now()
+ indirect_pools                | pool_id                             | uuid                     | NO          | gen_random_uuid()
+ indirect_pools                | pool_name                           | text                     | NO          | 
+ indirect_pools                | gl_account_number                   | text                     | YES         | 
+ indirect_pools                | gl_account_description              | text                     | YES         | 
+ indirect_pools                | fiscal_year                         | integer                  | NO          | 
+ indirect_pools                | status                              | text                     | NO          | 'active'::text
+ indirect_rates                | rate_id                             | uuid                     | NO          | gen_random_uuid()
+ indirect_rates                | pool_id                             | uuid                     | NO          | 
+ indirect_rates                | fiscal_year                         | integer                  | NO          | 
+ indirect_rates                | standard_rate                       | numeric                  | YES         | 
+ indirect_rates                | actual_rate                         | numeric                  | YES         | 
+ indirect_rates                | effective_start                     | date                     | NO          | 
+ indirect_rates                | effective_end                       | date                     | YES         | 
+ indirect_rates                | created_at                          | timestamp with time zone | NO          | now()
+ indirect_rates                | created_by                          | uuid                     | YES         | 
+ labor_categories              | labor_category_id                   | uuid                     | NO          | gen_random_uuid()
+ labor_categories              | title                               | text                     | NO          | 
+ labor_categories              | description                         | text                     | YES         | 
+ labor_categories              | status                              | text                     | NO          | 'active'::text
+ pay_period_certifications     | id                                  | uuid                     | NO          | gen_random_uuid()
+ pay_period_certifications     | employee_id                         | uuid                     | NO          | 
+ pay_period_certifications     | period_start                        | date                     | NO          | 
+ pay_period_certifications     | period_end                          | date                     | NO          | 
+ pay_period_certifications     | status                              | text                     | NO          | 'open'::text
+ pay_period_certifications     | employee_cert_at                    | timestamp with time zone | YES         | 
+ pay_period_certifications     | admin_cert_at                       | timestamp with time zone | YES         | 
+ pay_period_certifications     | admin_cert_by                       | uuid                     | YES         | 
+ pay_period_certifications     | admin_notes                         | text                     | YES         | 
+ pay_period_certifications     | reopened_at                         | timestamp with time zone | YES         | 
+ pay_period_certifications     | reopened_by                         | uuid                     | YES         | 
+ pay_period_certifications     | reopen_reason                       | text                     | YES         | 
+ pay_period_certifications     | created_at                          | timestamp with time zone | NO          | now()
+ pay_period_certifications     | updated_at                          | timestamp with time zone | NO          | now()
+ payroll_run_item_earnings     | id                                  | uuid                     | NO          | gen_random_uuid()
+ payroll_run_item_earnings     | payroll_run_item_id                 | uuid                     | NO          | 
+ payroll_run_item_earnings     | earning_type                        | text                     | NO          | 
+ payroll_run_item_earnings     | hours                               | numeric                  | NO          | 0
+ payroll_run_item_earnings     | rate                                | numeric                  | YES         | 
+ payroll_run_item_earnings     | amount                              | numeric                  | YES         | 
+ payroll_run_item_earnings     | created_at                          | timestamp with time zone | YES         | now()
+ payroll_run_items             | id                                  | uuid                     | NO          | gen_random_uuid()
+ payroll_run_items             | payroll_run_id                      | uuid                     | NO          | 
+ payroll_run_items             | employee_id                         | uuid                     | NO          | 
+ payroll_run_items             | total_hours                         | numeric                  | NO          | 0
+ payroll_run_items             | status                              | text                     | NO          | 'draft'::text
+ payroll_run_items             | created_at                          | timestamp with time zone | YES         | now()
+ payroll_runs                  | id                                  | uuid                     | NO          | gen_random_uuid()
+ payroll_runs                  | pay_period_start                    | date                     | NO          | 
+ payroll_runs                  | pay_period_end                      | date                     | NO          | 
+ payroll_runs                  | status                              | text                     | NO          | 'draft'::text
+ payroll_runs                  | created_by                          | uuid                     | YES         | 
+ payroll_runs                  | created_at                          | timestamp with time zone | YES         | now()
+ profiles                      | id                                  | uuid                     | NO          | gen_random_uuid()
+ profiles                      | entra_object_id                     | uuid                     | YES         | 
+ profiles                      | employee_number                     | integer                  | NO          | nextval('employee_number_seq'::regclass)
+ profiles                      | email                               | text                     | YES         | 
+ profiles                      | full_name                           | text                     | YES         | 
+ profiles                      | role                                | text                     | YES         | 'employee'::text
+ profiles                      | job_title                           | text                     | YES         | 
+ profiles                      | department_legacy_text              | text                     | YES         | 
+ profiles                      | phone                               | text                     | YES         | 
+ profiles                      | bio                                 | text                     | YES         | 
+ profiles                      | start_date                          | date                     | YES         | 
+ profiles                      | employment_status                   | text                     | YES         | 'active'::text
+ profiles                      | manager_id                          | uuid                     | YES         | 
+ profiles                      | photo_url                           | text                     | YES         | 
+ profiles                      | clearance_level                     | text                     | YES         | 
+ profiles                      | clearance_investigation_type        | text                     | YES         | 
+ profiles                      | clearance_granted_date              | date                     | YES         | 
+ profiles                      | clearance_expiration_date           | date                     | YES         | 
+ profiles                      | created_at                          | timestamp with time zone | YES         | now()
+ profiles                      | home_email                          | text                     | YES         | 
+ profiles                      | home_phone                          | text                     | YES         | 
+ profiles                      | location                            | text                     | YES         | 
+ profiles                      | preferred_name                      | text                     | YES         | 
+ profiles                      | known_traveler_number               | text                     | YES         | 
+ profiles                      | pto_accrual_rate                    | numeric                  | NO          | 0
+ profiles                      | pto_balance_hours                   | numeric                  | NO          | 0
+ profiles                      | department_id                       | uuid                     | YES         | 
+ profiles                      | org_position                        | text                     | YES         | 
+ profiles                      | theme_preference                    | text                     | NO          | 'dark'::text
+ projects                      | id                                  | uuid                     | NO          | gen_random_uuid()
+ projects                      | name                                | text                     | NO          | 
+ projects                      | code                                | text                     | YES         | 
+ projects                      | active                              | boolean                  | NO          | true
+ projects                      | created_at                          | timestamp with time zone | YES         | now()
+ qbo_sync_mapping              | mapping_id                          | uuid                     | NO          | gen_random_uuid()
+ qbo_sync_mapping              | billing_node_id                     | uuid                     | NO          | 
+ qbo_sync_mapping              | qbo_entity_id                       | text                     | NO          | 
+ qbo_sync_mapping              | qbo_entity_type                     | text                     | NO          | 
+ qbo_sync_mapping              | last_synced_at                      | timestamp with time zone | YES         | 
+ resumes                       | id                                  | uuid                     | NO          | 
+ resumes                       | summary                             | text                     | YES         | 
+ resumes                       | years_experience                    | text                     | YES         | 
+ resumes                       | work_history                        | jsonb                    | YES         | '[]'::jsonb
+ resumes                       | education                           | jsonb                    | YES         | '[]'::jsonb
+ resumes                       | certifications                      | jsonb                    | YES         | '[]'::jsonb
+ resumes                       | skills                              | jsonb                    | YES         | '[]'::jsonb
+ resumes                       | search_doc                          | tsvector                 | YES         | 
+ resumes                       | updated_at                          | timestamp with time zone | YES         | now()
+ resumes                       | email                               | text                     | YES         | 
+ resumes                       | linkedin_url                        | text                     | YES         | 
+ resumes                       | personal_phone                      | text                     | YES         | 
+ skills_bank                   | id                                  | uuid                     | NO          | gen_random_uuid()
+ skills_bank                   | label                               | text                     | NO          | 
+ skills_bank                   | created_by                          | uuid                     | YES         | 
+ skills_bank                   | created_at                          | timestamp with time zone | YES         | now()
+ slin_employee_authorization   | authorization_id                    | uuid                     | NO          | gen_random_uuid()
+ slin_employee_authorization   | slin_id                             | uuid                     | NO          | 
+ slin_employee_authorization   | employee_id                         | uuid                     | NO          | 
+ slin_employee_authorization   | status                              | text                     | NO          | 
+ slin_employee_authorization   | effective_date                      | date                     | NO          | 
+ slin_employee_authorization   | changed_by_admin_id                 | uuid                     | YES         | 
+ slin_employee_authorization   | changed_at                          | timestamp with time zone | NO          | now()
+ slin_employee_authorization   | reason                              | text                     | YES         | 
+ slin_funding_history          | funding_id                          | uuid                     | NO          | gen_random_uuid()
+ slin_funding_history          | slin_id                             | uuid                     | NO          | 
+ slin_funding_history          | mod_number                          | text                     | YES         | 
+ slin_funding_history          | mod_date                            | date                     | NO          | 
+ slin_funding_history          | previous_funding                    | numeric                  | NO          | 
+ slin_funding_history          | award_total                         | numeric                  | NO          | 
+ slin_funding_history          | cumulative_total                    | numeric                  | NO          | 
+ slin_funding_history          | source_document                     | text                     | YES         | 
+ slin_funding_history          | entered_by_admin_id                 | uuid                     | YES         | 
+ slin_funding_history          | entered_at                          | timestamp with time zone | NO          | now()
+ slins                         | slin_id                             | uuid                     | NO          | gen_random_uuid()
+ slins                         | billing_node_id                     | uuid                     | NO          | 
+ slins                         | contract_id                         | uuid                     | NO          | 
+ slins                         | slin_code                           | text                     | NO          | 
+ slins                         | slin_description                    | text                     | YES         | 
+ slins                         | slin_category                       | text                     | NO          | 
+ slins                         | contract_type                       | text                     | YES         | 
+ slins                         | pop_start                           | date                     | YES         | 
+ slins                         | pop_end                             | date                     | YES         | 
+ slins                         | fee_percentage                      | numeric                  | YES         | 
+ slins                         | status                              | text                     | NO          | 'active'::text
+ slins                         | created_at                          | timestamp with time zone | NO          | now()
+ slins                         | created_by                          | uuid                     | YES         | 
+ slins                         | updated_at                          | timestamp with time zone | NO          | now()
+ slins                         | updated_by                          | uuid                     | YES         | 
+ slins                         | option_year                         | text                     | YES         | 
+ staff_recall_broadcasts       | id                                  | uuid                     | NO          | gen_random_uuid()
+ staff_recall_broadcasts       | sent_by                             | uuid                     | NO          | 
+ staff_recall_broadcasts       | sent_at                             | timestamp with time zone | NO          | now()
+ staff_recall_broadcasts       | subject                             | text                     | NO          | 
+ staff_recall_broadcasts       | message                             | text                     | NO          | 
+ staff_recall_broadcasts       | filter_summary                      | text                     | YES         | 
+ staff_recall_broadcasts       | recipient_count                     | integer                  | NO          | 0
+ staff_recall_broadcasts       | recipient_mode                      | text                     | NO          | 'all'::text
+ staff_recall_recipients       | id                                  | uuid                     | NO          | gen_random_uuid()
+ staff_recall_recipients       | broadcast_id                        | uuid                     | NO          | 
+ staff_recall_recipients       | employee_id                         | uuid                     | NO          | 
+ staff_recall_recipients       | work_email                          | text                     | YES         | 
+ staff_recall_recipients       | home_email                          | text                     | YES         | 
+ staff_recall_recipients       | ack_token                           | uuid                     | NO          | gen_random_uuid()
+ staff_recall_recipients       | acknowledged_at                     | timestamp with time zone | YES         | 
+ staff_recall_recipients       | created_at                          | timestamp with time zone | NO          | now()
+ time_card_audit_log           | id                                  | uuid                     | NO          | gen_random_uuid()
+ time_card_audit_log           | employee_id                         | uuid                     | NO          | 
+ time_card_audit_log           | week_start_date                     | date                     | NO          | 
+ time_card_audit_log           | time_code_id                        | uuid                     | YES         | 
+ time_card_audit_log           | action                              | text                     | NO          | 
+ time_card_audit_log           | field_changed                       | text                     | YES         | 
+ time_card_audit_log           | old_value                           | text                     | YES         | 
+ time_card_audit_log           | new_value                           | text                     | YES         | 
+ time_card_audit_log           | performed_by                        | uuid                     | NO          | 
+ time_card_audit_log           | performed_at                        | timestamp with time zone | NO          | now()
+ time_card_audit_log           | reason                              | text                     | YES         | 
+ time_codes                    | id                                  | uuid                     | NO          | gen_random_uuid()
+ time_codes                    | code                                | text                     | NO          | 
+ time_codes                    | label                               | text                     | NO          | 
+ time_codes                    | category                            | text                     | NO          | 
+ time_codes                    | gov_contract_id                     | uuid                     | YES         | 
+ time_codes                    | active                              | boolean                  | NO          | true
+ time_codes                    | sort_order                          | integer                  | NO          | 0
+ time_codes                    | created_at                          | timestamp with time zone | NO          | now()
+ time_entries                  | id                                  | uuid                     | NO          | gen_random_uuid()
+ time_entries                  | employee_id                         | uuid                     | NO          | 
+ time_entries                  | work_date                           | date                     | NO          | 
+ time_entries                  | hours                               | numeric                  | NO          | 
+ time_entries                  | earning_type                        | text                     | NO          | 'regular'::text
+ time_entries                  | status                              | text                     | NO          | 'submitted'::text
+ time_entries                  | approved_by                         | uuid                     | YES         | 
+ time_entries                  | approved_at                         | timestamp with time zone | YES         | 
+ time_entries                  | created_at                          | timestamp with time zone | NO          | now()
+ time_entries                  | updated_at                          | timestamp with time zone | NO          | now()
+ time_entries                  | project_id                          | uuid                     | YES         | 
+ time_entries                  | notes                               | text                     | YES         | 
+ time_entries                  | time_code_id                        | uuid                     | YES         | 
+ time_entries                  | entered_by                          | uuid                     | YES         | 
+ time_entries                  | slin_id                             | uuid                     | YES         | 
+ training_request_participants | id                                  | uuid                     | NO          | gen_random_uuid()
+ training_request_participants | training_request_id                 | uuid                     | NO          | 
+ training_request_participants | employee_id                         | uuid                     | NO          | 
+ training_request_participants | manager_status                      | text                     | YES         | 'pending'::text
+ training_request_participants | travel_status                       | text                     | YES         | 'not_applicable'::text
+ training_request_participants | travel_request_id                   | uuid                     | YES         | 
+ training_request_participants | individual_travel_cost              | numeric                  | YES         | 
+ training_request_participants | outcome_evaluation                  | text                     | YES         | 
+ training_request_participants | cert_record_id                      | uuid                     | YES         | 
+ training_request_participants | status_history                      | jsonb                    | YES         | '[]'::jsonb
+ training_request_participants | created_at                          | timestamp with time zone | YES         | now()
+ training_requests             | id                                  | uuid                     | NO          | gen_random_uuid()
+ training_requests             | submitter_id                        | uuid                     | NO          | 
+ training_requests             | course_name                         | text                     | NO          | 
+ training_requests             | issuing_body                        | text                     | YES         | 
+ training_requests             | issue_date                          | date                     | YES         | 
+ training_requests             | expiration_date                     | date                     | YES         | 
+ training_requests             | renewal_cycle                       | text                     | YES         | 
+ training_requests             | future_pdu_value                    | numeric                  | YES         | 
+ training_requests             | cost_per_person                     | numeric                  | YES         | 
+ training_requests             | delivery_type                       | text                     | YES         | 
+ training_requests             | is_group_request                    | boolean                  | YES         | false
+ training_requests             | group_travel_id                     | uuid                     | YES         | 
+ training_requests             | current_status                      | text                     | YES         | 'draft'::text
+ training_requests             | survey_required                     | boolean                  | YES         | false
+ training_requests             | created_at                          | timestamp with time zone | YES         | now()
+ travel_estimate_audit_log     | id                                  | uuid                     | NO          | gen_random_uuid()
+ travel_estimate_audit_log     | estimate_id                         | uuid                     | NO          | 
+ travel_estimate_audit_log     | changed_by                          | uuid                     | NO          | 
+ travel_estimate_audit_log     | changed_at                          | timestamp with time zone | NO          | now()
+ travel_estimate_audit_log     | action                              | text                     | NO          | 
+ travel_estimate_audit_log     | field_changes                       | jsonb                    | YES         | 
+ travel_estimate_audit_log     | previous_status                     | text                     | YES         | 
+ travel_estimate_audit_log     | new_status                          | text                     | YES         | 
+ travel_estimates              | id                                  | uuid                     | NO          | gen_random_uuid()
+ travel_estimates              | created_by                          | uuid                     | NO          | 
+ travel_estimates              | status                              | text                     | NO          | 'draft'::text
+ travel_estimates              | destination_event                   | text                     | YES         | 
+ travel_estimates              | leave_date                          | date                     | YES         | 
+ travel_estimates              | return_date                         | date                     | YES         | 
+ travel_estimates              | number_of_trainers                  | integer                  | YES         | 1
+ travel_estimates              | per_diem_lodging_rate               | numeric                  | YES         | 
+ travel_estimates              | per_diem_meals_rate                 | numeric                  | YES         | 
+ travel_estimates              | airfare_avg                         | numeric                  | YES         | 0
+ travel_estimates              | airport_parking_transport           | numeric                  | YES         | 0
+ travel_estimates              | baggage                             | numeric                  | YES         | 0
+ travel_estimates              | rental_car_gas_parking_tolls        | numeric                  | YES         | 0
+ travel_estimates              | mileage                             | numeric                  | YES         | 0
+ travel_estimates              | shipping_to                         | numeric                  | YES         | 0
+ travel_estimates              | shipping_back                       | numeric                  | YES         | 0
+ travel_estimates              | eww_rate                            | numeric                  | YES         | 0
+ travel_estimates              | eww_hours_per_trainer               | numeric                  | YES         | 0
+ travel_estimates              | fee_multiplier_used                 | numeric                  | YES         | 
+ travel_estimates              | per_traveler_subtotal               | numeric                  | YES         | 
+ travel_estimates              | trip_lead_total                     | numeric                  | YES         | 
+ travel_estimates              | estimated_total_odc                 | numeric                  | YES         | 
+ travel_estimates              | eww_total                           | numeric                  | YES         | 
+ travel_estimates              | approved_by                         | uuid                     | YES         | 
+ travel_estimates              | approved_at                         | timestamp with time zone | YES         | 
+ travel_estimates              | created_at                          | timestamp with time zone | NO          | now()
+ travel_estimates              | updated_at                          | timestamp with time zone | NO          | now()
+ travel_expense_audit_log      | id                                  | uuid                     | NO          | gen_random_uuid()
+ travel_expense_audit_log      | expense_id                          | uuid                     | NO          | 
+ travel_expense_audit_log      | changed_by                          | uuid                     | YES         | 
+ travel_expense_audit_log      | changed_at                          | timestamp with time zone | NO          | now()
+ travel_expense_audit_log      | action                              | text                     | YES         | 
+ travel_expense_audit_log      | field_changes                       | jsonb                    | YES         | 
+ travel_expense_audit_log      | previous_status                     | text                     | YES         | 
+ travel_expense_audit_log      | new_status                          | text                     | YES         | 
+ travel_expense_receipts       | id                                  | uuid                     | NO          | gen_random_uuid()
+ travel_expense_receipts       | expense_id                          | uuid                     | NO          | 
+ travel_expense_receipts       | file_url                            | text                     | NO          | 
+ travel_expense_receipts       | file_name                           | text                     | YES         | 
+ travel_expense_receipts       | uploaded_by                         | uuid                     | YES         | 
+ travel_expense_receipts       | uploaded_at                         | timestamp with time zone | NO          | now()
+ travel_expenses               | id                                  | uuid                     | NO          | gen_random_uuid()
+ travel_expenses               | estimate_id                         | uuid                     | NO          | 
+ travel_expenses               | created_by                          | uuid                     | NO          | 
+ travel_expenses               | current_status                      | text                     | NO          | 'draft'::text
+ travel_expenses               | supervisor_status                   | text                     | NO          | 'pending'::text
+ travel_expenses               | principal_status                    | text                     | NO          | 'pending'::text
+ travel_expenses               | number_of_trainers                  | integer                  | NO          | 1
+ travel_expenses               | actual_leave_date                   | date                     | YES         | 
+ travel_expenses               | actual_return_date                  | date                     | YES         | 
+ travel_expenses               | actual_airfare                      | numeric                  | YES         | 0
+ travel_expenses               | actual_airport_parking_transport    | numeric                  | YES         | 0
+ travel_expenses               | actual_baggage                      | numeric                  | YES         | 0
+ travel_expenses               | actual_lodging_total                | numeric                  | YES         | 0
+ travel_expenses               | actual_rental_car_gas_parking_tolls | numeric                  | YES         | 0
+ travel_expenses               | actual_mileage                      | numeric                  | YES         | 0
+ travel_expenses               | actual_shipping_to                  | numeric                  | YES         | 0
+ travel_expenses               | actual_shipping_back                | numeric                  | YES         | 0
+ travel_expenses               | per_diem_meals_rate                 | numeric                  | YES         | 0
+ travel_expenses               | eww_rate                            | numeric                  | YES         | 0
+ travel_expenses               | eww_hours_per_trainer               | numeric                  | YES         | 0
+ travel_expenses               | actual_per_diem_meals_total         | numeric                  | YES         | 
+ travel_expenses               | actual_per_traveler_subtotal        | numeric                  | YES         | 
+ travel_expenses               | actual_trip_lead_total              | numeric                  | YES         | 
+ travel_expenses               | actual_total_odc                    | numeric                  | YES         | 
+ travel_expenses               | actual_eww_total                    | numeric                  | YES         | 
+ travel_expenses               | variance_total                      | numeric                  | YES         | 
+ travel_expenses               | supervisor_by                       | uuid                     | YES         | 
+ travel_expenses               | supervisor_at                       | timestamp with time zone | YES         | 
+ travel_expenses               | principal_by                        | uuid                     | YES         | 
+ travel_expenses               | principal_at                        | timestamp with time zone | YES         | 
+ travel_expenses               | created_at                          | timestamp with time zone | NO          | now()
+ travel_expenses               | updated_at                          | timestamp with time zone | NO          | now()
+ travel_settings               | id                                  | uuid                     | NO          | gen_random_uuid()
+ travel_settings               | fee_multiplier                      | numeric                  | NO          | 1.1274
+ travel_settings               | updated_by                          | uuid                     | NO          | 
+ travel_settings               | updated_at                          | timestamp with time zone | NO          | now()
+ travel_settings               | singleton                           | boolean                  | NO          | true
+(471 rows)
+
+           tablename           |              policyname               |  cmd   |                                                                             qual                                                                             |                                                                         with_check                                                                         
+-------------------------------+---------------------------------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ admin_audit_log               | admin_audit_log_admin_all             | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ approval_steps                | approval_steps_select                 | SELECT | ((assigned_to = app.current_user_id()) OR app.is_admin() OR (EXISTS ( SELECT 1                                                                              +| 
+                               |                                       |        |    FROM training_requests r                                                                                                                                 +| 
+                               |                                       |        |   WHERE ((r.id = approval_steps.training_request_id) AND (r.submitter_id = app.current_user_id())))))                                                        | 
+ approval_steps                | approval_steps_write                  | ALL    | ((assigned_to = app.current_user_id()) OR app.is_admin())                                                                                                    | ((assigned_to = app.current_user_id()) OR app.is_admin())
+ asset_requests                | asset_requests_admin_all              | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ assets                        | assets_admin_all                      | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ billing_nodes                 | billing_nodes_admin_all               | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ contract_contacts             | contract_contacts_admin_all           | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ contracts                     | contracts_admin_all                   | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ customers                     | customers_admin_all                   | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ departments                   | departments_admin_write               | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ departments                   | departments_read_all                  | SELECT | (app.current_user_id() IS NOT NULL)                                                                                                                          | 
+ employee_rates                | employee_rates_admin_all              | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ employee_travel_programs      | travel_programs_self                  | ALL    | ((employee_id = app.current_user_id()) OR app.is_admin())                                                                                                    | ((employee_id = app.current_user_id()) OR app.is_admin())
+ fake_pay_rates                | fake_pay_rates_admin_all              | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ gov_agencies                  | gov_agencies_admin_all                | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ gov_contract_requirements     | gov_contract_requirements_admin_all   | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ gov_contracts                 | gov_contracts_admin_all               | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ gov_training_completions      | gov_training_completions_admin_write  | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ gov_training_completions      | gov_training_completions_select       | SELECT | ((employee_id = app.current_user_id()) OR app.is_manager_of(employee_id) OR app.is_admin())                                                                  | 
+ indirect_pools                | indirect_pools_admin_all              | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ indirect_rates                | indirect_rates_admin_all              | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ labor_categories              | labor_categories_admin_all            | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ pay_period_certifications     | pay_period_cert_select                | SELECT | ((employee_id = app.current_user_id()) OR app.is_manager_of(employee_id) OR app.is_admin())                                                                  | 
+ pay_period_certifications     | pay_period_cert_write                 | ALL    | ((employee_id = app.current_user_id()) OR app.is_admin())                                                                                                    | ((employee_id = app.current_user_id()) OR app.is_admin())
+ payroll_run_item_earnings     | payroll_run_item_earnings_admin_all   | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ payroll_run_items             | payroll_run_items_admin_all           | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ payroll_runs                  | payroll_runs_admin_all                | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ profiles                      | profiles_admin_all                    | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ profiles                      | profiles_select                       | SELECT | ((id = app.current_user_id()) OR app.is_manager_of(id) OR app.is_admin())                                                                                    | 
+ profiles                      | profiles_update_self                  | UPDATE | ((id = app.current_user_id()) OR app.is_admin())                                                                                                             | ((id = app.current_user_id()) OR app.is_admin())
+ projects                      | projects_admin_write                  | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ projects                      | projects_read_all                     | SELECT | (app.current_user_id() IS NOT NULL)                                                                                                                          | 
+ qbo_sync_mapping              | qbo_sync_mapping_admin_all            | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ resumes                       | resumes_select                        | SELECT | ((id = app.current_user_id()) OR app.is_manager_of(id) OR app.is_admin())                                                                                    | 
+ resumes                       | resumes_write_self                    | ALL    | ((id = app.current_user_id()) OR app.is_admin())                                                                                                             | ((id = app.current_user_id()) OR app.is_admin())
+ skills_bank                   | skills_bank_read_all                  | SELECT | (app.current_user_id() IS NOT NULL)                                                                                                                          | 
+ skills_bank                   | skills_bank_write_self                | INSERT |                                                                                                                                                              | ((created_by = app.current_user_id()) OR app.is_admin())
+ slin_employee_authorization   | slin_employee_authorization_admin_all | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ slin_funding_history          | slin_funding_history_admin_all        | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ slins                         | slins_admin_all                       | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ staff_recall_broadcasts       | staff_recall_broadcasts_admin_all     | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ staff_recall_recipients       | staff_recall_recipients_admin_all     | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ time_card_audit_log           | time_card_audit_insert                | INSERT |                                                                                                                                                              | ((performed_by = app.current_user_id()) OR app.is_admin())
+ time_card_audit_log           | time_card_audit_select                | SELECT | ((employee_id = app.current_user_id()) OR app.is_manager_of(employee_id) OR app.is_admin())                                                                  | 
+ time_codes                    | time_codes_admin_all                  | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ time_entries                  | time_entries_select                   | SELECT | ((employee_id = app.current_user_id()) OR app.is_manager_of(employee_id) OR app.is_admin())                                                                  | 
+ time_entries                  | time_entries_update_self              | UPDATE | (((employee_id = app.current_user_id()) AND (status = ANY (ARRAY['draft'::text, 'submitted'::text]))) OR app.is_manager_of(employee_id) OR app.is_admin())   | (((employee_id = app.current_user_id()) AND (status = ANY (ARRAY['draft'::text, 'submitted'::text]))) OR app.is_manager_of(employee_id) OR app.is_admin())
+ time_entries                  | time_entries_write_self               | INSERT |                                                                                                                                                              | ((employee_id = app.current_user_id()) OR app.is_admin())
+ training_request_participants | training_participants_select          | SELECT | ((employee_id = app.current_user_id()) OR app.is_manager_of(employee_id) OR app.is_admin() OR (EXISTS ( SELECT 1                                            +| 
+                               |                                       |        |    FROM training_requests r                                                                                                                                 +| 
+                               |                                       |        |   WHERE ((r.id = training_request_participants.training_request_id) AND (r.submitter_id = app.current_user_id())))))                                         | 
+ training_request_participants | training_participants_write           | ALL    | (app.is_manager_of(employee_id) OR app.is_admin())                                                                                                           | (app.is_manager_of(employee_id) OR app.is_admin())
+ training_requests             | training_requests_select              | SELECT | ((submitter_id = app.current_user_id()) OR app.is_manager_of(submitter_id) OR app.is_admin() OR (EXISTS ( SELECT 1                                          +| 
+                               |                                       |        |    FROM training_request_participants p                                                                                                                     +| 
+                               |                                       |        |   WHERE ((p.training_request_id = p.id) AND (p.employee_id = app.current_user_id())))))                                                                      | 
+ training_requests             | training_requests_write               | ALL    | ((submitter_id = app.current_user_id()) OR app.is_admin())                                                                                                   | ((submitter_id = app.current_user_id()) OR app.is_admin())
+ travel_estimate_audit_log     | travel_estimate_audit_insert          | INSERT |                                                                                                                                                              | ((changed_by = app.current_user_id()) OR app.is_admin())
+ travel_estimate_audit_log     | travel_estimate_audit_select          | SELECT | (EXISTS ( SELECT 1                                                                                                                                          +| 
+                               |                                       |        |    FROM travel_estimates e                                                                                                                                  +| 
+                               |                                       |        |   WHERE ((e.id = travel_estimate_audit_log.estimate_id) AND ((e.created_by = app.current_user_id()) OR app.is_manager_of(e.created_by) OR app.is_admin())))) | 
+ travel_estimates              | travel_estimates_select               | SELECT | ((created_by = app.current_user_id()) OR app.is_manager_of(created_by) OR app.is_admin())                                                                    | 
+ travel_estimates              | travel_estimates_write                | ALL    | (((created_by = app.current_user_id()) AND (status = 'draft'::text)) OR app.is_manager_of(created_by) OR app.is_admin())                                     | (((created_by = app.current_user_id()) AND (status = ANY (ARRAY['draft'::text, 'submitted'::text]))) OR app.is_manager_of(created_by) OR app.is_admin())
+ travel_expense_audit_log      | travel_expense_audit_insert           | INSERT |                                                                                                                                                              | ((changed_by = app.current_user_id()) OR app.is_admin())
+ travel_expense_audit_log      | travel_expense_audit_select           | SELECT | (EXISTS ( SELECT 1                                                                                                                                          +| 
+                               |                                       |        |    FROM travel_expenses e                                                                                                                                   +| 
+                               |                                       |        |   WHERE ((e.id = travel_expense_audit_log.expense_id) AND ((e.created_by = app.current_user_id()) OR app.is_manager_of(e.created_by) OR app.is_admin()))))   | 
+ travel_expense_receipts       | travel_expense_receipts_insert        | INSERT |                                                                                                                                                              | ((uploaded_by = app.current_user_id()) OR app.is_admin())
+ travel_expense_receipts       | travel_expense_receipts_select        | SELECT | (EXISTS ( SELECT 1                                                                                                                                          +| 
+                               |                                       |        |    FROM travel_expenses e                                                                                                                                   +| 
+                               |                                       |        |   WHERE ((e.id = travel_expense_receipts.expense_id) AND ((e.created_by = app.current_user_id()) OR app.is_manager_of(e.created_by) OR app.is_admin()))))    | 
+ travel_expenses               | travel_expenses_select                | SELECT | ((created_by = app.current_user_id()) OR app.is_manager_of(created_by) OR app.is_admin())                                                                    | 
+ travel_expenses               | travel_expenses_write                 | ALL    | ((created_by = app.current_user_id()) OR app.is_manager_of(created_by) OR app.is_admin())                                                                    | ((created_by = app.current_user_id()) OR app.is_manager_of(created_by) OR app.is_admin())
+ travel_settings               | travel_settings_admin_write           | ALL    | app.is_admin()                                                                                                                                               | app.is_admin()
+ travel_settings               | travel_settings_read_all              | SELECT | true                                                                                                                                                         | 
+(64 rows)
+
+        proname        |                                   pg_get_functiondef                                    
+-----------------------+-----------------------------------------------------------------------------------------
+ armor                 | CREATE OR REPLACE FUNCTION public.armor(bytea)                                         +
+                       |  RETURNS text                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_armor$function$                                    +
+                       | 
+ armor                 | CREATE OR REPLACE FUNCTION public.armor(bytea, text[], text[])                         +
+                       |  RETURNS text                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_armor$function$                                    +
+                       | 
+ crypt                 | CREATE OR REPLACE FUNCTION public.crypt(text, text)                                    +
+                       |  RETURNS text                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_crypt$function$                                    +
+                       | 
+ dearmor               | CREATE OR REPLACE FUNCTION public.dearmor(text)                                        +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_dearmor$function$                                  +
+                       | 
+ decrypt               | CREATE OR REPLACE FUNCTION public.decrypt(bytea, bytea, text)                          +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_decrypt$function$                                  +
+                       | 
+ decrypt_iv            | CREATE OR REPLACE FUNCTION public.decrypt_iv(bytea, bytea, bytea, text)                +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_decrypt_iv$function$                               +
+                       | 
+ digest                | CREATE OR REPLACE FUNCTION public.digest(bytea, text)                                  +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_digest$function$                                   +
+                       | 
+ digest                | CREATE OR REPLACE FUNCTION public.digest(text, text)                                   +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_digest$function$                                   +
+                       | 
+ encrypt               | CREATE OR REPLACE FUNCTION public.encrypt(bytea, bytea, text)                          +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_encrypt$function$                                  +
+                       | 
+ encrypt_iv            | CREATE OR REPLACE FUNCTION public.encrypt_iv(bytea, bytea, bytea, text)                +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_encrypt_iv$function$                               +
+                       | 
+ fips_mode             | CREATE OR REPLACE FUNCTION public.fips_mode()                                          +
+                       |  RETURNS boolean                                                                       +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pg_check_fipsmode$function$                           +
+                       | 
+ gen_random_bytes      | CREATE OR REPLACE FUNCTION public.gen_random_bytes(integer)                            +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pg_random_bytes$function$                             +
+                       | 
+ gen_random_uuid       | CREATE OR REPLACE FUNCTION public.gen_random_uuid()                                    +
+                       |  RETURNS uuid                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE                                                                         +
+                       | AS '$libdir/pgcrypto', $function$pg_random_uuid$function$                              +
+                       | 
+ gen_salt              | CREATE OR REPLACE FUNCTION public.gen_salt(text)                                       +
+                       |  RETURNS text                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pg_gen_salt$function$                                 +
+                       | 
+ gen_salt              | CREATE OR REPLACE FUNCTION public.gen_salt(text, integer)                              +
+                       |  RETURNS text                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$                          +
+                       | 
+ hmac                  | CREATE OR REPLACE FUNCTION public.hmac(bytea, bytea, text)                             +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_hmac$function$                                     +
+                       | 
+ hmac                  | CREATE OR REPLACE FUNCTION public.hmac(text, text, text)                               +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pg_hmac$function$                                     +
+                       | 
+ pgp_armor_headers     | CREATE OR REPLACE FUNCTION public.pgp_armor_headers(text, OUT key text, OUT value text)+
+                       |  RETURNS SETOF record                                                                  +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_armor_headers$function$                           +
+                       | 
+ pgp_key_id            | CREATE OR REPLACE FUNCTION public.pgp_key_id(bytea)                                    +
+                       |  RETURNS text                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_key_id_w$function$                                +
+                       | 
+ pgp_pub_decrypt       | CREATE OR REPLACE FUNCTION public.pgp_pub_decrypt(bytea, bytea)                        +
+                       |  RETURNS text                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$                        +
+                       | 
+ pgp_pub_decrypt       | CREATE OR REPLACE FUNCTION public.pgp_pub_decrypt(bytea, bytea, text)                  +
+                       |  RETURNS text                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$                        +
+                       | 
+ pgp_pub_decrypt       | CREATE OR REPLACE FUNCTION public.pgp_pub_decrypt(bytea, bytea, text, text)            +
+                       |  RETURNS text                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_text$function$                        +
+                       | 
+ pgp_pub_decrypt_bytea | CREATE OR REPLACE FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea)                  +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$                       +
+                       | 
+ pgp_pub_decrypt_bytea | CREATE OR REPLACE FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea, text)            +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$                       +
+                       | 
+ pgp_pub_decrypt_bytea | CREATE OR REPLACE FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea, text, text)      +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$                       +
+                       | 
+ pgp_pub_encrypt       | CREATE OR REPLACE FUNCTION public.pgp_pub_encrypt(text, bytea)                         +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$                        +
+                       | 
+ pgp_pub_encrypt       | CREATE OR REPLACE FUNCTION public.pgp_pub_encrypt(text, bytea, text)                   +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$                        +
+                       | 
+ pgp_pub_encrypt_bytea | CREATE OR REPLACE FUNCTION public.pgp_pub_encrypt_bytea(bytea, bytea)                  +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$                       +
+                       | 
+ pgp_pub_encrypt_bytea | CREATE OR REPLACE FUNCTION public.pgp_pub_encrypt_bytea(bytea, bytea, text)            +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$                       +
+                       | 
+ pgp_sym_decrypt       | CREATE OR REPLACE FUNCTION public.pgp_sym_decrypt(bytea, text)                         +
+                       |  RETURNS text                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$                        +
+                       | 
+ pgp_sym_decrypt       | CREATE OR REPLACE FUNCTION public.pgp_sym_decrypt(bytea, text, text)                   +
+                       |  RETURNS text                                                                          +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_text$function$                        +
+                       | 
+ pgp_sym_decrypt_bytea | CREATE OR REPLACE FUNCTION public.pgp_sym_decrypt_bytea(bytea, text)                   +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$                       +
+                       | 
+ pgp_sym_decrypt_bytea | CREATE OR REPLACE FUNCTION public.pgp_sym_decrypt_bytea(bytea, text, text)             +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  IMMUTABLE PARALLEL SAFE STRICT                                                        +
+                       | AS '$libdir/pgcrypto', $function$pgp_sym_decrypt_bytea$function$                       +
+                       | 
+ pgp_sym_encrypt       | CREATE OR REPLACE FUNCTION public.pgp_sym_encrypt(text, text)                          +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$                        +
+                       | 
+ pgp_sym_encrypt       | CREATE OR REPLACE FUNCTION public.pgp_sym_encrypt(text, text, text)                    +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_text$function$                        +
+                       | 
+ pgp_sym_encrypt_bytea | CREATE OR REPLACE FUNCTION public.pgp_sym_encrypt_bytea(bytea, text)                   +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$                       +
+                       | 
+ pgp_sym_encrypt_bytea | CREATE OR REPLACE FUNCTION public.pgp_sym_encrypt_bytea(bytea, text, text)             +
+                       |  RETURNS bytea                                                                         +
+                       |  LANGUAGE c                                                                            +
+                       |  PARALLEL SAFE STRICT                                                                  +
+                       | AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$                       +
+                       | 
+(37 rows)
+

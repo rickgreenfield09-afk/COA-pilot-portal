@@ -1,0 +1,41 @@
+      proname      |                          pg_get_functiondef                           
+-------------------+-----------------------------------------------------------------------
+ current_user_id   | CREATE OR REPLACE FUNCTION app.current_user_id()                     +
+                   |  RETURNS uuid                                                        +
+                   |  LANGUAGE sql                                                        +
+                   |  STABLE                                                              +
+                   | AS $function$                                                        +
+                   |   SELECT NULLIF(current_setting('app.user_id', true), '')::uuid;     +
+                   | $function$                                                           +
+                   | 
+ current_user_role | CREATE OR REPLACE FUNCTION app.current_user_role()                   +
+                   |  RETURNS text                                                        +
+                   |  LANGUAGE sql                                                        +
+                   |  STABLE                                                              +
+                   | AS $function$                                                        +
+                   |   SELECT NULLIF(current_setting('app.user_role', true), '');         +
+                   | $function$                                                           +
+                   | 
+ is_admin          | CREATE OR REPLACE FUNCTION app.is_admin()                            +
+                   |  RETURNS boolean                                                     +
+                   |  LANGUAGE sql                                                        +
+                   |  STABLE                                                              +
+                   | AS $function$                                                        +
+                   |   SELECT app.current_user_role() = 'admin';                          +
+                   | $function$                                                           +
+                   | 
+ is_manager_of     | CREATE OR REPLACE FUNCTION app.is_manager_of(target_employee_id uuid)+
+                   |  RETURNS boolean                                                     +
+                   |  LANGUAGE sql                                                        +
+                   |  STABLE SECURITY DEFINER                                             +
+                   |  SET search_path TO 'public', 'pg_temp'                              +
+                   | AS $function$                                                        +
+                   |   SELECT EXISTS (                                                    +
+                   |     SELECT 1 FROM public.profiles p                                  +
+                   |     WHERE p.id = target_employee_id                                  +
+                   |       AND p.manager_id = app.current_user_id()                       +
+                   |   );                                                                 +
+                   | $function$                                                           +
+                   | 
+(4 rows)
+

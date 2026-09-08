@@ -1208,3 +1208,73 @@ Gap/follow-up:
 - isAdmin()/checkAdminNavVisibility() (frontend) and every other screen's
   data calls still aren't wired to this new API — GetMyProfile is a
   pattern-establishing endpoint, not yet consumed by anything.
+
+## 2026-09-08 — Real schema pulled; identity-resolution bootstrap fixed; app_api Postgres role added (IA-2 / IA-8 / AC-3 / AC-6)
+Ricky pulled the live database's actual schema, RLS policies, and the
+`app` schema's function bodies directly from psql (server-side pg_dump
+version was older than the PG18 server, so this used targeted
+information_schema/pg_policies/pg_get_functiondef queries instead — see
+postgres-schema-live.txt / app-schema-functions.txt). This caught two real
+problems in the auth-wiring work above before either reached production:
+
+1. `profiles.id` is NOT the Entra object id — there's a separate
+   `entra_object_id` column. GetMyProfile's original query
+   (`where id = @id` using the raw Entra oid) would have silently matched
+   zero rows for every real user. Worse, `app.current_user_id()` (which
+   every RLS policy in the database keys off) is confirmed via
+   `pg_get_functiondef` to be a PLAIN read of the `app.user_id` session
+   variable — `NULLIF(current_setting('app.user_id', true), '')::uuid`,
+   no database lookup of its own — so `app.user_id` has to already BE the
+   resolved `profiles.id` before any RLS-gated query can work, and nothing
+   in the database did that resolution automatically.
+   Fixed with `app.resolve_profile_id(entra_object_id)`
+   (add-app-api-role-and-identity-resolution.sql) — SECURITY DEFINER,
+   bypasses RLS for this one lookup only, mirroring the existing
+   `is_manager_of()` pattern. `AerisDbConnectionFactory.OpenScopedAsync()`
+   now calls this first, before setting app.user_id/app.user_role, and
+   throws if no profiles row matches (surfaced as a 500 with a clear log
+   message rather than a silent empty result).
+2. The Functions API's only Postgres credential was `coaadmin` — the
+   server admin account. Confirmed this is a real gap, not just
+   theoretical: RLS is only an enforced boundary if the connecting role is
+   actually subject to it, and an admin-privileged connection used as the
+   app's everyday runtime identity means a bug in the API code runs with
+   full admin rights instead of being contained by RLS.
+   add-app-api-role-and-identity-resolution.sql also creates a dedicated
+   `app_api` role — SELECT/INSERT/UPDATE/DELETE on all public tables,
+   EXECUTE on all app.* functions, RLS still narrows everything per row
+   (including the append-only audit-log tables, which have no
+   UPDATE/DELETE policy at all regardless of this role's table-level
+   grants) — and the Functions API's connection string should point at
+   this role, not coaadmin.
+
+Also confirmed (no code change needed) that the JWT-`roles`-claim role
+mapping locked 2026-08-28 is correct as designed: `app.current_user_role()`
+is likewise a plain session-variable read, and `app.is_admin()` is just
+`app.current_user_role() = 'admin'` — matching what AerisRoleMapper
+already produces.
+
+GetMyProfile's SELECT list also extended from the earlier minimal (id,
+role) placeholder to the real columns now that the actual `profiles`
+schema is known, joined against `departments` for the name — mirrors what
+screen-profile.js's Overview tab already reads via Supabase.
+
+Status: Implemented (code) / Planned (SQL — add-app-api-role-and-identity-
+resolution.sql drafted, not yet run; same "user runs SQL, not this
+session" pattern as every other .sql file in this repo). `dotnet build`
+succeeds (0 warnings/errors) after these changes.
+Gap/follow-up:
+- SQL file has a placeholder password for app_api — must be replaced with
+  a real value before running, then stored in Key Vault as a new secret
+  and wired into POSTGRES_CONNECTION_STRING as a Key Vault reference
+  (closes the "Wire Key Vault references into Functions" Planner card once
+  done).
+- Still not tested against a live Entra token — the App Registration's
+  Expose-an-API scope (2026-09-08 entry above) and this SQL both need to
+  be applied before a real end-to-end login-through-to-profile-fetch test
+  is possible.
+- postgres-schema-live.txt/app-schema-functions.txt added to this repo as
+  tracked reference snapshots (same commit) so future sessions don't need
+  to re-pull them from the live database. They're point-in-time — reflect
+  what existed as of 2026-09-08, not necessarily what's live if the schema
+  changes later without a matching re-pull.

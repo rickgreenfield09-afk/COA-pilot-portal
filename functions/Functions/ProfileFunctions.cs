@@ -15,17 +15,15 @@ public class ProfileFunctions(ILogger<ProfileFunctions> logger)
 
     // FIRST Functions endpoint for the Aeris build — establishes the
     // pattern every later endpoint follows: EntraAuthMiddleware has
-    // already validated the bearer token by the time this runs; derive
-    // app.user_id/app.user_role from the validated principal's own claims
-    // (never from a client-supplied parameter); open an RLS-scoped
-    // connection via AerisDbConnectionFactory; query; return JSON.
+    // already validated the bearer token by the time this runs; resolve
+    // the validated principal's Entra oid to the internal profiles.id and
+    // set app.user_id/app.user_role from ONLY that principal's own claims
+    // (never from a client-supplied parameter); query; return JSON.
     //
-    // SELECT list is deliberately minimal (id, role only) — the actual
-    // postgres-schema.sql column list for `profiles` isn't available in
-    // this repo (it was drafted in a separate session/Claude project, see
-    // coa_aeris_migration_track memory). Extend this once that schema is
-    // in hand; don't guess at column names against a schema this session
-    // can't see.
+    // Column list confirmed against the live database's actual `profiles`
+    // schema (pulled 2026-09-08 — see postgres-schema-live.txt), not
+    // guessed. Mirrors what screen-profile.js's Overview tab reads today
+    // via Supabase (profiles?select=*,departments(name)).
     [Function("GetMyProfile")]
     public async Task<IActionResult> GetMyProfile(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "profile/me")] HttpRequest req,
@@ -39,8 +37,8 @@ public class ProfileFunctions(ILogger<ProfileFunctions> logger)
             return new UnauthorizedResult();
         }
 
-        var userId = user.FindFirst("oid")?.Value;
-        if (string.IsNullOrEmpty(userId))
+        var entraObjectId = user.FindFirst("oid")?.Value;
+        if (string.IsNullOrEmpty(entraObjectId))
         {
             _logger.LogWarning("Validated Entra token had no 'oid' claim.");
             return new UnauthorizedResult();
@@ -50,25 +48,69 @@ public class ProfileFunctions(ILogger<ProfileFunctions> logger)
 
         try
         {
-            await using NpgsqlConnection conn = await AerisDbConnectionFactory.OpenScopedAsync(userId, role);
-            await using var cmd = new NpgsqlCommand("select id, role from profiles where id = @id", conn);
-            cmd.Parameters.AddWithValue("id", userId);
+            var (conn, profileId) = await AerisDbConnectionFactory.OpenScopedAsync(entraObjectId, role);
+            await using var _ = conn;
+
+            await using var cmd = new NpgsqlCommand(
+                """
+                select p.id, p.full_name, p.preferred_name, p.email, p.role, p.job_title,
+                       p.department_id, d.name as department_name, p.location, p.phone,
+                       p.home_email, p.home_phone, p.bio, p.photo_url, p.manager_id,
+                       p.start_date, p.employment_status, p.clearance_level,
+                       p.clearance_investigation_type, p.clearance_granted_date,
+                       p.clearance_expiration_date, p.known_traveler_number,
+                       p.theme_preference, p.pto_balance_hours
+                from profiles p
+                left join departments d on d.id = p.department_id
+                where p.id = @id
+                """, conn);
+            cmd.Parameters.AddWithValue("id", profileId);
 
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
             {
+                // Should be unreachable — OpenScopedAsync already threw if
+                // no profiles row matched the Entra account. Kept as a
+                // defensive fallback only.
                 return new NotFoundObjectResult(new { error = "No profile found for this account." });
             }
 
+            string? S(int i) => reader.IsDBNull(i) ? null : reader.GetString(i);
+            Guid? G(int i) => reader.IsDBNull(i) ? null : reader.GetGuid(i);
+            DateOnly? D(int i) => reader.IsDBNull(i) ? null : DateOnly.FromDateTime(reader.GetDateTime(i));
+            decimal? N(int i) => reader.IsDBNull(i) ? null : reader.GetDecimal(i);
+
             return new OkObjectResult(new
             {
-                id = reader.GetString(0),
-                role = reader.IsDBNull(1) ? null : reader.GetString(1)
+                id = reader.GetGuid(0),
+                full_name = S(1),
+                preferred_name = S(2),
+                email = S(3),
+                role = S(4),
+                job_title = S(5),
+                department_id = G(6),
+                department_name = S(7),
+                location = S(8),
+                phone = S(9),
+                home_email = S(10),
+                home_phone = S(11),
+                bio = S(12),
+                photo_url = S(13),
+                manager_id = G(14),
+                start_date = D(15),
+                employment_status = S(16),
+                clearance_level = S(17),
+                clearance_investigation_type = S(18),
+                clearance_granted_date = D(19),
+                clearance_expiration_date = D(20),
+                known_traveler_number = S(21),
+                theme_preference = S(22),
+                pto_balance_hours = N(23)
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "GetMyProfile failed for user {UserId}", userId);
+            _logger.LogError(ex, "GetMyProfile failed for Entra object id {EntraObjectId}", entraObjectId);
             return new ObjectResult(new { error = "Internal error." }) { StatusCode = 500 };
         }
     }
