@@ -1780,3 +1780,15 @@ path is ready and waiting on these.
 Gap/follow-up: CORS (Aeris frontend origins) still not configured on the
 Function App resource — not yet attempted this session, unclear if it
 hits the same permission wall or not.
+
+## 2026-09-09 — Both Sly Penguin role assignments granted; first real deploy triggered (CM-6)
+Sly Penguin granted: Website Contributor on func-coa-prod-eus-01 for the
+GitHub Deploy service principal, and Key Vault Secrets User on
+kv-coa-prod-eus for the Function App's managed identity. Both blockers
+from 2026-09-08 cleared.
+Added workflow_dispatch to functions-deploy.yml for manual re-runs going
+forward (didn't exist before — every prior run had to be triggered by an
+actual push to functions/**). This commit itself is the first real
+trigger of the deploy pipeline end to end.
+Status: Deploy triggered, outcome not yet confirmed — this entry
+written at trigger time, not after confirming success live.

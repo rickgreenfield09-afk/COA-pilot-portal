@@ -10,6 +10,7 @@ on:
     paths:
       - 'functions/**'
       - '.github/workflows/functions-deploy.yml'
+  workflow_dispatch: {}
 
 # No approval gate for now (matches the frontend's auto-deploy-on-merge) —
 # revisit before real production go-live, not before this internal demo.
@@ -20,9 +21,9 @@ on:
 # federated tokens instead of a stored long-lived credential. The service
 # principal (App Registration "COA - Aeris - GitHub Deploy", separate
 # from the "COA - Aeris" login app) has a federated credential scoped to
-# this exact repo + main branch, and needs the Website Contributor role
-# on func-coa-prod-eus-01 to actually deploy — see ssp-log.md 2026-09-08,
-# blocked on Sly Penguin granting that role assignment as of this commit.
+# this exact repo + main branch, and has the Website Contributor role on
+# func-coa-prod-eus-01 (granted by Sly Penguin 2026-09-09) — see
+# ssp-log.md 2026-09-08 for the request.
 permissions:
   id-token: write
   contents: read
