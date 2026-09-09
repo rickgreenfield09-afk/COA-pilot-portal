@@ -39,7 +39,7 @@ public class ResumeFunctions(ILogger<ResumeFunctions> logger)
         if (string.IsNullOrEmpty(entraObjectId))
         {
             _logger.LogWarning("Validated Entra token had no 'oid' claim.");
-            return new UnauthorizedResult();
+            return new UnauthorizedObjectResult(new { error = "Token has no 'oid' claim." });
         }
 
         var role = AerisRoleMapper.ResolveRole(user);

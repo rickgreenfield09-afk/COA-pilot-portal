@@ -1873,3 +1873,34 @@ the sixth distinct issue found and fixed during Functions deployment
 testing today alone (issuer version, audience format, then this
 middleware architecture bug) — each a real, separate root cause found
 by reading actual errors/response bytes rather than guessing.
+
+## 2026-09-09 — Confirmed live via Log stream: auth validation fully works; missed a second empty-body spot; token has no oid claim (IA-2 / IA-8)
+Restarting the Function App didn't change anything (ruled out a stale-
+instance/caching theory) — the redeploy WAS current. Watched
+Log stream directly while re-running the test, which gave a definitive
+answer instead of more client-side guessing: `Executing endpoint
+'GetMyProfile'` followed by `Validated Entra token had no 'oid' claim.`
+— our own LogWarning call. This proves issuer and audience validation
+are now BOTH fully working (the token passed EntraAuthMiddleware
+entirely) — the empty body was coming from a SECOND, different bare
+`return new UnauthorizedResult();` (the missing-oid-claim check) that
+the previous fix pass didn't touch, only the
+context.Items["User"]-missing check.
+Fixed: all 8 endpoints' missing-oid-claim checks now also return
+UnauthorizedObjectResult with a real body, matching the earlier fix.
+Real remaining cause found via research, not guessed: v2.0 access
+tokens are deliberately smaller than v1.0 and omit several claims
+(oid included) unless explicitly requested via optionalClaims in the
+manifest — another real side effect of the requestedAccessTokenVersion
+fix from earlier today, same category as the audience-format change.
+Fixed in the manifest: added `oid` under
+optionalClaims.accessToken.
+Status: Code fix pushed; manifest fix applied directly by Ricky (no
+redeploy needed for a manifest-only change, but a fresh sign-in is,
+since the currently cached token predates the claim being requested).
+Not yet reconfirmed with a fresh token.
+Gap/follow-up: seventh distinct issue found and fixed during Functions
+deployment testing today. Worth being alert to more of this same
+category (v2.0 token minimalism) if other expected claims turn out
+missing later — this is a real characteristic of v2.0 tokens, not a
+one-off.
