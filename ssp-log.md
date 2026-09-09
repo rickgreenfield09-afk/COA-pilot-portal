@@ -1928,3 +1928,26 @@ locally. Not yet redeployed/reconfirmed against the live API.
 Gap/follow-up: eighth distinct issue found and fixed during Functions
 deployment testing today, hopefully the last before a real end-to-end
 authenticated API call succeeds.
+
+## 2026-09-09 — Milestone: first successful end-to-end authenticated Aeris API call (IA-2 / IA-8 / AC-3)
+After the MapInboundClaims fix redeployed, GetMyProfile called live
+from the browser console (Bearer token from the active Aeris session)
+returned Ricky's real profile row — id, full_name, email, role: admin,
+etc. — with no error. This confirms the full chain works end to end:
+Entra ID login (redirect flow) → MSAL access token → EntraAuthMiddleware
+token validation (issuer, audience, signature, oid claim all correctly
+read) → AerisDbConnectionFactory resolving the Entra object id to a
+profiles.id via app.resolve_profile_id() → Postgres RLS session
+variables (app.user_id/app.user_role) scoping the query → real row
+returned. This closes out the chain of eight distinct issues found and
+fixed today (redirect URI, popup mechanism/COOP, token version/issuer,
+audience format, empty-response-body middleware pattern, missing
+context.Items init, missing oid claim in v2.0 tokens, and claim-type
+remapping).
+Status: Implemented and confirmed live.
+Gap/follow-up: the frontend (screen-dashboard.js, screen-profile.js,
+etc.) still calls Supabase directly, not this new Functions API — that
+wiring is the next task, not yet started. Until that's done, the
+Aeris demo will keep showing "Couldn't Load Dashboard" from Supabase
+401s even though the real backend now works correctly when called
+directly.
