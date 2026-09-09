@@ -21,6 +21,20 @@ namespace CoaFunctions.Middleware;
 // ONLY place app.user_id/app.user_role (the RLS session variables — see
 // AerisDbConnectionFactory) may originate from. They come from the
 // validated token's own claims, never from anything client-supplied.
+//
+// Correction 2026-09-09: middleware in the isolated-worker + ASP.NET Core
+// integration model cannot reliably short-circuit by writing directly to
+// HttpContext.Response — this is a documented limitation (writes were
+// silently dropped, producing a 401 with an empty body every time,
+// discovered via a live test against the deployed API). The actual
+// working pattern: middleware never writes a response itself and always
+// calls next() so the function body runs; on failure it stores a reason
+// in context.Items["AuthError"] instead of setting context.Items["User"],
+// and every endpoint's existing defensive check
+// (`if (context.Items["User"] is not ClaimsPrincipal user) return ...`)
+// is the REAL enforcement point now, not a "should be unreachable"
+// fallback — its return value goes through the function's normal,
+// reliable response-serialization path.
 public class EntraAuthMiddleware : IFunctionsWorkerMiddleware
 {
     private readonly string _tenantId;
@@ -56,6 +70,14 @@ public class EntraAuthMiddleware : IFunctionsWorkerMiddleware
 
     public async Task Invoke(FunctionContext context, FunctionExecutionDelegate next)
     {
+        // context.Items is a plain dictionary — its indexer throws
+        // KeyNotFoundException on a missing key rather than returning null
+        // (unlike a normal lookup pattern). Every endpoint reads
+        // context.Items["User"] unconditionally, so the key must always
+        // exist, even when nothing has validated yet — found live via a
+        // 500 with an empty body once next() started always running.
+        context.Items["User"] = null!;
+
         var httpContext = context.GetHttpContext();
         if (httpContext is null)
         {
@@ -69,7 +91,8 @@ public class EntraAuthMiddleware : IFunctionsWorkerMiddleware
         var authHeader = httpContext.Request.Headers.Authorization.FirstOrDefault();
         if (authHeader is null || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
-            await Reject(httpContext, "Missing or malformed Authorization header.");
+            context.Items["AuthError"] = "Missing or malformed Authorization header.";
+            await next(context);
             return;
         }
 
@@ -85,7 +108,8 @@ public class EntraAuthMiddleware : IFunctionsWorkerMiddleware
             // Fails closed — if Entra's discovery document can't be
             // reached, requests are rejected rather than let through
             // unvalidated.
-            await Reject(httpContext, $"Could not retrieve identity provider configuration: {ex.Message}");
+            context.Items["AuthError"] = $"Could not retrieve identity provider configuration: {ex.Message}";
+            await next(context);
             return;
         }
 
@@ -109,20 +133,13 @@ public class EntraAuthMiddleware : IFunctionsWorkerMiddleware
         }
         catch (Exception ex)
         {
-            await Reject(httpContext, $"Token validation failed: {ex.Message}");
+            context.Items["AuthError"] = $"Token validation failed: {ex.Message}";
+            await next(context);
             return;
         }
 
         httpContext.User = principal;
         context.Items["User"] = principal;
         await next(context);
-    }
-
-    private static async Task Reject(HttpContext httpContext, string message)
-    {
-        httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        await httpContext.Response.WriteAsync(message);
-        // No call to next() — this short-circuits the pipeline, matching
-        // standard ASP.NET Core middleware short-circuit behavior.
     }
 }

@@ -31,7 +31,8 @@ public class ResumeFunctions(ILogger<ResumeFunctions> logger)
     {
         if (context.Items["User"] is not ClaimsPrincipal user)
         {
-            return new UnauthorizedResult();
+            var reason = context.Items["AuthError"] as string ?? "Unauthorized.";
+            return new UnauthorizedObjectResult(new { error = reason });
         }
 
         var entraObjectId = user.FindFirst("oid")?.Value;

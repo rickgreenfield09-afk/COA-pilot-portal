@@ -48,10 +48,13 @@ public class ProfileFunctions(ILogger<ProfileFunctions> logger)
     {
         if (context.Items["User"] is not ClaimsPrincipal user)
         {
-            // Should be unreachable — EntraAuthMiddleware rejects an
-            // unauthenticated request before it ever reaches here. Kept as
-            // a defensive check, not the real auth boundary.
-            return new UnauthorizedResult();
+            // This IS the real auth boundary — EntraAuthMiddleware never
+            // short-circuits the pipeline itself (writing a response body
+            // directly from middleware is unreliable in the isolated-
+            // worker model), so every endpoint must check this and return
+            // its own 401. See EntraAuthMiddleware's class comment.
+            var reason = context.Items["AuthError"] as string ?? "Unauthorized.";
+            return new UnauthorizedObjectResult(new { error = reason });
         }
 
         var entraObjectId = user.FindFirst("oid")?.Value;
@@ -148,7 +151,8 @@ public class ProfileFunctions(ILogger<ProfileFunctions> logger)
     {
         if (context.Items["User"] is not ClaimsPrincipal user)
         {
-            return new UnauthorizedResult();
+            var reason = context.Items["AuthError"] as string ?? "Unauthorized.";
+            return new UnauthorizedObjectResult(new { error = reason });
         }
 
         var entraObjectId = user.FindFirst("oid")?.Value;

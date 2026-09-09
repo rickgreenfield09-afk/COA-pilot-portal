@@ -1819,3 +1819,57 @@ real issues in sequence, both fixed live rather than guessed at:
 Status: Middleware fix implemented and building clean; deploy
 triggered by this commit. Not yet confirmed live — next step is
 rerunning the same manual fetch test once this redeploys.
+
+## 2026-09-09 — Real root cause of the empty 401 body: middleware can't reliably write the response itself (IA-2 / IA-8 / SI-10)
+After that deploy succeeded, the live test still returned a 401 with a
+genuinely empty body (Content-Length: 0, confirmed via the Network tab's
+raw Response, not a DevTools filtering artifact as first suspected — a
+long detour chasing console log-level filters before checking the actual
+HTTP response directly). Researched rather than guessed further:
+confirmed this is a known, documented limitation — writing directly to
+HttpContext.Response from custom middleware in the isolated-worker +
+ASP.NET Core integration model is unreliable (Azure/azure-functions-
+dotnet-worker#2325 and others). The correct pattern, per a reference
+JWT-middleware implementation for this exact scenario: middleware must
+never try to short-circuit the pipeline itself — it always calls next(),
+and the function's own return value is the only reliably-serialized
+response path.
+
+This reframes what EntraAuthMiddleware's Reject() was actually doing:
+every endpoint's `if (context.Items["User"] is not ClaimsPrincipal user)
+return new UnauthorizedResult();` check was written as a "should be
+unreachable, defensive only" fallback — but it was NEVER ACTUALLY
+RUNNING, because on failure the old middleware returned without calling
+next(), so the function body never executed at all. The empty-body 401
+the client received was the middleware's own broken direct-write,
+happening beeline before the function — not the function's intended
+response.
+
+Fixed: EntraAuthMiddleware no longer touches HttpContext.Response at
+all. On failure it stores a reason in context.Items["AuthError"] and
+calls next() unconditionally, letting the function run. Every one of
+the 8 endpoints' defensive checks — no longer "unreachable", now the
+actual auth boundary — updated to read that reason and return
+UnauthorizedObjectResult with a real body instead of a bare
+UnauthorizedResult.
+
+This surfaced one more bug while testing locally: context.Items is a
+plain dictionary whose indexer throws KeyNotFoundException on a missing
+key (unlike a normal lookup), and since the key was never set at all on
+the failure path before, this had never been hit — now that next() runs
+unconditionally, every endpoint's unconditional `context.Items["User"]`
+read would throw a 500 unless the key always exists. Fixed by
+initializing context.Items["User"] = null at the very top of the
+middleware, before any branch.
+
+Status: Implemented and verified locally — dotnet build clean (0
+warnings after fixing a nullable-reference warning from the null
+assignment), and a real curl test against the local host now returns
+`{"error":"Missing or malformed Authorization header."}` with a proper
+401, not an empty body. Pushed; live redeploy triggered.
+Gap/follow-up: not yet reconfirmed against the live deployed API with a
+real Entra token — that's the next step once this redeploys. This is
+the sixth distinct issue found and fixed during Functions deployment
+testing today alone (issuer version, audience format, then this
+middleware architecture bug) — each a real, separate root cause found
+by reading actual errors/response bytes rather than guessing.
