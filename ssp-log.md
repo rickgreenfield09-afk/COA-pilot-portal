@@ -1904,3 +1904,27 @@ deployment testing today. Worth being alert to more of this same
 category (v2.0 token minimalism) if other expected claims turn out
 missing later — this is a real characteristic of v2.0 tokens, not a
 one-off.
+
+## 2026-09-09 — Eighth issue: oid claim present in token but still unreadable server-side — JwtSecurityTokenHandler inbound claim remapping (IA-2 / IA-8)
+After the optionalClaims manifest fix and a fresh sign-in, Ricky proved
+via jwt.ms AND an inline JS decode (two alert() popups) that the raw
+token genuinely contains `oid: 5ffa332e-03c6-4dcf-be3c-38cedf8603d2` —
+yet the server still returned "Token has no 'oid' claim." This ruled
+out every token-format theory from the prior two fixes; the problem is
+purely in how the server reads the token, not what the token contains.
+Root cause: `System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler`
+has a default inbound claim-type mapping table that silently renames
+several short claim names — including "oid" — to long legacy
+WS-Federation-style URI claim types when building the ClaimsPrincipal.
+The claim value survives the remap; only its Claim.Type string changes,
+so every endpoint's `user.FindFirst("oid")` came back null even though
+the claim was genuinely on the principal. A documented, long-standing
+.NET JWT library behavior, not specific to this app or this token.
+Fixed in functions/Middleware/EntraAuthMiddleware.cs: construct the
+JwtSecurityTokenHandler with `MapInboundClaims = false` before calling
+ValidateToken, so claim types are preserved exactly as issued.
+Status: Implemented, dotnet build verified clean (0 warnings/errors)
+locally. Not yet redeployed/reconfirmed against the live API.
+Gap/follow-up: eighth distinct issue found and fixed during Functions
+deployment testing today, hopefully the last before a real end-to-end
+authenticated API call succeeds.

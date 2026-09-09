@@ -128,7 +128,21 @@ public class EntraAuthMiddleware : IFunctionsWorkerMiddleware
         ClaimsPrincipal principal;
         try
         {
-            var handler = new JwtSecurityTokenHandler();
+            var handler = new JwtSecurityTokenHandler
+            {
+                // Without this, JwtSecurityTokenHandler silently remaps
+                // several short claim names (oid included) to long legacy
+                // WS-Federation-style URIs when building the
+                // ClaimsPrincipal — the value is still present, just under
+                // a different Claim.Type, so FindFirst("oid") finds
+                // nothing even though the raw JWT payload genuinely has an
+                // oid claim. Confirmed live 2026-09-09: decoded the actual
+                // token via jwt.ms, oid was there, but every endpoint's
+                // FindFirst("oid") still came back null until this was
+                // set. A well-known, long-standing .NET JWT gotcha, not
+                // specific to this app.
+                MapInboundClaims = false
+            };
             principal = handler.ValidateToken(token, validationParameters, out _);
         }
         catch (Exception ex)
