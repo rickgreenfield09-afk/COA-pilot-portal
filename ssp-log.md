@@ -1792,3 +1792,30 @@ actual push to functions/**). This commit itself is the first real
 trigger of the deploy pipeline end to end.
 Status: Deploy triggered, outcome not yet confirmed — this entry
 written at trigger time, not after confirming success live.
+
+## 2026-09-09 — Deploy succeeded; live token test found two real Entra config issues (IA-2 / IA-8)
+Deploy succeeded — all 8 functions showing Enabled on func-coa-prod-eus-01.
+CORS configured (Aeris frontend origins). Ran the first real live test:
+a manual fetch from the browser console against the deployed
+GetMyProfile, using Ricky's actual signed-in access token. Found two
+real issues in sequence, both fixed live rather than guessed at:
+1. IDX10205 issuer validation failed — the App Registration's
+   requestedAccessTokenVersion (api.requestedAccessTokenVersion in the
+   manifest, the modern Graph-schema name for the older
+   accessTokenAcceptedVersion field) was null, causing Entra to issue
+   v1.0-format access tokens (issuer sts.windows.net) instead of the
+   v2.0 format (issuer login.microsoftonline.com/.../v2.0) our
+   middleware validates against. Fixed by setting it to 2 directly in
+   the App Registration's Manifest editor (Ricky has Owner access now,
+   no Sly Penguin needed).
+2. That fix then surfaced IDX10214 audience validation failed — v2.0
+   tokens for this API use the bare client ID (GUID) as the aud claim,
+   not the api://... App ID URI ENTRA_API_AUDIENCE was set to. Fixed in
+   code: EntraAuthMiddleware now validates against BOTH forms
+   (ValidAudiences, not a single ValidAudience) — derives the bare
+   client ID from the same ENTRA_API_AUDIENCE setting rather than
+   needing a second app setting, and accepts either going forward
+   rather than assuming one is canonical.
+Status: Middleware fix implemented and building clean; deploy
+triggered by this commit. Not yet confirmed live — next step is
+rerunning the same manual fetch test once this redeploys.

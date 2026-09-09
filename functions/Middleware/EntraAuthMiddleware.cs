@@ -24,15 +24,29 @@ namespace CoaFunctions.Middleware;
 public class EntraAuthMiddleware : IFunctionsWorkerMiddleware
 {
     private readonly string _tenantId;
-    private readonly string _audience;
+    private readonly string[] _validAudiences;
     private readonly ConfigurationManager<OpenIdConnectConfiguration> _configManager;
 
     public EntraAuthMiddleware()
     {
         _tenantId = Environment.GetEnvironmentVariable("ENTRA_TENANT_ID")
             ?? throw new InvalidOperationException("ENTRA_TENANT_ID app setting is not configured.");
-        _audience = Environment.GetEnvironmentVariable("ENTRA_API_AUDIENCE")
+        var audience = Environment.GetEnvironmentVariable("ENTRA_API_AUDIENCE")
             ?? throw new InvalidOperationException("ENTRA_API_AUDIENCE app setting is not configured.");
+
+        // Accepts both audience forms rather than assuming one is
+        // canonical — found live 2026-09-09 that switching the App
+        // Registration to issue v2.0 tokens (requestedAccessTokenVersion,
+        // fixing a separate issuer mismatch) also changed the aud claim
+        // from the App ID URI (api://...) to the bare client ID GUID.
+        // Both are valid ways Entra represents "this app" as an audience;
+        // accepting either avoids being fragile to that kind of Entra-side
+        // token-format detail changing again.
+        const string apiUriPrefix = "api://";
+        var bareClientId = audience.StartsWith(apiUriPrefix, StringComparison.OrdinalIgnoreCase)
+            ? audience[apiUriPrefix.Length..]
+            : audience;
+        _validAudiences = [audience, bareClientId];
 
         var metadataAddress = $"https://login.microsoftonline.com/{_tenantId}/v2.0/.well-known/openid-configuration";
         _configManager = new ConfigurationManager<OpenIdConnectConfiguration>(
@@ -80,7 +94,7 @@ public class EntraAuthMiddleware : IFunctionsWorkerMiddleware
             ValidateIssuer = true,
             ValidIssuer = $"https://login.microsoftonline.com/{_tenantId}/v2.0",
             ValidateAudience = true,
-            ValidAudience = _audience,
+            ValidAudiences = _validAudiences,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             IssuerSigningKeys = openIdConfig.SigningKeys,
